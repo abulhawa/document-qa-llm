@@ -1,41 +1,73 @@
 import os
-from langchain.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
+from datetime import datetime, timezone
+from typing import List
+from langchain.schema.document import Document
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
-import faiss
-import pickle
-import config
 
-def load_documents(folder):
-    docs = []
-    for file in os.listdir(folder):
-        path = os.path.join(folder, file)
-        if file.endswith(".pdf"):
-            docs += PyPDFLoader(path).load()
-        elif file.endswith(".docx"):
-            docs += Docx2txtLoader(path).load()
-        elif file.endswith(".txt"):
-            docs += TextLoader(path).load()
+from config import logger, CHUNK_SIZE, CHUNK_OVERLAP
+from utils import compute_checksum
+from vector_store import is_file_already_indexed, upsert_embeddings
+
+
+def load_documents(path: str) -> List[Document]:
+    """Load documents from file or folder."""
+    docs: List[Document] = []
+
+    if os.path.isfile(path):
+        paths = [path]
+    else:
+        paths = [
+            os.path.join(path, f)
+            for f in os.listdir(path)
+            if f.endswith((".pdf", ".docx", ".txt"))
+        ]
+
+    for file_path in paths:
+        if file_path.endswith(".pdf"):
+            docs += PyPDFLoader(file_path).load()
+        elif file_path.endswith(".docx"):
+            docs += Docx2txtLoader(file_path).load()
+        elif file_path.endswith(".txt"):
+            docs += TextLoader(file_path).load()
+
+    logger.info("Loaded %d documents from %s", len(docs), path)
     return docs
 
-def embed_and_store(documents):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=config.CHUNK_SIZE,
-        chunk_overlap=config.CHUNK_OVERLAP
+
+def split_documents(documents: List[Document]) -> List[Document]:
+    """Split documents into chunks."""
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
     )
-    chunks = text_splitter.split_documents(documents)
-    texts = [chunk.page_content for chunk in chunks]
+    chunks = splitter.split_documents(documents)
+    logger.info("Split documents into %d chunks", len(chunks))
+    return chunks
 
-    model = SentenceTransformer(config.EMBEDDING_MODEL_NAME)
-    embeddings = model.encode(texts, show_progress_bar=True)
 
-    index = faiss.IndexFlatL2(embeddings[0].shape[0])
-    index.add(embeddings)
+def ingest(path: str) -> None:
+    """Main ingestion pipeline: load, split, embed, store in Qdrant."""
+    logger.info("📥 Starting ingestion for: %s", path)
 
-    with open("data_store/chunks.pkl", "wb") as f:
-        pickle.dump(texts, f)
-    faiss.write_index(index, config.FAISS_INDEX_PATH)
+    if not os.path.exists(path):
+        logger.error("Path does not exist: %s", path)
+        return
 
-if __name__ == "__main__":
-    docs = load_documents(config.DOCS_FOLDER)
-    embed_and_store(docs)
+    checksum: str = compute_checksum(path)
+
+    if is_file_already_indexed(checksum):
+        logger.info("✅ File already indexed and unchanged: %s", path)
+        return
+
+    documents = load_documents(path)
+    if not documents:
+        logger.warning("⚠️ No valid documents found in: %s", path)
+        return
+
+    chunks = split_documents(documents)
+    texts: List[str] = [chunk.page_content for chunk in chunks]
+    timestamp: str = datetime.now(timezone.utc).isoformat()
+
+    upsert_embeddings(texts, path, checksum, timestamp)
+    logger.info("📦 Ingestion complete: %d chunks stored for %s", len(texts), path)

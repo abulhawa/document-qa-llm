@@ -1,41 +1,25 @@
+from typing import List
+from vector_store import query_top_k
+from llm import ask_llm
 from config import logger
-from faiss_store import query_faiss
-from llm import ask_llm  # Make sure this exists
-
-def build_context(chunks, max_chars=3000):
-    context = ""
-    for item in chunks:
-        text = item["chunk"]["content"]
-        if len(context) + len(text) > max_chars:
-            break
-        context += text + "\n---\n"
-    return context.strip()
 
 
-def build_prompt(question, context):
-    return f"""You are a helpful assistant answering questions based on the provided context.
-
-Context:
-{context}
-
-Question:
-{question}
-
-Answer:"""
+def build_prompt(context_chunks: List[str], question: str) -> str:
+    context_text = "\n\n".join(context_chunks)
+    return f"Context:\n{context_text}\n\nQuestion: {question}\nAnswer:"
 
 
-def answer_question(query, top_k=5):
-    logger.info("Received query: %s", query)
-    top_chunks = query_faiss(query, top_k)
+def answer_question(question: str, top_k: int = 5) -> str:
+    logger.info("🔍 Running semantic search for: %s", question)
+    top_chunks = query_top_k(query=question, top_k=top_k)
 
     if not top_chunks:
-        logger.warning("No relevant chunks found for query.")
-        return "Sorry, I couldn't find relevant information to answer your question."
+        logger.warning("No relevant chunks found.")
+        return "No relevant context found to answer the question."
 
-    context = build_context(top_chunks)
-    prompt = build_prompt(query, context)
+    context = [chunk["content"] for chunk in top_chunks]
+    prompt = build_prompt(context, question)
 
-    logger.info("Sending prompt to LLM (context length: %d chars)", len(context))
+    logger.info("🧠 Sending prompt to LLM...")
     answer = ask_llm(prompt)
-    logger.info("LLM response generated.")
     return answer

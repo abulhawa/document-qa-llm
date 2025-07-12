@@ -1,15 +1,48 @@
-EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base"
-FAISS_INDEX_PATH = "data_store/index.faiss"
-DOCS_FOLDER = "docs"
-LLM_API_BASE = "http://localhost:5000/v1"
-LLM_MODEL_NAME = "local-mixtral"
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
-TOP_K = 4
-PROMPT_TEMPLATE = """Use the following context to answer the question:
+import os
+import logging
+from logging import Logger
 
-{context}
+# ───────────────────────────────────────
+# 📁 Directories
+# ───────────────────────────────────────
+TEMP_DIR: str = "temp_docs"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
-Question: {question}
-Answer:
-"""
+# ───────────────────────────────────────
+# 📄 File paths
+# ───────────────────────────────────────
+DOCS_FOLDER: str = "docs"  # optional if you keep a static folder for ingestion
+
+# ───────────────────────────────────────
+# 🔠 Embedding & Chunking
+# ───────────────────────────────────────
+EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-base"
+CHUNK_SIZE: int = 500
+CHUNK_OVERLAP: int = 50
+
+# ───────────────────────────────────────
+# 🔍 Qdrant Vector Store
+# ───────────────────────────────────────
+QDRANT_HOST: str = "localhost"
+QDRANT_PORT: int = 6333
+QDRANT_COLLECTION_NAME: str = "document_chunks"
+
+# ───────────────────────────────────────
+# 🧠 LLM API (text-generation-webui)
+# ───────────────────────────────────────
+LLM_GENERATE_ENDPOINT: str = "http://localhost:5000/api/v1/generate"
+LLM_COMPLETION_ENDPOINT: str = "http://localhost:5000/v1/completions"
+LLM_MODEL_LIST_ENDPOINT: str = "http://localhost:5000/v1/internal/model/list"
+LLM_MODEL_LOAD_ENDPOINT: str = "http://localhost:5000/v1/internal/model/load"
+
+# ───────────────────────────────────────
+# 📋 Logging
+# ───────────────────────────────────────
+LOG_LEVEL: int = logging.INFO
+LOG_FORMAT: str = "%(asctime)s - %(levelname)s - %(message)s"
+
+def setup_logging() -> Logger:
+    logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
+    return logging.getLogger("document_qa")
+
+logger: Logger = setup_logging()

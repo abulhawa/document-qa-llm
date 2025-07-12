@@ -1,70 +1,69 @@
+# Document QA System (Local LLM + Qdrant)
 
-# 🧠 Document Q&A with Local LLM
+This is a local document Q&A system powered by a locally running LLM and Qdrant for fast vector search and metadata storage. It supports ingestion of documents from file uploads or folder paths and lets you ask natural language questions via a Streamlit UI.
 
-Ask questions about your documents using a locally hosted large language model (LLM). This project combines [text-generation-webui](https://github.com/oobabooga/text-generation-webui) for local inference with a user-friendly [Streamlit](https://streamlit.io/) app for uploading and querying PDF, DOCX, or TXT files.
+## 🔧 Features
 
-## 🚀 Features
+- Local document ingestion and chunking
+- Embedding generation using Sentence Transformers
+- Qdrant used for **both vector storage and metadata tracking** (replaces FAISS and SQLite)
+- Duplicate file detection using SHA256 checksum
+- Skips re-indexing already indexed documents
+- Streamlit-based interface with:
+  - File upload tab
+  - Folder path ingestion tab
+  - Question answering interface
+  - Admin ("God mode") tab to trigger maintenance actions like re-indexing
+- Integrated with a locally running LLM (e.g., text-generation-webui via OpenAI-compatible API)
 
-- 📄 Upload documents (PDF, DOCX, TXT)
-- 💬 Ask questions and get answers from a local LLM
-- 🧠 Uses embedding-based retrieval + context-aware completions
-- 🤖 Switch and load models via a built-in model manager
-- 🔐 100% local, no external API calls required
+## 🗂️ File Structure
 
-## 🏗️ Stack
-
-- [Streamlit](https://streamlit.io/) for the frontend
-- [LangChain](https://www.langchain.com/) for document parsing and chunking
-- [text-generation-webui](https://github.com/oobabooga/text-generation-webui) (with OpenAI-compatible API)
-- Embeddings via `intfloat/multilingual-e5-base` (HuggingFace)
-- Conda for environment management
-
-## 🖼️ Interface
-
-<img src="assets/screenshot_ui.png" width="600"/>
-
-## 📂 Project Structure
-
-```
-document_qa/
-├── ingest.py # Load & embed docs into vector store
-├── ask.py # Query the LLM using retrieved context
-├── streamlit_app.py # Main Streamlit app
-├── requirements.txt # Python dependencies
-├── data_store/ # Vector DB (FAISS or Pickle)
-├── docs/ # Uploaded documents
-└── assets/ # UI screenshots, logos, etc.
+```bash
+.
+├── app.py                 # Streamlit app
+├── config.py              # Configuration (paths, settings)
+├── ingest.py              # Document ingestion, chunking, embedding, and Qdrant storage
+├── llm.py                 # Interface with local LLM
+├── qdrant_store.py        # Qdrant-based storage and retrieval
+├── utils.py               # Utility functions (e.g., checksum)
+├── README.md              # This file
 ```
 
-## ⚙️ Usage
+## 🛠️ Setup
 
-1. **Start the local LLM** using text-generation-webui:
-   ```bash
-   start_windows.bat --api
-   ```
+1. Install dependencies:
 
-2. **Launch the Streamlit app**:
-   ```bash
-   streamlit run streamlit_app.py
-   ```
+```bash
+pip install -r requirements.txt
+```
 
-3. **Visit**: [http://localhost:8501](http://localhost:8501)  
-   Upload a document, select a model, and start asking questions!
+2. Ensure Qdrant is running locally on `http://localhost:6333`.
 
-## 📝 Roadmap
+3. Ensure your LLM API (e.g., text-generation-webui) is available at `http://localhost:5000`.
 
-- [x] Model loading via UI
-- [x] Document embedding and storage
-- [x] Streamlit interface
-- [ ] Multi-document support
-- [ ] Chunk viewer and source highlighting
-- [ ] Support for other embedding models
-- [ ] Docker containerization
+## ▶️ Running the App
 
-## 📜 License
+```bash
+streamlit run app.py
+```
 
-MIT
+Use the web interface to ingest documents or folders and start asking questions.
 
----
+## 🧠 How It Works
 
-Want to showcase your NLP + LLM skills? Fork this project or use it as a template to build your own knowledge assistant.
+1. **Ingestion**:
+   - Supported formats: `.pdf`, `.docx`, `.txt`
+   - Documents are chunked and embedded
+   - Stored in Qdrant
+
+2. **Querying**:
+   - Retrieves top-k most relevant chunks from Qdrant
+   - Passes context to LLM and returns answer
+   - Future TODO: Hybrid mode — use full document text if only one file involved
+
+
+## ✅ Status
+
+✅ Stable working version as of 2025-07-12  
+✅ Replaces all FAISS + SQLite code with Qdrant  
+✅ Supports all major ingestion and querying use cases  

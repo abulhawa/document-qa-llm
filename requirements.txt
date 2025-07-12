@@ -1,7 +1,6 @@
-langchain
-sentence-transformers
-faiss-cpu
-python-docx
-pypdf
 streamlit
 requests
+sentence-transformers
+qdrant-client
+langchain
+langchain-community
