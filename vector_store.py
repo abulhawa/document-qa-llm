@@ -15,6 +15,7 @@ from config import (
     QDRANT_HOST,
     QDRANT_PORT,
     QDRANT_COLLECTION_NAME,
+    CHUNK_SCORE_THRESHOLD,
     EMBEDDING_MODEL_NAME,
     logger,
 )
@@ -98,15 +99,18 @@ def upsert_embeddings(
     logger.info("✅ Upserted %d chunks into Qdrant for %s", len(points), path)
 
 
-def query_top_k(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+def query_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """Search for top_k similar chunks to a query."""
     embedding = embed_texts([query])[0]
     ensure_collection()
+
+    print(f"🔍 Searching for top {top_k} chunks similar to: {query}")
 
     results = client.search(
         collection_name=QDRANT_COLLECTION_NAME,
         query_vector=embedding,
         limit=top_k,
+        score_threshold=CHUNK_SCORE_THRESHOLD,
         search_params=SearchParams(hnsw_ef=128),
     )
 

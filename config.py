@@ -26,6 +26,8 @@ CHUNK_OVERLAP: int = 50
 QDRANT_HOST: str = "localhost"
 QDRANT_PORT: int = 6333
 QDRANT_COLLECTION_NAME: str = "document_chunks"
+CHUNK_SCORE_THRESHOLD: float = 0.75
+
 
 # ───────────────────────────────────────
 # 🧠 LLM API (text-generation-webui)
