@@ -1,3 +1,4 @@
+import requests
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -16,30 +17,25 @@ from config import (
     QDRANT_PORT,
     QDRANT_COLLECTION_NAME,
     CHUNK_SCORE_THRESHOLD,
-    EMBEDDING_MODEL_NAME,
     logger,
+    EMBEDDING_API_URL,
 )
 from sentence_transformers import SentenceTransformer
 
 
-# ───────────────────────────────────────
-# 🔁 Load embedding model (singleton)
-# ───────────────────────────────────────
-_model = None
-
-
-def get_model() -> SentenceTransformer:
-    global _model
-    if _model is None:
-        logger.info("🔁 Loading embedding model: %s", EMBEDDING_MODEL_NAME)
-        _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _model
-
-
-def embed_texts(texts: List[str]) -> List[List[float]]:
-    model = get_model()
-    logger.info("Embedding %d texts", len(texts))
-    return model.encode(texts, normalize_embeddings=True).tolist()
+def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
+    logger.info(f"Embedding {len(texts)} texts via API...")
+    try:
+        response = requests.post(
+            EMBEDDING_API_URL,
+            json={"texts": texts, "batch_size": batch_size},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return response.json()["embeddings"]
+    except requests.RequestException as e:
+        logger.error("Embedding API request failed: %s", str(e))
+        raise RuntimeError(f"Embedding API error: {e}")
 
 
 # ───────────────────────────────────────

@@ -6,9 +6,9 @@ from typing import List
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+LOG_FORMAT: str = "%(asctime)s - %(levelname)s - %(message)s"
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
-
 
 # Initialize app and model
 app = FastAPI()

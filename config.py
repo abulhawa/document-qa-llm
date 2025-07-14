@@ -19,6 +19,8 @@ DOCS_FOLDER: str = "docs"  # optional if you keep a static folder for ingestion
 EMBEDDING_MODEL_NAME: str = "intfloat/multilingual-e5-base"
 CHUNK_SIZE: int = 500
 CHUNK_OVERLAP: int = 50
+EMBEDDING_API_URL = "http://localhost:8000/embed"
+
 
 # ───────────────────────────────────────
 # 🔍 Qdrant Vector Store
