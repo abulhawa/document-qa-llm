@@ -36,6 +36,7 @@ CHUNK_SCORE_THRESHOLD: float = 0.75
 # ───────────────────────────────────────
 LLM_GENERATE_ENDPOINT: str = "http://localhost:5000/api/v1/generate"
 LLM_COMPLETION_ENDPOINT: str = "http://localhost:5000/v1/completions"
+LLM_CHAT_ENDPOINT: str = "http://localhost:5000/v1/chat/completions"
 LLM_MODEL_LIST_ENDPOINT: str = "http://localhost:5000/v1/internal/model/list"
 LLM_MODEL_LOAD_ENDPOINT: str = "http://localhost:5000/v1/internal/model/load"
 
