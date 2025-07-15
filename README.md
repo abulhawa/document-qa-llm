@@ -12,7 +12,6 @@ This is a local document Q&A system powered by a locally running LLM and Qdrant 
    - File upload tab
    - Folder path ingestion tab
    - Question answering interface
-   - Admin ("God mode") tab to trigger maintenance actions like re-indexing
 - Integrated with a locally running LLM (e.g., text-generation-webui via OpenAI-compatible API)
 
 ## 🗂️ File Structure
