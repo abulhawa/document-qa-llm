@@ -1,60 +1,82 @@
-# Document QA System (Local LLM + Qdrant)
+# 🧠 Local Document Q&A System
 
-This is a local document Q&A system powered by a locally running LLM and Qdrant for fast vector search and metadata storage. It supports ingestion of documents from file uploads or folder paths and lets you ask natural language questions via a Streamlit UI.
+This project is a **fully local, privacy-first system** for question answering over your documents (PDF, DOCX, TXT). It uses semantic search, chunked embeddings, and a local LLM to answer questions accurately — either in single-turn (completion) or multi-turn (chat) modes.
 
-## 🔧 Features
+---
 
-- Local document ingestion and chunking
-- Embedding generation using Sentence Transformers
-- Qdrant used for **both vector storage and metadata tracking** (replaces FAISS and SQLite)
-- Duplicate file detection using SHA256 checksum
-- Skips re-indexing already indexed documents
-- Streamlit-based interface with:
-   - File upload tab
-   - Folder path ingestion tab
-   - Question answering interface
-- Integrated with a locally running LLM (e.g., text-generation-webui via OpenAI-compatible API)
+## 🔧 Architecture Overview
 
-## 🗂️ File Structure
+The system is built from modular components:
 
-```bash
-.
-├── app.py                 # Streamlit app
-├── config.py              # Configuration (paths, settings)
-├── ingest.py              # Document ingestion, chunking, embedding, and Qdrant storage
-├── llm.py                 # Interface with local LLM
-├── qdrant_store.py        # Qdrant-based storage and retrieval
-├── utils.py               # Utility functions (e.g., checksum)
-├── README.md              # This file
+### ✅ 1. **Embedding Service** (Dockerized or local)
+- Uses `intfloat/multilingual-e5-base` or similar model
+- Converts document chunks into vector embeddings
 
-## 🛠️ Setup
+### ✅ 2. **Qdrant** (Vector Store)
+- Stores and indexes semantic embeddings
+- Supports fast top-k retrieval for chunked search
 
-1. Install dependencies:
+### ✅ 3. **Text-Generation-WebUI (TGW)**
+- Hosts your local LLM (e.g., Mistral, GPTQ, GGUF models)
+- Accessible via OpenAI-compatible API endpoints
+- Supports both chat and completion-style models
 
-```bash
-pip install -r requirements.txt
-```
+### ✅ 4. **Streamlit Frontend**
+- Upload and ingest documents
+- Ask questions in chat or single-turn mode
+- Switch models, temperatures, and view responses
 
-2. Ensure Qdrant is running locally on `http://localhost:6333`.
+---
 
-3. Ensure your LLM API (e.g., text-generation-webui) is available at `http://localhost:5000`.
+## 🚀 Features
 
-## ▶️ Running the App
+- 🔍 **Semantic Search** over your own documents
+- 💬 **Chat Mode** with memory of prior turns
+- 🧠 **Completion Mode** for single-shot Q&A
+- 📎 Supports PDF, DOCX, and TXT input
+- 📁 Real-time ingestion + deduplication
+- 🛠️ Plug-and-play backend: switch LLMs or embedding models
 
-```bash
-streamlit run app.py
-```
+---
 
-Use the web interface to ingest documents or folders and start asking questions.
+## 🧪 Usage
 
-## 🧠 How It Works
+### 📥 Upload Documents
+- Upload one file at a time
+- Automatically chunked, embedded, and stored in Qdrant
 
-1. **Ingestion**:
-   - Supported formats: `.pdf`, `.docx`, `.txt`
-   - Documents are chunked and embedded
-   - Stored in Qdrant
+### 💬 Ask Questions
+- Choose chat or completion mode
+- Ask questions about the content
+- In chat mode, you can follow up with contextual questions
 
-2. **Querying**:
-   - Retrieves top-k most relevant chunks from Qdrant
-   - Passes context to LLM and returns answer
-   - Future TODO: Hybrid mode — use full document text if only one file involved
+### 🧠 LLM Settings
+- Select model, temperature, and mode from the sidebar
+
+---
+
+## 🧰 Requirements
+
+- Python 3.10+
+- Running Qdrant (Docker or local)
+- Running Text-Generation-WebUI with model loaded
+- Optional: Dockerized embedding service (can run standalone as well)
+
+---
+
+## 📌 Current Status
+
+- ✅ MVP completed with working ingestion, retrieval, LLM connection
+- 🔄 Chat and completion modes supported
+- 🔍 Prompt building and chunk retrieval working
+- ⚠️ Streaming is deprioritized for now
+
+---
+
+## 🛣️ Roadmap
+
+- [ ] Show source attribution (filename + page) with answers
+- [ ] Multi-file ingestion (folder support)
+- [ ] View/manage indexed files
+- [ ] Session save/load
+- [ ] Offline Docker bundle (Qdrant + Embedding + Streamlit)
