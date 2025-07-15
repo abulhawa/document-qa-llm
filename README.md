@@ -1,4 +1,5 @@
 # Document QA System (Local LLM + Qdrant)
+
 This is a local document Q&A system powered by a locally running LLM and Qdrant for fast vector search and metadata storage. It supports ingestion of documents from file uploads or folder paths and lets you ask natural language questions via a Streamlit UI.
 
 ## 🔧 Features
@@ -25,7 +26,6 @@ This is a local document Q&A system powered by a locally running LLM and Qdrant 
 ├── qdrant_store.py        # Qdrant-based storage and retrieval
 ├── utils.py               # Utility functions (e.g., checksum)
 ├── README.md              # This file
-```
 
 ## 🛠️ Setup
 
@@ -33,7 +33,6 @@ This is a local document Q&A system powered by a locally running LLM and Qdrant 
 
 ```bash
 pip install -r requirements.txt
-```
 ```
 
 2. Ensure Qdrant is running locally on `http://localhost:6333`.
@@ -59,10 +58,3 @@ Use the web interface to ingest documents or folders and start asking questions.
    - Retrieves top-k most relevant chunks from Qdrant
    - Passes context to LLM and returns answer
    - Future TODO: Hybrid mode — use full document text if only one file involved
-
-
-## ✅ Status
-
-✅ Stable working version as of 2025-07-12  
-✅ Replaces all FAISS + SQLite code with Qdrant  
-✅ Supports all major ingestion and querying use cases  
