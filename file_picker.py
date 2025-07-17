@@ -3,34 +3,53 @@ from tkinter import filedialog
 import os
 import sys
 import json
+from typing import List
 
-def pick():
-    root = tk.Tk()
-    root.withdraw()
 
-    # Try picking files first
+def pick_files() -> List[str]:
+    """
+    Open a file dialog to let the user select one or more document files.
+    Returns a list of file paths.
+    """
     file_paths = filedialog.askopenfilenames(
-        title="Select Files or Cancel to Pick Folder",
+        title="Select PDF, DOCX, or TXT File(s)",
         filetypes=[("Documents", "*.pdf *.docx *.txt")]
     )
+    return list(file_paths)
 
-    if file_paths:
-        print(json.dumps(list(file_paths)))
-        return
 
-    # Otherwise fallback to folder
+def pick_folder() -> List[str]:
+    """
+    Open a folder dialog and recursively collect all document files in it.
+    Returns a list of full paths to .pdf, .docx, or .txt files.
+    """
     folder_path = filedialog.askdirectory(title="Select Folder")
     if not folder_path:
-        print("[]")
-        return
+        return []
 
-    matched = []
+    matched_files: List[str] = []
     for dirpath, _, filenames in os.walk(folder_path):
         for filename in filenames:
             if filename.lower().endswith((".pdf", ".docx", ".txt")):
-                matched.append(os.path.join(dirpath, filename))
+                full_path = os.path.join(dirpath, filename)
+                matched_files.append(full_path)
 
-    print(json.dumps(matched))
+    return matched_files
+
 
 if __name__ == "__main__":
-    pick()
+    # Hide the root window (we only want the file/folder dialog)
+    root = tk.Tk()
+    root.withdraw()
+
+    # Mode is passed via CLI: "files" or "folder"
+    mode = sys.argv[1] if len(sys.argv) > 1 else "files"
+
+    try:
+        if mode == "folder":
+            result = pick_folder()
+        else:
+            result = pick_files()
+        print(json.dumps(result))
+    except Exception as e:
+        print("[]")  # Return empty list to avoid crashing the parent process
