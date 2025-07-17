@@ -5,3 +5,5 @@ __pycache__/
 sample_docs/
 .vscode/
 *.env
+debugging.ipynb
+qdrant_threshold_eval.py
