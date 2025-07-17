@@ -12,10 +12,12 @@ def build_prompt(
 
     if mode == "chat":
         system_msg = (
-            "You are a helpful and fact-based assistant. Use only the relevant context to answer the question. "
-            "If you are unsure or the answer is not clearly stated, say 'I don't know.' Do not make assumptions. "
-            "Use concise language."
+            "You are a helpful and fact-based assistant. Only answer the specific question asked, using only the provided documents. "
+            "Do not answer related questions, and do not include extra information that was not explicitly requested. "
+            "If the answer is not clearly present, say 'I don't know.' Avoid assumptions, commentary, or elaboration. "
+            "Keep your response concise and directly focused on the user's question."
         )
+
         user_msg = f"Context:\n{context_text}\n\nQuestion: {question}"
         return [
             {"role": "system", "content": system_msg},

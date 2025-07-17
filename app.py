@@ -148,6 +148,8 @@ else:
             )
         st.subheader("📝 Answer")
         st.markdown(answer)
+        logger.info(f"LLM Answer:\n{answer}")
+
 
         if sources:
             st.markdown("#### 📁 Sources:")
