@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Dict, Any
 from langchain.schema.document import Document
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -54,20 +54,57 @@ def ingest(path: str) -> None:
         logger.error("Path does not exist: %s", path)
         return
 
-    checksum: str = compute_checksum(path)
+    normalized_path = os.path.normpath(path).replace("\\", "/")
+    ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")  # e.g., 'pdf'
+
+    checksum: str = compute_checksum(normalized_path)
 
     if is_file_already_indexed(checksum):
-        logger.info("✅ File already indexed and unchanged: %s", path)
+        logger.info("✅ File already indexed and unchanged: %s", normalized_path)
         return
 
-    documents = load_documents(path)
+    # Get file timestamps
+    stat = os.stat(normalized_path)
+    created = datetime.fromtimestamp(stat.st_ctime).isoformat(
+        sep=" ", timespec="seconds"
+    )
+    modified = datetime.fromtimestamp(stat.st_mtime).isoformat(
+        sep=" ", timespec="seconds"
+    )
+
+    documents = load_documents(normalized_path)
     if not documents:
-        logger.warning("⚠️ No valid documents found in: %s", path)
+        logger.warning("⚠️ No valid documents found in: %s", normalized_path)
         return
 
     chunks = split_documents(documents)
-    texts: List[str] = [chunk.page_content for chunk in chunks]
-    timestamp: str = datetime.now(timezone.utc).isoformat()
 
-    upsert_embeddings(texts, path, checksum, timestamp)
-    logger.info("📦 Ingestion complete: %d chunks stored for %s", len(texts), path)
+    # Build per-chunk metadata
+    timestamp: str = datetime.now(timezone.utc).isoformat()
+    texts: List[str] = []
+    metadata_list: List[Dict[str, Any]] = []
+
+    for i, chunk in enumerate(chunks):
+        meta = {
+            "path": normalized_path,
+            "checksum": checksum,
+            "timestamp": timestamp,
+            "filename": os.path.basename(normalized_path),
+            "filetype": ext,
+            "checksum": checksum,
+            "indexed_at": timestamp,
+            "created": created,
+            "modified": modified,
+            "chunk_index": i,
+        }
+        if "page" in chunk.metadata:
+            meta["page"] = chunk.metadata["page"]
+        else:
+            pct = round((i / len(chunks)) * 100)
+            meta["location_percent"] = min(pct, 100)
+        metadata_list.append(meta)
+
+    upsert_embeddings(texts, metadata_list)
+    logger.info(
+        "📦 Ingestion complete: %d chunks stored for %s", len(texts), normalized_path
+    )

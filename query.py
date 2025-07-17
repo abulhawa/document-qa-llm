@@ -1,4 +1,5 @@
-from typing import List, Union, Dict, Optional
+from typing import List, Union, Dict, Optional, Tuple
+import os
 from vector_store import query_top_k
 from llm import ask_llm
 from config import logger
@@ -10,7 +11,11 @@ def build_prompt(
     context_text = "\n\n".join(context_chunks)
 
     if mode == "chat":
-        system_msg = "You are a helpful assistant. Use the provided context to answer the question accurately."
+        system_msg = (
+            "You are a helpful and fact-based assistant. Use only the relevant context to answer the question. "
+            "If you are unsure or the answer is not clearly stated, say 'I don't know.' Do not make assumptions. "
+            "Use concise language."
+        )
         user_msg = f"Context:\n{context_text}\n\nQuestion: {question}"
         return [
             {"role": "system", "content": system_msg},
@@ -22,20 +27,37 @@ def build_prompt(
 
 def answer_question(
     question: str,
-    top_k: int = 5,
+    top_k: int = 3,
     mode: str = "completion",
     temperature: float = 0.7,
     model: Optional[str] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
-) -> str:
+) -> Tuple[str, List[str]]:
     logger.info("🔍 Running semantic search for: %s", question)
     top_chunks = query_top_k(query=question, top_k=top_k)
 
     if not top_chunks:
         logger.warning("No relevant chunks found.")
-        return "No relevant context found to answer the question."
+        return "No relevant context found to answer the question.", []
 
     context = [chunk["content"] for chunk in top_chunks]
+
+    # Format source references
+    seen = set()
+    sources = []
+    for chunk in top_chunks:
+        meta = chunk["metadata"]
+        path = os.path.basename(meta.get("path", ""))
+        if meta.get("page") is not None:
+            label = f"{path} (Page. {meta['page']})"
+        elif meta.get("location_percent") is not None:
+            label = f"{path} (~{meta['location_percent']}%)"
+        else:
+            label = path
+
+        if label not in seen:
+            sources.append(label)
+            seen.add(label)
 
     if mode == "chat":
         logger.info("💬 Sending chat prompt to LLM with history...")
@@ -52,20 +74,23 @@ def answer_question(
             logger.error(
                 "Expected chat prompt as list of messages, got string instead."
             )
-            return "Internal error: invalid prompt format."
+            return "Internal error: invalid prompt format.", sources
 
-        return ask_llm(
+        answer = ask_llm(
             prompt=full_history,
             mode="chat",
             temperature=temperature,
             model=model,
         )
+
     else:
         logger.info("🧠 Sending completion prompt to LLM...")
         prompt = build_prompt(context, question, mode="completion")
-        return ask_llm(
+        answer = ask_llm(
             prompt=prompt,
             mode="completion",
             temperature=temperature,
             model=model,
         )
+
+    return answer, sources

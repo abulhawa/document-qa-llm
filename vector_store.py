@@ -20,7 +20,6 @@ from config import (
     logger,
     EMBEDDING_API_URL,
 )
-from sentence_transformers import SentenceTransformer
 
 
 def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
@@ -67,7 +66,7 @@ def is_file_already_indexed(checksum: str) -> bool:
 
 
 def upsert_embeddings(
-    texts: List[str], path: str, checksum: str, timestamp: Optional[str] = None
+    texts: List[str], metadata_list: List[Dict[str, Any]]
 ) -> None:
     """Upsert chunk vectors with metadata into Qdrant."""
     if not texts:
@@ -78,24 +77,18 @@ def upsert_embeddings(
 
     points = [
         PointStruct(
-            id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{checksum}-{i}")),
+            id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{meta['checksum']}-{meta['chunk_index']}")),
             vector=vector,
-            payload={
-                "path": path,
-                "checksum": checksum,
-                "chunk_index": i,
-                "timestamp": timestamp,
-                "content": text,
-            },
+            payload={**meta, "content": text},
         )
-        for i, (text, vector) in enumerate(zip(texts, vectors))
+        for i, (text, vector, meta) in enumerate(zip(texts, vectors, metadata_list))
     ]
 
     client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points)
-    logger.info("✅ Upserted %d chunks into Qdrant for %s", len(points), path)
+    logger.info("✅ Upserted %d chunks into Qdrant for %s", len(points), metadata_list[0]["path"])
 
 
-def query_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+def query_top_k(query: str, top_k: int) -> List[Dict[str, Any]]:
     """Search for top_k similar chunks to a query."""
     embedding = embed_texts([query])[0]
     ensure_collection()
@@ -117,6 +110,8 @@ def query_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
             "metadata": {
                 "path": (result.payload or {}).get("path", ""),
                 "timestamp": (result.payload or {}).get("timestamp", ""),
+                "page": (result.payload or {}).get("page"),
+                "location_percent": (result.payload or {}).get("location_percent"),
             },
         }
         for result in results
