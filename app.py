@@ -6,7 +6,7 @@ from typing import List
 import pandas as pd
 import streamlit as st
 
-from config import logger, TEMP_DIR
+from config import logger
 from ingest import ingest
 from query import answer_question
 from llm import get_available_models, load_model
@@ -16,7 +16,6 @@ from llm import get_available_models, load_model
 # 🔹 Setup
 # ───────────────────────────────────────
 
-os.makedirs(TEMP_DIR, exist_ok=True)
 st.set_page_config(page_title="Document QA", layout="wide")
 st.title("📄 Document Q&A")
 
