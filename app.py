@@ -4,12 +4,13 @@ import json
 from typing import List
 
 import pandas as pd
+import tracing
 import streamlit as st
-
 from config import logger
 from ingest import ingest
 from query import answer_question
 from llm import get_available_models, load_model
+
 
 
 # ───────────────────────────────────────
@@ -77,17 +78,41 @@ with col1:
 with col2:
     if st.button("📂 Select Folder"):
         selected_files = run_picker("folder")
+status_box = st.empty()
 
 if selected_files:
     st.success(f"Found {len(selected_files)} file(s).")
     df = pd.DataFrame({"File Path": [p.replace("\\", "/") for p in selected_files]})
     st.dataframe(df, height=300)
 
+    results = []
     with st.spinner("🔄 Processing files..."):
         for path in selected_files:
-            ingest(path)
+            result = ingest(path)
+            results.append((path, result))
 
-    st.success("✅ Ingestion complete.")
+    # Prepare summary counts
+    successes = [r for _, r in results if r["success"]]
+    failures = [(p, r["reason"]) for p, r in results if not r["success"]]
+    
+    if successes:
+        st.success(f"✅ Indexed {len(successes)} out of {len(selected_files)} file(s).")
+        
+    if failures:
+        st.error(f"❌ {len(failures)} file(s) failed to ingest:")
+        for path, reason in failures:
+            st.markdown(f"- **{os.path.basename(path)}**: {reason}")
+            
+        # Show results table
+    summary_df = pd.DataFrame([
+        {
+            "File": os.path.basename(p),
+            "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}"
+        }
+        for p, r in results
+    ])
+    st.markdown("### 📋 Ingestion Summary")
+    st.dataframe(summary_df, height=300)
 
 
 # ───────────────────────────────────────

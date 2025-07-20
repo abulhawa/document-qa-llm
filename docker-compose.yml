@@ -16,5 +16,17 @@ services:
     ports:
       - "8000:8000"
 
+  phoenix-server:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix-server
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    volumes:
+      - phoenix_data:/phoenix-server/data
+    environment:
+      - PHOENIX_SERVER_PORT=6006
+
 volumes:
   qdrant_data:
+  phoenix_data:

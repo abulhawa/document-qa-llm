@@ -1,4 +1,5 @@
 import requests
+from tracing import get_tracer
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -13,14 +14,15 @@ from qdrant_client.http.models import (
     MatchValue,
 )
 from config import (
-    QDRANT_HOST,
-    QDRANT_PORT,
-    QDRANT_COLLECTION_NAME,
+    QDRANT_URL,
+    QDRANT_COLLECTION,
     CHUNK_SCORE_THRESHOLD,
     logger,
     EMBEDDING_API_URL,
 )
 
+# initialize tracer
+tracer = get_tracer(__name__)
 
 def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
     logger.info(f"Embedding {len(texts)} texts via API...")
@@ -40,23 +42,23 @@ def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
 # ───────────────────────────────────────
 # 🔌 Qdrant client
 # ───────────────────────────────────────
-client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+client = QdrantClient(url=QDRANT_URL)
 
-
+@tracer.chain
 def ensure_collection(vector_size: int = 768) -> None:
-    if not client.collection_exists(QDRANT_COLLECTION_NAME):
-        logger.info("Creating Qdrant collection: %s", QDRANT_COLLECTION_NAME)
+    if not client.collection_exists(QDRANT_COLLECTION):
+        logger.info("Creating Qdrant collection: %s", QDRANT_COLLECTION)
         client.create_collection(
-            collection_name=QDRANT_COLLECTION_NAME,
+            collection_name=QDRANT_COLLECTION,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
         )
 
-
+@tracer.chain
 def is_file_already_indexed(checksum: str) -> bool:
     """Check if a file with the same checksum already exists in Qdrant."""
     ensure_collection()
     result = client.scroll(
-        collection_name=QDRANT_COLLECTION_NAME,
+        collection_name=QDRANT_COLLECTION,
         scroll_filter=Filter(
             must=[FieldCondition(key="checksum", match=MatchValue(value=checksum))]
         ),
@@ -64,13 +66,13 @@ def is_file_already_indexed(checksum: str) -> bool:
     )
     return len(result[0]) > 0
 
-
-def upsert_embeddings(
+@tracer.chain
+def index_chunks(
     texts: List[str], metadata_list: List[Dict[str, Any]]
-) -> None:
+) -> bool:
     """Upsert chunk vectors with metadata into Qdrant."""
     if not texts:
-        return
+        return False
 
     vectors = embed_texts(texts)
     ensure_collection(vector_size=len(vectors[0]))
@@ -83,11 +85,16 @@ def upsert_embeddings(
         )
         for i, (text, vector, meta) in enumerate(zip(texts, vectors, metadata_list))
     ]
+    
+    try:
+        client.upsert(collection_name=QDRANT_COLLECTION, points=points)
+        logger.info(f"✅ Indexed {len(points)} chunks into Qdrant for {metadata_list[0]['path']}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Failed to index chunks: {e}")
+        return False
 
-    client.upsert(collection_name=QDRANT_COLLECTION_NAME, points=points)
-    logger.info("✅ Upserted %d chunks into Qdrant for %s", len(points), metadata_list[0]["path"])
-
-
+@tracer.chain
 def query_top_k(query: str, top_k: int) -> List[Dict[str, Any]]:
     """Search for top_k similar chunks to a query."""
     embedding = embed_texts([query])[0]
@@ -96,7 +103,7 @@ def query_top_k(query: str, top_k: int) -> List[Dict[str, Any]]:
     print(f"🔍 Searching for top {top_k} chunks similar to: {query}")
 
     results = client.search(
-        collection_name=QDRANT_COLLECTION_NAME,
+        collection_name=QDRANT_COLLECTION,
         query_vector=embedding,
         limit=top_k,
         score_threshold=CHUNK_SCORE_THRESHOLD,

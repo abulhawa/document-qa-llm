@@ -1,5 +1,7 @@
 import requests
 from typing import List, Union, Dict, Optional
+from tracing import get_tracer
+from opentelemetry import trace
 from config import (
     logger,
     LLM_COMPLETION_ENDPOINT,
@@ -13,16 +15,19 @@ TIMEOUT = 30  # seconds
 STOP_TOKENS = ["</s>", "###", "---"]
 PROMPT_LENGTH_WARN_THRESHOLD = 600
 
+# Initialize tracer
+tracer = get_tracer(__name__)
 
+@tracer.chain
 def get_available_models() -> List[str]:
+    """Fetch the list of available models from the LLM server."""
     try:
         response = requests.get(LLM_MODEL_LIST_ENDPOINT, timeout=TIMEOUT)
         response.raise_for_status()
         return response.json().get("model_names", [])
     except requests.RequestException as e:
-        logger.error("Failed to get available models from LLM: %s", e)
+        logger.error("Failed to fetch model list: %s", e)
         return []
-
 
 def load_model(model_name: str) -> bool:
     try:
@@ -36,7 +41,7 @@ def load_model(model_name: str) -> bool:
         logger.error("❌ Error loading model '%s': %s", model_name, e)
         return False
 
-
+@tracer.chain
 def ask_llm(
     prompt: Union[str, List[Dict[str, str]]],
     mode: str = "completion",
@@ -78,11 +83,19 @@ def ask_llm(
         response = requests.post(endpoint, json=payload, timeout=TIMEOUT)
         response.raise_for_status()
         data = response.json()
+        span = trace.get_current_span()
+        span.set_attribute("llm.prompt_length", len(prompt))
+        span.set_attribute("llm.model", model or "default")
+        span.set_attribute("llm.mode", mode)
+        span.set_attribute("llm.temperature", temperature)
+        span.set_attribute("llm.max_tokens", max_tokens)
+        
 
         if mode == "chat":
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
         else:
             content = data.get("choices", [{}])[0].get("text", "").strip()
+        span.set_attribute("llm.response_length", len(content))
 
         if not content:
             logger.warning("⚠️ LLM response was empty or malformed: %s", response.text)

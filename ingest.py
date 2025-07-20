@@ -7,7 +7,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from config import logger, CHUNK_SIZE, CHUNK_OVERLAP
 from utils import compute_checksum
-from vector_store import is_file_already_indexed, upsert_embeddings
+from vector_store import is_file_already_indexed, index_chunks
 
 
 def load_documents(path: str) -> List[Document]:
@@ -46,13 +46,15 @@ def split_documents(documents: List[Document]) -> List[Document]:
     return chunks
 
 
-def ingest(path: str) -> None:
-    """Main ingestion pipeline: load, split, embed, store in Qdrant."""
+def ingest(path: str) -> Dict[str, Any]:
+    """Main ingestion pipeline: load, split, embed, store in Qdrant.
+    Returns a result dict with success status and reason or chunk count.
+    """
     logger.info("📥 Starting ingestion for: %s", path)
 
     if not os.path.exists(path):
         logger.error("Path does not exist: %s", path)
-        return
+        return {"success": False, "reason": "File does not exist"}
 
     normalized_path = os.path.normpath(path).replace("\\", "/")
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")  # e.g., 'pdf'
@@ -61,23 +63,26 @@ def ingest(path: str) -> None:
 
     if is_file_already_indexed(checksum):
         logger.info("✅ File already indexed and unchanged: %s", normalized_path)
-        return
+        return {"success": False, "reason": "Already indexed"}
 
     # Get file timestamps
-    stat = os.stat(normalized_path)
-    created = datetime.fromtimestamp(stat.st_ctime).isoformat(
-        sep=" ", timespec="seconds"
-    )
-    modified = datetime.fromtimestamp(stat.st_mtime).isoformat(
-        sep=" ", timespec="seconds"
-    )
-
-    documents = load_documents(normalized_path)
-    if not documents:
+    try:
+        stat = os.stat(normalized_path)
+        created = datetime.fromtimestamp(stat.st_ctime).isoformat(" ", "seconds")
+        modified = datetime.fromtimestamp(stat.st_mtime).isoformat(" ", "seconds")
+    except Exception as e:
+        logger.exception("Failed to get file timestamps: %s", e)
+        return {"success": False, "reason": "Failed to read file timestamps"}
+    
+    doc_segments  = load_documents(normalized_path)
+    if not doc_segments :
         logger.warning("⚠️ No valid documents found in: %s", normalized_path)
-        return
+        return {"success": False, "reason": "No content found"}
 
-    chunks = split_documents(documents)
+    chunks = split_documents(doc_segments)
+    if not chunks:
+        logger.warning("⚠️ No chunks generated from: %s", normalized_path)
+        return {"success": False, "reason": "Chunking failed"}
 
     # Build per-chunk metadata
     timestamp: str = datetime.now(timezone.utc).isoformat()
@@ -85,10 +90,10 @@ def ingest(path: str) -> None:
     metadata_list: List[Dict[str, Any]] = []
 
     for i, chunk in enumerate(chunks):
+        texts.append(chunk.page_content)
         meta = {
             "path": normalized_path,
             "checksum": checksum,
-            "timestamp": timestamp,
             "filename": os.path.basename(normalized_path),
             "filetype": ext,
             "checksum": checksum,
@@ -104,7 +109,14 @@ def ingest(path: str) -> None:
             meta["location_percent"] = min(pct, 100)
         metadata_list.append(meta)
 
-    upsert_embeddings(texts, metadata_list)
-    logger.info(
-        "📦 Ingestion complete: %d chunks stored for %s", len(texts), normalized_path
-    )
+    success = index_chunks(texts, metadata_list)
+    if not success:
+        logger.warning("❌ Failed to index chunks for %s", normalized_path)
+        return {"success": False, "reason": "Embedding or upsert failed"}
+    
+    logger.info("✅ Indexed %d chunks for %s", len(texts), normalized_path)
+    return {
+        "success": True,
+        "num_chunks": len(texts),
+        "path": normalized_path,
+    }

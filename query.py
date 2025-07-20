@@ -3,8 +3,13 @@ import os
 from vector_store import query_top_k
 from llm import ask_llm
 from config import logger
+from tracing import get_tracer
+from opentelemetry import trace
 
+# Initialize tracer
+tracer = get_tracer(__name__)
 
+@tracer.chain
 def build_prompt(
     context_chunks: List[str], question: str, mode: str = "completion"
 ) -> Union[str, List[Dict[str, str]]]:
