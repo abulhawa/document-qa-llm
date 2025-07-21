@@ -1,7 +1,7 @@
 from typing import List, Union, Dict, Optional, Tuple
 import os
-from vector_store import query_top_k
-from llm import ask_llm
+from core.vector_store import query_top_k
+from core.llm import ask_llm
 from config import logger
 from tracing import get_tracer
 from opentelemetry import trace

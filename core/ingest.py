@@ -7,7 +7,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from config import logger, CHUNK_SIZE, CHUNK_OVERLAP
 from utils import compute_checksum
-from vector_store import is_file_already_indexed, index_chunks
+from core.vector_store import is_file_already_indexed, index_chunks
 
 
 def load_documents(path: str) -> List[Document]:
