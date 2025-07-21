@@ -7,10 +7,9 @@ import pandas as pd
 import tracing
 import streamlit as st
 from config import logger
-from ingest import ingest
-from query import answer_question
-from llm import get_available_models, load_model
-
+from core.ingest import ingest                     # legacy version
+from core.query import answer_question
+from core.llm import get_available_models, load_model
 
 
 # ───────────────────────────────────────

@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from llm import ask_llm, get_available_models, load_model
+from core.llm import ask_llm, get_available_models, load_model
 
 print("Available models:", get_available_models())
 

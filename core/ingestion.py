@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 from utils import compute_checksum, get_file_timestamps
-from file_loader import load_and_split_file  # to be implemented per format (PDF, DOCX, etc.)
+from file_loader import load_documents  # to be implemented per format (PDF, DOCX, etc.)
 from embedding import embed
-from vector_store import upsert_to_qdrant  # wraps Qdrant client
+from vector_store import index_chunks  # wraps Qdrant client
 from config import CHUNK_BATCH_SIZE
 
 
@@ -71,7 +71,7 @@ def embed_and_index_chunks(texts: List[str], metadata: List[Dict[str, Any]]) -> 
 
     try:
         embeddings = embed(texts)
-        upsert_to_qdrant(embeddings, metadata)
+        index_chunks(embeddings, metadata)
         return True
     except Exception as e:
         # log inside upsert/embed modules
