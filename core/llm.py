@@ -1,7 +1,8 @@
 import requests
 from typing import List, Union, Dict, Optional
 from tracing import get_tracer
-from opentelemetry import trace
+from opentelemetry.trace import get_current_span
+
 from config import (
     logger,
     LLM_COMPLETION_ENDPOINT,
@@ -83,7 +84,7 @@ def ask_llm(
         response = requests.post(endpoint, json=payload, timeout=TIMEOUT)
         response.raise_for_status()
         data = response.json()
-        span = trace.get_current_span()
+        span = get_current_span()
         span.set_attribute("llm.prompt_length", len(prompt))
         span.set_attribute("llm.model", model or "default")
         span.set_attribute("llm.mode", mode)

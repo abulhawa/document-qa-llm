@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 
 from utils import compute_checksum, get_file_timestamps
 from file_loader import load_documents  # to be implemented per format (PDF, DOCX, etc.)
-from embedding import embed
+from core.embeddings import embed
 from vector_store import index_chunks  # wraps Qdrant client
 from config import CHUNK_BATCH_SIZE
 

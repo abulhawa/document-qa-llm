@@ -4,7 +4,6 @@ from core.vector_store import query_top_k
 from core.llm import ask_llm
 from config import logger
 from tracing import get_tracer
-from opentelemetry import trace
 
 # Initialize tracer
 tracer = get_tracer(__name__)

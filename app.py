@@ -4,7 +4,7 @@ import json
 from typing import List
 
 import pandas as pd
-import tracing
+from tracing import get_tracer
 import streamlit as st
 from config import logger
 from core.ingest import ingest                     # legacy version
@@ -15,6 +15,9 @@ from core.llm import get_available_models, load_model
 # ───────────────────────────────────────
 # 🔹 Setup
 # ───────────────────────────────────────
+
+# Initialize tracer
+tracer = get_tracer(__name__)
 
 st.set_page_config(page_title="Document QA", layout="wide")
 st.title("📄 Document Q&A")

@@ -4,6 +4,7 @@ import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from qdrant_client import QdrantClient
+from core.embeddings import embed_texts
 from qdrant_client.http.models import (
     Distance,
     VectorParams,
@@ -18,26 +19,10 @@ from config import (
     QDRANT_COLLECTION,
     CHUNK_SCORE_THRESHOLD,
     logger,
-    EMBEDDING_API_URL,
 )
 
 # initialize tracer
 tracer = get_tracer(__name__)
-
-def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
-    logger.info(f"Embedding {len(texts)} texts via API...")
-    try:
-        response = requests.post(
-            EMBEDDING_API_URL,
-            json={"texts": texts, "batch_size": batch_size},
-            timeout=15,
-        )
-        response.raise_for_status()
-        return response.json()["embeddings"]
-    except requests.RequestException as e:
-        logger.error("Embedding API request failed: %s", str(e))
-        raise RuntimeError(f"Embedding API error: {e}")
-
 
 # ───────────────────────────────────────
 # 🔌 Qdrant client
