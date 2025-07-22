@@ -7,7 +7,7 @@ import pandas as pd
 from tracing import get_tracer
 import streamlit as st
 from config import logger
-from core.ingest import ingest                     # legacy version
+from core.ingestion import ingest_paths
 from core.query import answer_question
 from core.llm import get_available_models, load_model
 
@@ -16,7 +16,6 @@ from core.llm import get_available_models, load_model
 # 🔹 Setup
 # ───────────────────────────────────────
 
-# Initialize tracer
 tracer = get_tracer(__name__)
 
 st.set_page_config(page_title="Document QA", layout="wide")
@@ -83,35 +82,30 @@ with col2:
 status_box = st.empty()
 
 if selected_files:
-    st.success(f"Found {len(selected_files)} file(s).")
-    df = pd.DataFrame({"File Path": [p.replace("\\", "/") for p in selected_files]})
+    st.success(f"Found {len(selected_files)} path(s).")
+    df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     st.dataframe(df, height=300)
 
-    results = []
-    with st.spinner("🔄 Processing files..."):
-        for path in selected_files:
-            result = ingest(path)
-            results.append((path, result))
+    with st.spinner("🔄 Processing files and folders..."):
+        results = ingest_paths(selected_files)
 
-    # Prepare summary counts
-    successes = [r for _, r in results if r["success"]]
-    failures = [(p, r["reason"]) for p, r in results if not r["success"]]
-    
+    successes = [r for r in results if r["success"]]
+    failures = [(r["path"], r["reason"]) for r in results if not r["success"]]
+
     if successes:
-        st.success(f"✅ Indexed {len(successes)} out of {len(selected_files)} file(s).")
-        
+        st.success(f"✅ Indexed {len(successes)} out of {len(results)} file(s).")
+
     if failures:
         st.error(f"❌ {len(failures)} file(s) failed to ingest:")
         for path, reason in failures:
             st.markdown(f"- **{os.path.basename(path)}**: {reason}")
-            
-        # Show results table
+
     summary_df = pd.DataFrame([
         {
-            "File": os.path.basename(p),
+            "File": os.path.basename(r["path"]),
             "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}"
         }
-        for p, r in results
+        for r in results
     ])
     st.markdown("### 📋 Ingestion Summary")
     st.dataframe(summary_df, height=300)
@@ -175,7 +169,6 @@ else:
         st.subheader("📝 Answer")
         st.markdown(answer)
         logger.info(f"LLM Answer:\n{answer}")
-
 
         if sources:
             st.markdown("#### 📁 Sources:")

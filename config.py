@@ -5,11 +5,12 @@ from logging import Logger
 # ───────────────────────────────────────
 # 🔠 Embedding & Chunking
 # ───────────────────────────────────────
+EMBEDDING_API_URL = "http://localhost:8000/embed"
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base"
+EMBEDDING_BATCH_SIZE = 32
+EMBEDDING_SIZE = 768
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 50
-EMBEDDING_API_URL = "http://localhost:8000/embed"
-
 
 # ───────────────────────────────────────
 # 🔍 Qdrant Vector Store

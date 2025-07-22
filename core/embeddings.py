@@ -2,13 +2,14 @@ from typing import List
 import requests
 import time
 from config import EMBEDDING_API_URL, logger
-# from tracing import get_tracer
 from opentelemetry.trace import get_current_span
 
 
-# tracer = get_tracer(__name__)
-
 def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
+    """
+    Send a batch of texts to the embedding API and return their embeddings.
+    Tracing only captures metadata (e.g., input sizes, timing), not content or vectors.
+    """
     span = get_current_span()
     span.set_attribute("embedding.num_inputs", len(texts))
     span.set_attribute("embedding.batch_size", batch_size)
@@ -27,7 +28,7 @@ def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
         response = requests.post(
             EMBEDDING_API_URL,
             json={"texts": texts, "batch_size": batch_size},
-            timeout=15,
+            timeout=30,
         )
         response.raise_for_status()
         duration = time.time() - start_time
@@ -44,7 +45,11 @@ def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
         logger.error("Embedding API request failed: %s", str(e))
         raise RuntimeError(f"Embedding API error: {e}")
 
+
 def embed_text(text: str) -> List[float]:
+    """
+    Embed a single text string using the embedding API.
+    """
     span = get_current_span()
     span.set_attribute("embedding.single.length_chars", len(text))
     span.set_attribute("embedding.single.length_words", len(text.split()))
@@ -55,7 +60,8 @@ def embed_text(text: str) -> List[float]:
 
         response = requests.post(
             f"{EMBEDDING_API_URL}/embed",
-            json={"text": text}
+            json={"text": text},
+            timeout=15,
         )
         response.raise_for_status()
         duration = time.time() - start_time
