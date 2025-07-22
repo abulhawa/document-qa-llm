@@ -90,7 +90,7 @@ def retrieve_top_k(
             score_threshold=CHUNK_SCORE_THRESHOLD,
             with_payload=True,
         )
-        return [r.payload | {"score": r.score} for r in results]
+        return [{**(r.payload or {}), "score": r.score} for r in results]
     except Exception as e:
         logger.error(f"Search error: {e}")
         return []
