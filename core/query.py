@@ -61,12 +61,11 @@ def answer_question(
     seen = set()
     sources = []
     for chunk in top_chunks:
-        meta = chunk.get("metadata", {})
-        path = os.path.basename(meta.get("path", ""))
-        if meta.get("page") is not None:
-            label = f"{path} (Page {meta['page']})"
-        elif meta.get("location_percent") is not None:
-            label = f"{path} (~{meta['location_percent']}%)"
+        path = os.path.basename(chunk.get("path", ""))
+        if chunk.get("page") is not None:
+            label = f"{path} (Page {chunk['page']})"
+        elif chunk.get("location_percent") is not None:
+            label = f"{path} (~{chunk['location_percent']}%)"
         else:
             label = path
         if label not in seen:
