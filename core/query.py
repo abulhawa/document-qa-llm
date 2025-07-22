@@ -1,12 +1,14 @@
 from typing import List, Union, Dict, Optional, Tuple
 import os
-from core.vector_store import query_top_k
+
+from core.embeddings import embed_texts
+from core.vector_store import retrieve_top_k
 from core.llm import ask_llm
 from config import logger
 from tracing import get_tracer
 
-# Initialize tracer
 tracer = get_tracer(__name__)
+
 
 @tracer.chain
 def build_prompt(
@@ -39,8 +41,15 @@ def answer_question(
     model: Optional[str] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[str]]:
-    logger.info("🔍 Running semantic search for: %s", question)
-    top_chunks = query_top_k(query=question, top_k=top_k)
+    logger.info("🔍 Embedding query and retrieving top-k results...")
+
+    try:
+        query_embedding = embed_texts([question])[0]
+    except Exception as e:
+        logger.error(f"Embedding failed: {e}")
+        return "Failed to process query.", []
+
+    top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
 
     if not top_chunks:
         logger.warning("No relevant chunks found.")
@@ -52,35 +61,32 @@ def answer_question(
     seen = set()
     sources = []
     for chunk in top_chunks:
-        meta = chunk["metadata"]
+        meta = chunk.get("metadata", {})
         path = os.path.basename(meta.get("path", ""))
         if meta.get("page") is not None:
-            label = f"{path} (Page. {meta['page']})"
+            label = f"{path} (Page {meta['page']})"
         elif meta.get("location_percent") is not None:
             label = f"{path} (~{meta['location_percent']}%)"
         else:
             label = path
-
         if label not in seen:
             sources.append(label)
             seen.add(label)
 
     if mode == "chat":
-        logger.info("💬 Sending chat prompt to LLM with history...")
-        # Build system + user message based on current question and top chunks
+        logger.info("💬 Sending chat prompt to LLM...")
         new_turn = build_prompt(context, question, mode="chat")
-        # Combine with existing history (if any)
+
+        # Always start with system prompt
         full_history = [{"role": "system", "content": "You are a helpful assistant."}]
         if chat_history:
             full_history.extend(chat_history)
 
         if isinstance(new_turn, list):
-            full_history.extend(new_turn[1:])  # only user message, not system again
+            full_history.extend(new_turn[1:])  # skip the new system message
         else:
-            logger.error(
-                "Expected chat prompt as list of messages, got string instead."
-            )
-            return "Internal error: invalid prompt format.", sources
+            logger.error("Expected chat prompt as a list, got string.")
+            return "Internal error: invalid chat prompt format.", sources
 
         answer = ask_llm(
             prompt=full_history,
@@ -88,7 +94,6 @@ def answer_question(
             temperature=temperature,
             model=model,
         )
-
     else:
         logger.info("🧠 Sending completion prompt to LLM...")
         prompt = build_prompt(context, question, mode="completion")
