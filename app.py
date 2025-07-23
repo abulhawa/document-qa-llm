@@ -50,6 +50,7 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
 # 🔹 File/Folder Picker
 # ───────────────────────────────────────
 
+
 def run_picker(mode: str) -> List[str]:
     """Run external file/folder picker script."""
     try:
@@ -57,7 +58,7 @@ def run_picker(mode: str) -> List[str]:
             ["python", "file_picker.py", mode],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         return json.loads(result.stdout)
     except Exception as e:
@@ -79,36 +80,31 @@ with col1:
 with col2:
     if st.button("📂 Select Folder"):
         selected_files = run_picker("folder")
-status_box = st.empty()
 
 if selected_files:
-    st.success(f"Found {len(selected_files)} path(s).")
+    status_table = st.empty()
+    status_line = st.empty()
+    status_line.success(f"Found {len(selected_files)} path(s).")
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
-    st.dataframe(df, height=300)
-
-    with st.spinner("🔄 Processing files and folders..."):
-        results = ingest_paths(selected_files)
+    status_table.dataframe(df, height=300)
 
     successes = [r for r in results if r["success"]]
     failures = [(r["path"], r["reason"]) for r in results if not r["success"]]
-
-    if successes:
-        st.success(f"✅ Indexed {len(successes)} out of {len(results)} file(s).")
+    status_line.success(f"✅ Indexed {len(successes)} out of {len(results)} file(s).")
 
     if failures:
-        st.error(f"❌ {len(failures)} file(s) failed to ingest:")
-        for path, reason in failures:
-            st.markdown(f"- **{os.path.basename(path)}**: {reason}")
-
-    summary_df = pd.DataFrame([
-        {
-            "File": os.path.basename(r["path"]),
-            "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}"
-        }
-        for r in results
-    ])
-    st.markdown("### 📋 Ingestion Summary")
-    st.dataframe(summary_df, height=300)
+        span.set_attribute("failed_files_details", str(failures))        
+        
+    summary_df = pd.DataFrame(
+        [
+            {
+                "File": os.path.basename(r["path"]),
+                "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}",
+            }
+            for r in results
+        ]
+    )
+    status_table.dataframe(summary_df, height=300)
 
 
 # ───────────────────────────────────────
