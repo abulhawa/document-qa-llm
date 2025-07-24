@@ -1,16 +1,10 @@
-# chunking.py
-
 from typing import List, Dict, Any
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from config import logger, CHUNK_SIZE, CHUNK_OVERLAP
-from tracing import get_tracer
-
-tracer = get_tracer(__name__)
 
 
-@tracer.start_as_current_span("split_documents")
 def split_documents(
     docs: List[Document],
     chunk_size: int = CHUNK_SIZE,
@@ -54,7 +48,9 @@ def split_documents(
             }
             all_chunks.append(chunk_data)
 
-        logger.debug(f"Split document {doc_index} ({source}) into {len(splits)} chunks.")
+        logger.debug(
+            f"Split document {doc_index} ({source}) into {len(splits)} chunks."
+        )
 
     logger.info(f"Generated {len(all_chunks)} total chunks.")
     return all_chunks

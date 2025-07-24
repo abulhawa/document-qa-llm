@@ -20,15 +20,11 @@ from config import (
     logger,
 )
 from core.embeddings import embed_texts
-from tracing import get_tracer
-
-tracer = get_tracer(__name__)
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
 
 
-@tracer.start_as_current_span("ensure_collection_exists")
 def ensure_collection_exists() -> None:
     collections = client.get_collections().collections
     if QDRANT_COLLECTION in [c.name for c in collections]:
@@ -43,7 +39,6 @@ def ensure_collection_exists() -> None:
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
 
-@tracer.start_as_current_span("index_chunks")
 def index_chunks(texts: List[str], metadata_list: List[Dict[str, Any]]) -> bool:
     if len(texts) != len(metadata_list):
         raise ValueError("texts and metadata_list lengths diverge")
@@ -78,7 +73,6 @@ def index_chunks(texts: List[str], metadata_list: List[Dict[str, Any]]) -> bool:
         return False
 
 
-@tracer.start_as_current_span("retrieve_top_k")
 def retrieve_top_k(
     query_embedding: List[float], top_k: int = 5
 ) -> List[Dict[str, Any]]:
@@ -90,13 +84,13 @@ def retrieve_top_k(
             score_threshold=CHUNK_SCORE_THRESHOLD,
             with_payload=True,
         )
+
         return [{**(r.payload or {}), "score": r.score} for r in results]
     except Exception as e:
         logger.error(f"Search error: {e}")
         return []
 
 
-@tracer.start_as_current_span("is_file_up_to_date")
 def is_file_up_to_date(checksum: str) -> bool:
     try:
         result, _ = client.scroll(
@@ -111,7 +105,3 @@ def is_file_up_to_date(checksum: str) -> bool:
     except Exception as e:
         logger.warning(f"Checksum check failed: {e}")
         return False
-
-
-# Initialization
-ensure_collection_exists()

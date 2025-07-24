@@ -1,16 +1,24 @@
-from typing import List, Union, Dict, Optional, Tuple
 import os
+from typing import List, Union, Dict, Optional, Tuple
+
+from tracing import (
+    start_span,
+    EMBEDDING,
+    RETRIEVER,
+    LLM,
+    INPUT_VALUE,
+    OUTPUT_VALUE,
+    record_span_error,
+    get_current_span,
+)
+
 
 from core.embeddings import embed_texts
 from core.vector_store import retrieve_top_k
 from core.llm import ask_llm
 from config import logger
-from tracing import get_tracer
-
-tracer = get_tracer(__name__)
 
 
-@tracer.chain
 def build_prompt(
     context_chunks: List[str], question: str, mode: str = "completion"
 ) -> Union[str, List[Dict[str, str]]]:
@@ -23,7 +31,6 @@ def build_prompt(
             "If the answer is not clearly present, say 'I don't know.' Avoid assumptions, commentary, or elaboration. "
             "Keep your response concise and directly focused on the user's question."
         )
-
         user_msg = f"Context:\n{context_text}\n\nQuestion: {question}"
         return [
             {"role": "system", "content": system_msg},
@@ -41,30 +48,57 @@ def answer_question(
     model: Optional[str] = None,
     chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[str]]:
-    logger.info("🔍 Embedding query and retrieving top-k results...")
 
-    try:
-        query_embedding = embed_texts([question])[0]
-    except Exception as e:
-        logger.error(f"Embedding failed: {e}")
-        return "Failed to process query.", []
+    with start_span("Embed query", EMBEDDING) as span:
+        logger.info("🔍 Running semantic search for user question...")
+        try:
+            span.set_attribute(INPUT_VALUE, question)
+            span.set_attribute("question_length", len(question))
+            query_embedding = embed_texts([question])[0]
+            span.set_attribute(
+                OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
+            )
 
-    top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
+        except Exception as e:
+            logger.error(f"❌ Query embedding failed: {e}")
+            record_span_error(span, e)
+            return "❌ Failed to embed query.", []
+
+    with start_span("Retriever", RETRIEVER) as span:
+        try:
+            span.set_attribute("embedding_dim", len(query_embedding))
+            span.set_attribute("top_k", top_k)
+            top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
+            span.set_attribute("results_found", len(top_chunks))
+
+            retrieved_summary = [
+                f"{os.path.basename(chunk.get('path', ''))} | idx={chunk.get('chunk_index')} | "
+                f"score={chunk.get('score'):.4f} | page={chunk.get('page')} | ~{chunk.get('location_percent')}%"
+                for chunk in top_chunks
+            ]
+            # span.set_attribute("retrieved_summary", retrieved_summary)
+
+            span.set_attribute(INPUT_VALUE, question)
+            span.set_attribute(OUTPUT_VALUE, "retrieved_summary")
+
+        except Exception as e:
+            logger.error(f"❌ Retrieval failed: {e}")
+            record_span_error(span, e)
+            return "❌ Retrieval failed.", []
 
     if not top_chunks:
-        logger.warning("No relevant chunks found.")
+        logger.warning("⚠️ No relevant chunks found.")
         return "No relevant context found to answer the question.", []
 
     context = [chunk["content"] for chunk in top_chunks]
 
-    # Format source references
     seen = set()
     sources = []
     for chunk in top_chunks:
         path = os.path.basename(chunk.get("path", ""))
-        if chunk.get("page") is not None:
+        if "page" in chunk:
             label = f"{path} (Page {chunk['page']})"
-        elif chunk.get("location_percent") is not None:
+        elif "location_percent" in chunk:
             label = f"{path} (~{chunk['location_percent']}%)"
         else:
             label = path
@@ -72,35 +106,46 @@ def answer_question(
             sources.append(label)
             seen.add(label)
 
-    if mode == "chat":
-        logger.info("💬 Sending chat prompt to LLM...")
-        new_turn = build_prompt(context, question, mode="chat")
+    with start_span("LLM", LLM) as span:
+        try:
+            span.set_attribute("model", model or "unknown")
+            span.set_attribute("temperature", temperature)
+            span.set_attribute("mode", mode)
 
-        # Always start with system prompt
-        full_history = [{"role": "system", "content": "You are a helpful assistant."}]
-        if chat_history:
-            full_history.extend(chat_history)
+            if mode == "chat":
+                new_turn = build_prompt(context, question, mode="chat")
+                full_history = [
+                    {"role": "system", "content": "You are a helpful assistant."}
+                ]
+                if chat_history:
+                    full_history.extend(chat_history)
+                if isinstance(new_turn, list):
+                    full_history.extend(new_turn[1:])
+                else:
+                    raise ValueError("Invalid chat prompt format")
 
-        if isinstance(new_turn, list):
-            full_history.extend(new_turn[1:])  # skip the new system message
-        else:
-            logger.error("Expected chat prompt as a list, got string.")
-            return "Internal error: invalid chat prompt format.", sources
+                span.set_attribute(INPUT_VALUE, str(full_history)[:1000])
+                answer = ask_llm(
+                    prompt=full_history,
+                    mode="chat",
+                    temperature=temperature,
+                    model=model,
+                )
+            else:
+                prompt = build_prompt(context, question, mode="completion")
+                span.set_attribute(INPUT_VALUE, str(prompt[:1000]))
+                answer = ask_llm(
+                    prompt=prompt,
+                    mode="completion",
+                    temperature=temperature,
+                    model=model,
+                )
 
-        answer = ask_llm(
-            prompt=full_history,
-            mode="chat",
-            temperature=temperature,
-            model=model,
-        )
-    else:
-        logger.info("🧠 Sending completion prompt to LLM...")
-        prompt = build_prompt(context, question, mode="completion")
-        answer = ask_llm(
-            prompt=prompt,
-            mode="completion",
-            temperature=temperature,
-            model=model,
-        )
+            span.set_attribute(OUTPUT_VALUE, answer[:1000])
+            logger.info("✅ LLM answered the question.")
+            return answer, sources
 
-    return answer, sources
+        except Exception as e:
+            logger.error(f"❌ LLM call failed: {e}")
+            record_span_error(span, e)
+            return "❌ LLM call failed.", []

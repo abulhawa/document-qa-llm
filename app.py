@@ -4,19 +4,17 @@ import json
 from typing import List
 
 import pandas as pd
-from tracing import get_tracer
+
+from tracing import start_span, CHAIN, TOOL, INPUT_VALUE, OUTPUT_VALUE
 import streamlit as st
 from config import logger
 from core.ingestion import ingest_paths
 from core.query import answer_question
 from core.llm import get_available_models, load_model
 
-
 # ───────────────────────────────────────
 # 🔹 Setup
 # ───────────────────────────────────────
-
-tracer = get_tracer(__name__)
 
 st.set_page_config(page_title="Document QA", layout="wide")
 st.title("📄 Document Q&A")
@@ -88,23 +86,44 @@ if selected_files:
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     status_table.dataframe(df, height=300)
 
-    successes = [r for r in results if r["success"]]
-    failures = [(r["path"], r["reason"]) for r in results if not r["success"]]
-    status_line.success(f"✅ Indexed {len(successes)} out of {len(results)} file(s).")
+    with start_span("index_chain", CHAIN) as span:
+        if len(selected_files) > 5:
+            preview = selected_files[:5] + [
+                f"... and {len(selected_files) - 5} more not shown here"
+            ]
+        else:
+            preview = selected_files
 
-    if failures:
-        span.set_attribute("failed_files_details", str(failures))        
-        
-    summary_df = pd.DataFrame(
-        [
-            {
-                "File": os.path.basename(r["path"]),
-                "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}",
-            }
-            for r in results
-        ]
-    )
-    status_table.dataframe(summary_df, height=300)
+        span.set_attribute(INPUT_VALUE, preview)
+        with st.spinner("🔄 Processing files and folders..."):
+            results = ingest_paths(selected_files)
+
+        successes = [r for r in results if r["success"]]
+        failures = [(r["path"], r["reason"]) for r in results if not r["success"]]
+
+        span.set_attribute("indexed_files", len(successes))
+        span.set_attribute("failed_files", len(failures))
+        span.set_attribute(
+            OUTPUT_VALUE, f"{len(successes)} indexed, {len(failures)} failed"
+        )
+
+        status_line.success(
+            f"✅ Indexed {len(successes)} out of {len(results)} file(s)."
+        )
+
+        if failures:
+            span.set_attribute("failed_files_details", str(failures))
+
+        summary_df = pd.DataFrame(
+            [
+                {
+                    "File": os.path.basename(r["path"]),
+                    "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}",
+                }
+                for r in results
+            ]
+        )
+        status_table.dataframe(summary_df, height=300)
 
 
 # ───────────────────────────────────────
@@ -128,14 +147,21 @@ if mode == "chat":
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        with st.spinner("🧠 Thinking..."):
-            answer, sources = answer_question(
-                question=user_input,
-                mode="chat",
-                temperature=temperature,
-                model=selected_model,
-                chat_history=st.session_state.chat_history,
-            )
+        with start_span("qa_chain", CHAIN) as span:
+            span.set_attribute("mode", "chat")
+            span.set_attribute("model", selected_model)
+            span.set_attribute("temperature", temperature)
+            span.set_attribute("question_length", len(user_input))
+            span.set_attribute(INPUT_VALUE, user_input)
+
+            with st.spinner("🧠 Thinking..."):
+                answer, sources = answer_question(
+                    question=user_input,
+                    mode="chat",
+                    temperature=temperature,
+                    model=selected_model,
+                    chat_history=st.session_state.chat_history,
+                )
 
         st.session_state.chat_history.append({"role": "assistant", "content": answer})
         with st.chat_message("assistant"):
@@ -155,13 +181,21 @@ else:
         submitted = st.form_submit_button("Get Answer")
 
     if submitted and query:
-        with st.spinner("🧠 Thinking..."):
-            answer, sources = answer_question(
-                question=query,
-                mode="completion",
-                temperature=temperature,
-                model=selected_model,
-            )
+        with start_span("qa_chain", CHAIN) as span:
+            span.set_attribute("mode", "completion")
+            span.set_attribute("model", selected_model)
+            span.set_attribute("temperature", temperature)
+            span.set_attribute("question_length", len(query))
+            span.set_attribute(INPUT_VALUE, query)
+
+            with st.spinner("🧠 Thinking..."):
+                answer, sources = answer_question(
+                    question=query,
+                    mode="completion",
+                    temperature=temperature,
+                    model=selected_model,
+                )
+            span.set_attribute(OUTPUT_VALUE, answer)
         st.subheader("📝 Answer")
         st.markdown(answer)
         logger.info(f"LLM Answer:\n{answer}")
@@ -171,6 +205,4 @@ else:
             for src in sources:
                 st.markdown(f"- {src}")
 
-        st.caption(
-            f"Mode: completion | Temp: {temperature} | Model: {selected_model}"
-        )
+        st.caption(f"Mode: completion | Temp: {temperature} | Model: {selected_model}")
