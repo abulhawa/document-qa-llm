@@ -68,7 +68,6 @@ def ingest_file(path: str) -> Dict[str, Any]:
             meta = {
                 "path": normalized_path,
                 "checksum": checksum,
-                "filename": os.path.basename(normalized_path),
                 "filetype": ext,
                 "indexed_at": indexed_at,
                 "created": created,

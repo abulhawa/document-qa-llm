@@ -117,7 +117,7 @@ if selected_files:
         summary_df = pd.DataFrame(
             [
                 {
-                    "File": os.path.basename(r["path"]),
+                    "File": r["path"],
                     "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}",
                 }
                 for r in results

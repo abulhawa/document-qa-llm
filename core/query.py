@@ -73,7 +73,7 @@ def answer_question(
             span.set_attribute("results_found", len(top_chunks))
 
             retrieved_summary = [
-                f"{os.path.basename(chunk.get('path', ''))} | idx={chunk.get('chunk_index')} | "
+                f"{chunk.get('path', '')} | idx={chunk.get('chunk_index')} | "
                 f"score={chunk.get('score'):.4f} | page={chunk.get('page')} | ~{chunk.get('location_percent')}%"
                 for chunk in top_chunks
             ]
@@ -94,7 +94,7 @@ def answer_question(
     seen = set()
     sources = []
     for chunk in top_chunks:
-        path = os.path.basename(chunk.get("path", ""))
+        path = chunk.get("path", "")
         if "page" in chunk and chunk["page"] is not None:
             label = f"{path} (Page {chunk['page']})"
         elif "location_percent" in chunk:
