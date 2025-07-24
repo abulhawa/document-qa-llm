@@ -74,13 +74,10 @@ def ingest_file(path: str) -> Dict[str, Any]:
                 "created": created,
                 "modified": modified,
                 "chunk_index": i,
+                "page": chunk.get("page", None),
             }
-            if "page" in chunk:
-                meta["page"] = chunk["page"]
-            else:
-                meta["page"] = -1  # No page info
-                pct = round((i / len(chunks)) * 100)
-                meta["location_percent"] = min(pct, 100)
+            pct = round((i / len(chunks)) * 100)
+            meta["location_percent"] = min(pct, 100)
             metadata_list.append(meta)
 
         success = index_chunks(texts, metadata_list)

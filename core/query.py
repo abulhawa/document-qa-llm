@@ -66,6 +66,7 @@ def answer_question(
 
     with start_span("Retriever", RETRIEVER) as span:
         try:
+            span.set_attribute(INPUT_VALUE, question)
             span.set_attribute("embedding_dim", len(query_embedding))
             span.set_attribute("top_k", top_k)
             top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
@@ -76,10 +77,8 @@ def answer_question(
                 f"score={chunk.get('score'):.4f} | page={chunk.get('page')} | ~{chunk.get('location_percent')}%"
                 for chunk in top_chunks
             ]
-            # span.set_attribute("retrieved_summary", retrieved_summary)
-
-            span.set_attribute(INPUT_VALUE, question)
-            span.set_attribute(OUTPUT_VALUE, "retrieved_summary")
+            span.set_attribute("retrieved_summary", retrieved_summary)            
+            span.set_attribute(OUTPUT_VALUE, retrieved_summary)
 
         except Exception as e:
             logger.error(f"❌ Retrieval failed: {e}")
@@ -96,7 +95,7 @@ def answer_question(
     sources = []
     for chunk in top_chunks:
         path = os.path.basename(chunk.get("path", ""))
-        if "page" in chunk:
+        if "page" in chunk and chunk["page"] is not None:
             label = f"{path} (Page {chunk['page']})"
         elif "location_percent" in chunk:
             label = f"{path} (~{chunk['location_percent']}%)"
