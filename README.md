@@ -1,82 +1,159 @@
 # 🧠 Local Document Q&A System
 
-This project is a **fully local, privacy-first system** for question answering over your documents (PDF, DOCX, TXT). It uses semantic search, chunked embeddings, and a local LLM to answer questions accurately — either in single-turn (completion) or multi-turn (chat) modes.
+This project is a **fully local, privacy-first document Q&A system**, designed to help you search, explore, and interact with your own documents — securely and efficiently. It supports real-time ingestion of PDF, DOCX, and TXT files, applies semantic chunking and vector embedding, and uses a locally hosted LLM for natural-language answers in both single-turn and multi-turn formats.
+
+The system prioritizes **modularity, observability, and full offline support**, making it suitable for personal knowledge bases, secure enterprise settings, or research workflows — all without sending data to the cloud.
+
+---
+
+## 🔭 Vision
+
+This system aims to become a **powerful and private Retrieval-Augmented Generation (RAG) engine**, capable of:
+
+- Ingesting large collections of documents across folders
+- Answering questions with real-time citations
+- Summarizing or comparing multiple documents
+- Operating fully offline, powered by local vector DBs and LLMs
+- Providing traceability and observability via Phoenix & OpenTelemetry
 
 ---
 
 ## 🔧 Architecture Overview
 
-The system is built from modular components:
+The system is built from modular, testable components:
 
 ### ✅ 1. **Embedding Service** (Dockerized or local)
-- Uses `intfloat/multilingual-e5-base` or similar model
-- Converts document chunks into vector embeddings
+- Runs a multilingual model (e.g., `intfloat/multilingual-e5-base`)
+- Accepts batch inputs via a local FastAPI server
+- Returns dense embeddings for semantic indexing
 
 ### ✅ 2. **Qdrant** (Vector Store)
-- Stores and indexes semantic embeddings
-- Supports fast top-k retrieval for chunked search
+- Stores document chunk embeddings + metadata (filename, page, position)
+- Supports efficient top-k retrieval based on similarity
+- Used for both retrieval and metadata tracking (checksums, ingestion status)
 
 ### ✅ 3. **Text-Generation-WebUI (TGW)**
-- Hosts your local LLM (e.g., Mistral, GPTQ, GGUF models)
-- Accessible via OpenAI-compatible API endpoints
-- Supports both chat and completion-style models
+- Runs your local LLM (e.g., Mistral, GPTQ, GGUF)
+- Accessible via OpenAI-compatible API (`/v1/chat/completions` or `/v1/completions`)
+- Works in both chat or completion mode
 
 ### ✅ 4. **Streamlit Frontend**
-- Upload and ingest documents
-- Ask questions in chat or single-turn mode
-- Switch models, temperatures, and view responses
+- Upload files and folders
+- Ask questions and receive cited answers
+- Adjust LLM model, temperature, mode
+- Switch between chat and completion
+
+### ✅ 5. **Phoenix Tracing**
+- Observability layer based on OpenTelemetry + Arize Phoenix
+- Captures span metadata for ingestion, embedding, retrieval, and LLM steps
+- Uses OpenInference schema for standardized analytics
 
 ---
 
-## 🚀 Features
+## 🚀 Key Features
 
-- 🔍 **Semantic Search** over your own documents
-- 💬 **Chat Mode** with memory of prior turns
-- 🧠 **Completion Mode** for single-shot Q&A
-- 📎 Supports PDF, DOCX, and TXT input
-- 📁 Real-time ingestion + deduplication
-- 🛠️ Plug-and-play backend: switch LLMs or embedding models
+- 🔍 **Semantic Search** over local documents
+- 📎 **Supports multiple formats**: PDF, DOCX, TXT
+- 💬 **Chat Mode** (multi-turn)
+- 🧠 **Completion Mode** (single Q&A)
+- 📁 **Multi-file + folder ingestion**, with parallel processing
+- 🧾 **Source attribution** (filename + page or position)
+- 🗃️ **File deduplication** based on checksum
+- 🧱 **Modular architecture** (easy to swap models or vector DB)
+- 📊 **Tracing and observability** with Phoenix
+- 🔒 **Fully local**: no cloud APIs, no internet needed
 
 ---
 
-## 🧪 Usage
+## 🧪 Usage Guide
 
-### 📥 Upload Documents
-- Upload one file at a time
-- Automatically chunked, embedded, and stored in Qdrant
+### 📥 Ingest Documents
+- Upload one or more files and/or folders
+- Files are recursively scanned, chunked, embedded, and indexed
+- Ingestion is logged and deduplicated via checksum tracking
 
 ### 💬 Ask Questions
-- Choose chat or completion mode
-- Ask questions about the content
-- In chat mode, you can follow up with contextual questions
+- Choose between chat or completion mode
+- Type natural-language questions (e.g., "What is this contract about?")
+- System retrieves the most relevant document chunks and builds a prompt
+- LLM answers using local knowledge + sources
 
-### 🧠 LLM Settings
-- Select model, temperature, and mode from the sidebar
+### 🧠 LLM Controls
+- Model, temperature, and mode are adjustable in sidebar
+- Supports any LLM with OpenAI-compatible endpoints
 
 ---
 
 ## 🧰 Requirements
 
 - Python 3.10+
-- Running Qdrant (Docker or local)
-- Running Text-Generation-WebUI with model loaded
-- Optional: Dockerized embedding service (can run standalone as well)
+- Qdrant running (Docker or native)
+- Text-Generation-WebUI running with a loaded model
+- Optional: Dockerized embedding service (recommended for speed)
+- Phoenix tracing server (optional but highly recommended)
 
 ---
 
 ## 📌 Current Status
 
-- ✅ MVP completed with working ingestion, retrieval, LLM connection
-- 🔄 Chat and completion modes supported
-- 🔍 Prompt building and chunk retrieval working
-- ⚠️ Streaming is deprioritized for now
+- ✅ Ingestion supports mixed file/folder input, with deduplication
+- ✅ Modular pipeline orchestrated by `ingestion.py`
+- ✅ Phoenix tracing across ingestion and QA flows
+- ✅ Vector store: Qdrant only (no SQLite)
+- ✅ Source filenames and pages displayed with each answer
+- ✅ Batched embedding via API (embedding model is pluggable)
+- ✅ Works with both chat and completion LLMs (e.g. Mistral, GPTQ)
+- ⚠️ Streaming answers (token-by-token) is currently disabled
 
 ---
 
 ## 🛣️ Roadmap
 
-- [ ] Show source attribution (filename + page) with answers
-- [ ] Multi-file ingestion (folder support)
-- [ ] View/manage indexed files
-- [ ] Session save/load
-- [ ] Offline Docker bundle (Qdrant + Embedding + Streamlit)
+### ✅ Completed
+- [x] Multi-file and folder ingestion
+- [x] Display source attribution (filename + page/location)
+- [x] Phoenix tracing with OpenInference spans and metrics
+- [x] Batched embedding via API
+- [x] Embedder API Dockerized and integrated
+- [x] Source deduplication and ordered display
+- [x] Full local LLM support (chat and completion)
+- [x] Full file path display for private/local use
+
+### 🧩 In Progress / Optional Enhancements
+- [ ] Add tracing span for chunking step (`split_documents`)
+- [ ] Add tracing span or metrics for Qdrant upsert operation
+
+### 🔮 Coming Next
+- [ ] Summarize multiple documents using map-reduce (batch summarization)
+- [ ] Per-document QA mode (single-file workflows)
+- [ ] Hybrid retrieval: combine BM25 + dense vectors
+- [ ] Query reformulation (LLM-assisted search enhancement)
+- [ ] Reranker: refine top-k chunks using cross-encoder or LLM
+- [ ] Named entity extraction (e.g., Gliner)
+- [ ] Advanced chunking (semantic, language-based, LLM-aided)
+- [ ] Session save/load for chat history and file tracking
+- [ ] Indexed file manager (view/delete/reingest)
+- [ ] Offline Docker bundle (Streamlit + Qdrant + Embedder)
+- [ ] Agent-based workflows for document reasoning
+- [ ] Add monitoring dashboards using Phoenix traces
+
+---
+
+## 📂 Repository Structure
+
+├── app.py # Streamlit frontend  
+├── core/  
+│ ├── file_loader.py # PDF/DOCX/TXT loader  
+│ ├── chunking.py # Text chunking logic  
+│ ├── embeddings.py # Embedding API wrapper  
+│ ├── vector_store.py # Qdrant interaction  
+│ └── query.py # QA logic (retrieval + LLM)  
+├── embedder_api_multilingual/  
+│ ├── app.py # Embedding service API  
+│ ├── config.py # Model + batching config  
+│ ├── Dockerfile # Container setup  
+├── tracing.py # Phoenix tracer singleton  
+├── config.py # Global config + logger  
+├── ingestion.py # Ingestion orchestrator  
+├── requirements.txt  
+└── README.md  
