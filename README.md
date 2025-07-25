@@ -4,6 +4,8 @@ This project is a **fully local, privacy-first document Q&A system**, designed t
 
 The system prioritizes **modularity, observability, and full offline support**, making it suitable for personal knowledge bases, secure enterprise settings, or research workflows — all without sending data to the cloud.
 
+![App Screenshot](assets/screenshot_ui.png)
+
 ---
 
 ## 🔭 Vision
@@ -123,6 +125,8 @@ The system includes a **dedicated LLM-based query rewriter** that improves searc
 - ✅ Detecting vague or ambiguous questions (e.g., “What about that contract?”)
 - ✅ Asking for clarification when context is missing (e.g., “Who is ‘he’?”)
 - ✅ Rewriting clean questions into compressed, keyword-rich search phrases
+
+![App Screenshot](assets/rewriter.png)
 
 ### 🔧 How it works:
 
