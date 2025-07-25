@@ -17,6 +17,7 @@ from core.embeddings import embed_texts
 from core.vector_store import retrieve_top_k
 from core.llm import ask_llm
 from config import logger
+from core.query_rewriter import rewrite_query
 
 
 def build_prompt(
@@ -49,12 +50,27 @@ def answer_question(
     chat_history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[str]]:
 
+    rewritten_query = rewrite_query(question, temperature=0.15)
+    logger.info(f"Rewritten query: {rewritten_query}")
+
+    if "clarify" in rewritten_query:
+        # Early exit — clarification needed
+        return (
+            f'**Clarify**:  \n   -  {rewritten_query["clarify"]}.  \n\nTry again!',
+            [],
+        )
+    elif "rewritten" in rewritten_query:
+        rewritten_query = rewritten_query["rewritten"]
+        # Proceed to embed and search...
+    else:
+        return "❌ Unexpected error occurred... ERR-QRWR", []
+
     with start_span("Embed query", EMBEDDING) as span:
         logger.info("🔍 Running semantic search for user question...")
         try:
-            span.set_attribute(INPUT_VALUE, question)
-            span.set_attribute("question_length", len(question))
-            query_embedding = embed_texts([question])[0]
+            span.set_attribute(INPUT_VALUE, rewritten_query)
+            span.set_attribute("question_length", len(rewritten_query))
+            query_embedding = embed_texts([rewritten_query])[0]
             span.set_attribute(
                 OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
             )
@@ -66,7 +82,7 @@ def answer_question(
 
     with start_span("Retriever", RETRIEVER) as span:
         try:
-            span.set_attribute(INPUT_VALUE, question)
+            span.set_attribute(INPUT_VALUE, rewritten_query)
             span.set_attribute("embedding_dim", len(query_embedding))
             span.set_attribute("top_k", top_k)
             top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
@@ -77,7 +93,7 @@ def answer_question(
                 f"score={chunk.get('score'):.4f} | page={chunk.get('page')} | ~{chunk.get('location_percent')}%"
                 for chunk in top_chunks
             ]
-            span.set_attribute("retrieved_summary", retrieved_summary)            
+            span.set_attribute("retrieved_summary", retrieved_summary)
             span.set_attribute(OUTPUT_VALUE, retrieved_summary)
 
         except Exception as e:
@@ -112,6 +128,7 @@ def answer_question(
             span.set_attribute("mode", mode)
 
             if mode == "chat":
+                # Use original query
                 new_turn = build_prompt(context, question, mode="chat")
                 full_history = [
                     {"role": "system", "content": "You are a helpful assistant."}
@@ -123,7 +140,7 @@ def answer_question(
                 else:
                     raise ValueError("Invalid chat prompt format")
 
-                span.set_attribute(INPUT_VALUE, str(full_history)[:1000])
+                span.set_attribute(INPUT_VALUE, str(full_history)[:2000])
                 answer = ask_llm(
                     prompt=full_history,
                     mode="chat",
@@ -131,8 +148,9 @@ def answer_question(
                     model=model,
                 )
             else:
+                # Use original query
                 prompt = build_prompt(context, question, mode="completion")
-                span.set_attribute(INPUT_VALUE, str(prompt[:1000]))
+                span.set_attribute(INPUT_VALUE, str(prompt[:2000]))
                 answer = ask_llm(
                     prompt=prompt,
                     mode="completion",
