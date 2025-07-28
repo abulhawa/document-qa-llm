@@ -28,6 +28,7 @@ LLM_COMPLETION_ENDPOINT = "http://localhost:5000/v1/completions"
 LLM_CHAT_ENDPOINT = "http://localhost:5000/v1/chat/completions"
 LLM_MODEL_LIST_ENDPOINT = "http://localhost:5000/v1/internal/model/list"
 LLM_MODEL_LOAD_ENDPOINT = "http://localhost:5000/v1/internal/model/load"
+LLM_MODEL_INFO_ENDPOINT = "http://localhost:5000/v1/internal/model/info"
 
 # ───────────────────────────────────────
 # 📋 Logging
