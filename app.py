@@ -114,8 +114,8 @@ if selected_files:
 
 llm_status = check_llm_status()
 st.markdown("---")
-if not llm_status["active"]:
-    st.error(llm_status["status_message"], icon="⚠️")
+# if not llm_status["active"]:
+#     st.error(llm_status["status_message"], icon="⚠️")
 
 # ───────────────────────────────────────
 # 🔸 Sidebar LLM Settings
@@ -150,22 +150,24 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
         with start_span("LLM settings chain", CHAIN) as span:
             if selected_model:
                 if selected_model != llm_status['current_model']:
-                    if load_model(selected_model):
-                        st.success(f"✅ Loaded: {selected_model}")
-                        llm_status = check_llm_status()
-                    else:
-                        st.error("❌ Failed to load model.")
+                    with st.spinner("Loading model..."):
+                        if load_model(selected_model):
+                            st.toast(f"✅ Loaded: {selected_model}")
+                            llm_status = check_llm_status()
+                        else:
+                            st.error("❌ Failed to load model.")
                 else:
-                    st.warning("Model selected is already loaded")
+                    st.toast("Model selected is already loaded", icon="🎉")
             else:
                 st.warning("⚠️ Please select a model first.")
+    print(llm_status)
 
     if llm_status["model_loaded"]:
         st.info(f"**Loaded model**: `{llm_status['current_model']}`", icon="🧠")
-    elif llm_status["current_model"] is None:
+    elif llm_status["model_loaded"] is False:
         st.warning("No model is currently loaded.", icon="⚠️")
     else:
-        st.warning(f"Model status error: {llm_status['current_model']}", icon="⚠️")
+        st.warning(f"Model status error: {llm_status['status_message']}", icon="⚠️")
 
     st.markdown("---")
     mode = st.radio(
@@ -185,6 +187,9 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
         help=None if llm_status["active"] else llm_status["status_message"],
     )
 
+if not llm_status["active"]:
+    st.error(llm_status["status_message"], icon="⚠️")
+    
 # ───────────────────────────────────────
 # 🔹 Chat Mode UI
 # ───────────────────────────────────────
