@@ -1,7 +1,7 @@
 import os
 import subprocess
 import json
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -10,7 +10,11 @@ import streamlit as st
 from config import logger
 from core.ingestion import ingest_paths
 from core.query import answer_question
-from core.llm import get_available_models, load_model
+from core.llm import (
+    get_available_models,
+    load_model,
+    check_llm_status,
+)
 
 # ───────────────────────────────────────
 # 🔹 Setup
@@ -21,27 +25,6 @@ st.title("📄 Document Q&A")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-
-
-# ───────────────────────────────────────
-# 🔹 Sidebar – LLM Settings
-# ───────────────────────────────────────
-
-with st.sidebar.expander("🧠 LLM Settings", expanded=True):
-    models = get_available_models()
-    if models:
-        selected_model = st.selectbox("Choose model", models, index=0)
-        if st.button("Load model"):
-            if load_model(selected_model):
-                st.success(f"✅ Loaded: {selected_model}")
-            else:
-                st.error("❌ Failed to load model.")
-    else:
-        st.warning("⚠️ No models available on server.")
-
-    st.markdown("---")
-    mode = st.radio("LLM Mode", ["completion", "chat"], index=0)
-    temperature = st.slider("Temperature", 0.0, 1.5, 0.7, step=0.05)
 
 
 # ───────────────────────────────────────
@@ -86,7 +69,7 @@ if selected_files:
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     status_table.dataframe(df, height=300)
 
-    with start_span("index_chain", CHAIN) as span:
+    with start_span("Ingestion chain", CHAIN) as span:
         if len(selected_files) > 5:
             preview = selected_files[:5] + [
                 f"... and {len(selected_files) - 5} more not shown here"
@@ -125,84 +108,181 @@ if selected_files:
         )
         status_table.dataframe(summary_df, height=300)
 
+# ───────────────────────────────────────
+# 🔸 Check if model is loaded before enabling Q&A
+# ───────────────────────────────────────
+
+llm_status = check_llm_status()
+st.markdown("---")
+if not llm_status["active"]:
+    st.error(llm_status["status_message"], icon="⚠️")
+
+# ───────────────────────────────────────
+# 🔸 Sidebar LLM Settings
+# ───────────────────────────────────────
+with st.sidebar.expander("🧠 LLM Settings", expanded=True):
+    llm_models: List[str] = []
+    loaded_model: Optional[str] = None
+    if not llm_status["server_online"]:
+        st.info("The LLM server is unreachable or offline.")
+    else:
+        llm_models = get_available_models()
+        loaded_model = llm_status["current_model"]
+
+    st.markdown("---")
+
+    loaded_model_index: Optional[int] = None
+    if loaded_model in llm_models:
+        loaded_model_index = llm_models.index(loaded_model)
+
+    selected_model = st.selectbox(
+        "Choose a model to load",
+        llm_models,
+        index=loaded_model_index,
+        placeholder="Select a model..." if llm_models else "No models available...",
+    )
+
+    if st.button(
+        "📦 Load Model",
+        disabled=not selected_model,
+        help=None if llm_status["server_online"] else llm_status["status_message"],
+    ):
+        with start_span("LLM settings chain", CHAIN) as span:
+            if selected_model:
+                if selected_model != llm_status['current_model']:
+                    if load_model(selected_model):
+                        st.success(f"✅ Loaded: {selected_model}")
+                        llm_status = check_llm_status()
+                    else:
+                        st.error("❌ Failed to load model.")
+                else:
+                    st.warning("Model selected is already loaded")
+            else:
+                st.warning("⚠️ Please select a model first.")
+
+    if llm_status["model_loaded"]:
+        st.info(f"**Loaded model**: `{llm_status['current_model']}`", icon="🧠")
+    elif llm_status["current_model"] is None:
+        st.warning("No model is currently loaded.", icon="⚠️")
+    else:
+        st.warning(f"Model status error: {llm_status['current_model']}", icon="⚠️")
+
+    st.markdown("---")
+    mode = st.radio(
+        "LLM Mode",
+        ["completion", "chat"],
+        index=0,
+        disabled=not llm_status["active"],
+        help=None if llm_status["active"] else llm_status["status_message"],
+    )
+    temperature = st.slider(
+        "Temperature",
+        0.0,
+        1.5,
+        0.7,
+        step=0.05,
+        disabled=not llm_status["active"],
+        help=None if llm_status["active"] else llm_status["status_message"],
+    )
 
 # ───────────────────────────────────────
 # 🔹 Chat Mode UI
 # ───────────────────────────────────────
+with st.container():
+    if mode == "chat":
+        st.markdown("### 💬 Conversation")
+        col1, col2 = st.columns([5, 1])
+        with col2:
+            if st.button(
+                "🗑️ Clear Chat",
+                disabled=not llm_status["active"],
+                help=None if llm_status["active"] else llm_status["status_message"],
+            ):
+                st.session_state.chat_history = []
 
-if mode == "chat":
-    st.markdown("### 💬 Conversation")
-    col1, col2 = st.columns([5, 1])
-    with col2:
-        if st.button("🗑️ Clear Chat"):
-            st.session_state.chat_history = []
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        user_input = st.chat_input(
+            "💬 Ask a question about your document", disabled=not llm_status["active"]
+        )
+        if user_input:
+            st.session_state.chat_history.append(
+                {"role": "user", "content": user_input}
+            )
+            with st.chat_message("user"):
+                st.markdown(user_input)
 
-    user_input = st.chat_input("💬 Ask a question about your document")
-    if user_input:
-        st.session_state.chat_history.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
+            with start_span("QA chain", CHAIN) as span:
+                span.set_attribute("mode", "chat")
 
-        with start_span("qa_chain", CHAIN) as span:
-            span.set_attribute("mode", "chat")
-            span.set_attribute("model", selected_model)
-            span.set_attribute("temperature", temperature)
-            span.set_attribute("question_length", len(user_input))
-            span.set_attribute(INPUT_VALUE, user_input)
+                span.set_attribute("temperature", temperature)
+                span.set_attribute("question_length", len(user_input))
+                span.set_attribute(INPUT_VALUE, user_input)
 
-            with st.spinner("🧠 Thinking..."):
-                answer, sources = answer_question(
-                    question=user_input,
-                    mode="chat",
-                    temperature=temperature,
-                    model=selected_model,
-                    chat_history=st.session_state.chat_history,
-                )
+                span.set_attribute("model", llm_status["current_model"] or "None")
 
-        st.session_state.chat_history.append({"role": "assistant", "content": answer})
-        with st.chat_message("assistant"):
+                with st.spinner("🧠 Thinking..."):
+                    answer, sources = answer_question(
+                        question=user_input,
+                        mode="chat",
+                        temperature=temperature,
+                        model=selected_model,
+                        chat_history=st.session_state.chat_history,
+                    )
+
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": answer}
+            )
+            with st.chat_message("assistant"):
+                st.markdown(answer)
+                if sources:
+                    st.markdown("#### 📁 Sources:")
+                    for src in sources:
+                        st.markdown(f"- {src}")
+
+    # ───────────────────────────────────────
+    # 🔹 Completion Mode UI
+    # ───────────────────────────────────────
+
+    else:
+        with st.form("completion_form"):
+            query = st.text_input(
+                "💬 Ask a question about your document",
+                disabled=not llm_status["active"],
+            )
+            submitted = st.form_submit_button(
+                "Get Answer",
+                disabled=not llm_status["active"],
+                help=None if llm_status["active"] else llm_status["status_message"],
+            )
+
+        if submitted and query:
+            with start_span("QA chain", CHAIN) as span:
+                span.set_attribute("mode", "completion")
+                span.set_attribute("model", llm_status["current_model"] or "None")
+                span.set_attribute("temperature", temperature)
+                span.set_attribute("question_length", len(query))
+                span.set_attribute(INPUT_VALUE, query)
+
+                with st.spinner("🧠 Thinking..."):
+                    answer, sources = answer_question(
+                        question=query,
+                        mode="completion",
+                        temperature=temperature,
+                        model=selected_model,
+                    )
+                span.set_attribute(OUTPUT_VALUE, answer)
+            st.subheader("📝 Answer")
             st.markdown(answer)
+            logger.info(f"LLM Answer:\n{answer}")
+
             if sources:
                 st.markdown("#### 📁 Sources:")
                 for src in sources:
                     st.markdown(f"- {src}")
 
-# ───────────────────────────────────────
-# 🔹 Completion Mode UI
-# ───────────────────────────────────────
-
-else:
-    with st.form("completion_form"):
-        query = st.text_input("💬 Ask a question about your document")
-        submitted = st.form_submit_button("Get Answer")
-
-    if submitted and query:
-        with start_span("qa_chain", CHAIN) as span:
-            span.set_attribute("mode", "completion")
-            span.set_attribute("model", selected_model)
-            span.set_attribute("temperature", temperature)
-            span.set_attribute("question_length", len(query))
-            span.set_attribute(INPUT_VALUE, query)
-
-            with st.spinner("🧠 Thinking..."):
-                answer, sources = answer_question(
-                    question=query,
-                    mode="completion",
-                    temperature=temperature,
-                    model=selected_model,
-                )
-            span.set_attribute(OUTPUT_VALUE, answer)
-        st.subheader("📝 Answer")
-        st.markdown(answer)
-        logger.info(f"LLM Answer:\n{answer}")
-
-        if sources:
-            st.markdown("#### 📁 Sources:")
-            for src in sources:
-                st.markdown(f"- {src}")
-
-        st.caption(f"Mode: completion | Temp: {temperature} | Model: {selected_model}")
+            st.caption(
+                f"Mode: completion | Temp: {temperature} | Model: {llm_status['current_model']}"
+            )
