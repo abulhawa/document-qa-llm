@@ -28,7 +28,47 @@ services:
     environment:
       - PHOENIX_SERVER_PORT=6006
 
+  opensearch-node:
+    image: opensearchproject/opensearch:3.1.0
+    container_name: opensearch-node
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_INSTALL_DEMO_CONFIG=true # Prevents execution of bundled demo script which installs demo certificates and security configurations to OpenSearch
+      - DISABLE_SECURITY_PLUGIN=true # Disables Security plugin
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    networks:
+      - opensearch-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.1.0
+    container_name: opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=http://opensearch-node:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    expose:
+      - "5601"
+    networks:
+      - opensearch-net
+    depends_on:
+      - opensearch-node
+    
 volumes:
   qdrant_data:
   phoenix_data:
+  opensearch-data:
   hf_cache:
+
+networks:
+  opensearch-net:
