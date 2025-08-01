@@ -8,6 +8,8 @@ from utils import compute_checksum, get_file_timestamps
 from core.file_loader import load_documents
 from core.chunking import split_documents
 from core.vector_store import is_file_up_to_date, index_chunks
+from core.opensearch_store import index_documents
+
 from tracing import (
     start_span,
     TOOL,
@@ -88,6 +90,22 @@ def ingest_file(path: str) -> Dict[str, Any]:
                 "reason": "Embedding or upsert failed",
                 "path": normalized_path,
             }
+
+        # Index full document in OpenSearch
+        try:
+            index_documents(
+                [
+                    {
+                        "path": normalized_path,
+                        "content": " ".join(doc.page_content for doc in docs),
+                        "checksum": checksum,
+                        "created_at": created,
+                        "modified_at": modified,
+                    }
+                ]
+            )
+        except Exception as e:
+            logger.error(f"❌ Failed to index document in OpenSearch: {e}")
 
         logger.info(f"✅ Indexed {len(texts)} chunks for: {normalized_path}")
         return {
