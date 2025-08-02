@@ -24,11 +24,16 @@ INDEX_SETTINGS = {
     },
     "mappings": {
         "properties": {
-            "path": {"type": "keyword"},
-            "content": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "path": {"type": "text"},
+            "chunk_index": {"type": "integer"},
             "checksum": {"type": "keyword"},
+            "filetype": {"type": "keyword"},
+            "indexed_at": {"type": "date"},
             "created_at": {"type": "date"},
             "modified_at": {"type": "date"},
+            "page": {"type": "integer"},
+            "location_percent": {"type": "float"},
         }
     },
 }
@@ -40,25 +45,23 @@ def ensure_index_exists():
         client.indices.create(index=INDEX_NAME, body=INDEX_SETTINGS)
 
 
-def index_documents(docs: List[Dict[str, Any]]) -> None:
-    """Index a list of full document dicts into OpenSearch."""
+def index_documents(chunks: List[Dict[str, Any]]) -> None:
+    """Index a list of chunks into OpenSearch."""
 
     ensure_index_exists()
     actions = [
         {
             "_index": INDEX_NAME,
-            "_source": {
-                "path": doc["path"],
-                "content": doc["content"],
-                "checksum": doc["checksum"],
-                "created_at": doc["created_at"],
-                "modified_at": doc["modified_at"],
-            },
+            "_id": chunk["id"],
+            "_source": {k: v for k, v in chunk.items() if k != "id"},
         }
-        for doc in docs
+        for chunk in chunks
     ]
-    helpers.bulk(client, actions)
-    logger.info(f"Indexed {len(actions)} documents into OpenSearch.")
+    success_count, errors = helpers.bulk(client, actions)
+    if errors:
+        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+    else:
+        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
 
 
 def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
@@ -71,7 +74,7 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
             index=INDEX_NAME,
             body={
                 "size": top_k * 3,  # fetch extra for dedup
-                "query": {"match": {"content": {"query": query, "operator": "and"}}},
+                "query": {"match": {"text": {"query": query, "operator": "and"}}},
                 "sort": [{"modified_at": {"order": "desc"}}],
             },
         )
