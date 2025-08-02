@@ -29,7 +29,7 @@ def split_documents(
     )
 
     all_chunks: List[Dict[str, Any]] = []
-    for doc_index, doc in enumerate(docs):
+    for doc in docs:
         raw_text = doc.page_content
         metadata = doc.metadata or {}
 
@@ -41,16 +41,11 @@ def split_documents(
         for i, chunk in enumerate(splits):
             chunk_data = {
                 "text": chunk,
-                "chunk_index": i,
-                "source": source,
                 "page": page,
-                "doc_index": doc_index,
             }
             all_chunks.append(chunk_data)
 
-        logger.debug(
-            f"Split document {doc_index} ({source}) into {len(splits)} chunks."
-        )
+        logger.debug(f"Split document {source} into {len(splits)} chunks.")
 
     logger.info(f"Generated {len(all_chunks)} total chunks.")
     return all_chunks

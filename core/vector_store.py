@@ -20,6 +20,15 @@ from config import (
     logger,
 )
 from core.embeddings import embed_texts
+from tracing import (
+    start_span,
+    EMBEDDING,
+    RETRIEVER,
+    INPUT_VALUE,
+    OUTPUT_VALUE,
+    record_span_error,
+    STATUS_OK,
+)
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
@@ -39,12 +48,11 @@ def ensure_collection_exists() -> None:
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
 
-def index_chunks(texts: List[str], metadata_list: List[Dict[str, Any]]) -> bool:
-    if len(texts) != len(metadata_list):
-        raise ValueError("texts and metadata_list lengths diverge")
+def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
 
     ensure_collection_exists()
 
+    texts: List[str] = [chunk["text"] for chunk in chunks]
     try:
         embeddings = embed_texts(texts)
     except Exception as e:
@@ -53,15 +61,11 @@ def index_chunks(texts: List[str], metadata_list: List[Dict[str, Any]]) -> bool:
 
     points = [
         PointStruct(
-            id=str(
-                uuid.uuid5(
-                    uuid.NAMESPACE_DNS, f"{meta['checksum']}-{meta['chunk_index']}"
-                )
-            ),
+            id=chunk["id"],
             vector=vector,
-            payload={**meta, "content": text},
+            payload=chunk,
         )
-        for text, vector, meta in zip(texts, embeddings, metadata_list)
+        for vector, chunk in zip(embeddings, chunks)
     ]
 
     try:
@@ -73,22 +77,36 @@ def index_chunks(texts: List[str], metadata_list: List[Dict[str, Any]]) -> bool:
         return False
 
 
-def retrieve_top_k(
-    query_embedding: List[float], top_k: int = 5
-) -> List[Dict[str, Any]]:
-    try:
-        results = client.search(
-            collection_name=QDRANT_COLLECTION,
-            query_vector=query_embedding,
-            limit=top_k,
-            score_threshold=CHUNK_SCORE_THRESHOLD,
-            with_payload=True,
-        )
+def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    with start_span("Semantic retriever", RETRIEVER) as span:
+        with start_span("Embed query", EMBEDDING) as span:
+            span.set_attribute(INPUT_VALUE, query)
+            span.set_attribute("question_length", len(query))
+            try:
+                query_embedding = embed_texts([query])[0]
+                span.set_attribute(
+                    OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
+                )
+                span.set_status(STATUS_OK)
+            except Exception as e:
+                logger.error(f"❌ Query embedding failed: {e}")
+                record_span_error(span, e)
+                return [{"status": "❌ Failed to embed query."}]
 
-        return [{**(r.payload or {}), "score": r.score} for r in results]
-    except Exception as e:
-        logger.error(f"Search error: {e}")
-        return []
+        try:
+            results = client.search(
+                collection_name=QDRANT_COLLECTION,
+                query_vector=query_embedding,
+                limit=top_k,
+                score_threshold=CHUNK_SCORE_THRESHOLD,
+                with_payload=True,
+            )
+            span.set_status(STATUS_OK)
+            return [{**(r.payload or {}), "score": r.score} for r in results]
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            record_span_error(span, e)
+            return []
 
 
 def is_file_up_to_date(checksum: str) -> bool:
