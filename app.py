@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import pandas as pd
 
-from tracing import start_span, CHAIN, TOOL, INPUT_VALUE, OUTPUT_VALUE
+from tracing import start_span, CHAIN, TOOL, INPUT_VALUE, OUTPUT_VALUE, STATUS_OK
 import streamlit as st
 from config import logger
 from core.ingestion import ingest_paths
@@ -89,6 +89,7 @@ if selected_files:
         span.set_attribute(
             OUTPUT_VALUE, f"{len(successes)} indexed, {len(failures)} failed"
         )
+        span.set_status(STATUS_OK)
 
         status_line.success(
             f"✅ Indexed {len(successes)} out of {len(results)} file(s)."

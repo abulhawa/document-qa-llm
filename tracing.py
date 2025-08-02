@@ -26,6 +26,7 @@ LLM = OpenInferenceSpanKindValues.LLM.value
 RETRIEVER = OpenInferenceSpanKindValues.RETRIEVER.value
 EMBEDDING = OpenInferenceSpanKindValues.EMBEDDING.value
 TOOL = OpenInferenceSpanKindValues.TOOL.value
+STATUS_OK = StatusCode.OK
 
 # OpenInference attribute keys
 INPUT_VALUE = SpanAttributes.INPUT_VALUE
