@@ -1,7 +1,6 @@
 from typing import List, Dict, Any
 from opensearchpy import OpenSearch, helpers
 from config import OPENSEARCH_HOST, OPENSEARCH_PORT, logger
-from utils import compute_checksum
 from tracing import start_span, INPUT_VALUE, OUTPUT_VALUE, TOOL
 
 # Define your index name
@@ -43,25 +42,23 @@ def ensure_index_exists():
 
 def index_documents(docs: List[Dict[str, Any]]) -> None:
     """Index a list of full document dicts into OpenSearch."""
+
     ensure_index_exists()
-    with start_span("opensearch_index", kind=TOOL) as span:
-        actions = [
-            {
-                "_index": INDEX_NAME,
-                "_source": {
-                    "path": doc["path"],
-                    "content": doc["content"],
-                    "checksum": doc["checksum"],
-                    "created_at": doc["created_at"],
-                    "modified_at": doc["modified_at"],
-                },
-            }
-            for doc in docs
-        ]
-        helpers.bulk(client, actions)
-        logger.info(f"Indexed {len(actions)} documents into OpenSearch.")
-        span.set_attribute("num_docs", len(actions))
-        span.set_attribute("index_name", INDEX_NAME)
+    actions = [
+        {
+            "_index": INDEX_NAME,
+            "_source": {
+                "path": doc["path"],
+                "content": doc["content"],
+                "checksum": doc["checksum"],
+                "created_at": doc["created_at"],
+                "modified_at": doc["modified_at"],
+            },
+        }
+        for doc in docs
+    ]
+    helpers.bulk(client, actions)
+    logger.info(f"Indexed {len(actions)} documents into OpenSearch.")
 
 
 def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
