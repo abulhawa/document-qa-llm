@@ -1,20 +1,15 @@
-import os
 from typing import List, Union, Dict, Optional, Tuple
-
 from tracing import (
     start_span,
-    EMBEDDING,
     RETRIEVER,
     LLM,
     INPUT_VALUE,
     OUTPUT_VALUE,
     record_span_error,
-    get_current_span,
+    STATUS_OK,
 )
 
-
-from core.embeddings import embed_texts
-from core.vector_store import retrieve_top_k
+from core.hybrid_search import retrieve_hybrid
 from core.llm import ask_llm
 from config import logger
 from core.query_rewriter import rewrite_query
@@ -65,56 +60,43 @@ def answer_question(
     else:
         return "❌ Unexpected error occurred... ERR-QRWR", []
 
-    with start_span("Embed query", EMBEDDING) as span:
-        logger.info("🔍 Running semantic search for user question...")
-        try:
-            span.set_attribute(INPUT_VALUE, rewritten_query)
-            span.set_attribute("question_length", len(rewritten_query))
-            query_embedding = embed_texts([rewritten_query])[0]
-            span.set_attribute(
-                OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
-            )
-
-        except Exception as e:
-            logger.error(f"❌ Query embedding failed: {e}")
-            record_span_error(span, e)
-            return "❌ Failed to embed query.", []
+    logger.info("🔍 Running semantic search for user question...")
 
     with start_span("Retriever", RETRIEVER) as span:
         try:
             span.set_attribute(INPUT_VALUE, rewritten_query)
-            span.set_attribute("embedding_dim", len(query_embedding))
             span.set_attribute("top_k", top_k)
-            top_chunks = retrieve_top_k(query_embedding=query_embedding, top_k=top_k)
-            span.set_attribute("results_found", len(top_chunks))
+            top_results = retrieve_hybrid(rewritten_query, top_k_each=20, final_k=5)
+            span.set_attribute("results_found", len(top_results))
 
             retrieved_summary = [
-                f"{chunk.get('path', '')} | idx={chunk.get('chunk_index')} | "
-                f"score={chunk.get('score'):.4f} | page={chunk.get('page')} | ~{chunk.get('location_percent')}%"
-                for chunk in top_chunks
+                f"{result.get('path', '')} | idx={result.get('chunk_index')} | "
+                f"score={result.get('score'):.4f} | page={result.get('page')} | ~{result.get('location_percent')}%"
+                for result in top_results
             ]
             span.set_attribute("retrieved_summary", retrieved_summary)
             span.set_attribute(OUTPUT_VALUE, retrieved_summary)
+            span.set_status(STATUS_OK)
 
         except Exception as e:
             logger.error(f"❌ Retrieval failed: {e}")
             record_span_error(span, e)
             return "❌ Retrieval failed.", []
 
-    if not top_chunks:
-        logger.warning("⚠️ No relevant chunks found.")
+    if not top_results:
+        logger.warning("⚠️ No relevant results found.")
         return "No relevant context found to answer the question.", []
 
-    context = [chunk["content"] for chunk in top_chunks]
+    context = [result["text"] for result in top_results]
 
     seen = set()
     sources = []
-    for chunk in top_chunks:
-        path = chunk.get("path", "")
-        if "page" in chunk and chunk["page"] is not None:
-            label = f"{path} (Page {chunk['page']})"
-        elif "location_percent" in chunk:
-            label = f"{path} (~{chunk['location_percent']}%)"
+    for result in top_results:
+        path = result.get("path", "")
+        if "page" in result and result["page"] is not None:
+            label = f"{path} (Page {result['page']})"
+        elif "location_percent" in result:
+            label = f"{path} (~{result['location_percent']}%)"
         else:
             label = path
         if label not in seen:
@@ -159,6 +141,7 @@ def answer_question(
                 )
 
             span.set_attribute(OUTPUT_VALUE, answer[:1000])
+            span.set_status(STATUS_OK)
             logger.info("✅ LLM answered the question.")
             return answer, sources
 

@@ -1,6 +1,3 @@
-# core/vector_store.py
-
-import uuid
 from typing import List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
@@ -16,7 +13,6 @@ from config import (
     QDRANT_COLLECTION,
     CHUNK_SCORE_THRESHOLD,
     EMBEDDING_SIZE,
-    EMBEDDING_BATCH_SIZE,
     logger,
 )
 from core.embeddings import embed_texts
@@ -78,20 +74,22 @@ def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
 
 
 def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    with start_span("Semantic retriever", RETRIEVER) as span:
-        with start_span("Embed query", EMBEDDING) as span:
-            span.set_attribute(INPUT_VALUE, query)
-            span.set_attribute("question_length", len(query))
+    with start_span("Semantic retriever", kind=RETRIEVER) as span:
+        span.set_attribute(INPUT_VALUE, query)
+        with start_span("Embed query", EMBEDDING) as espan:
+            espan.set_attribute(INPUT_VALUE, query)
+            espan.set_attribute("question_length", len(query))
             try:
                 query_embedding = embed_texts([query])[0]
-                span.set_attribute(
+                espan.set_attribute(
                     OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
                 )
-                span.set_status(STATUS_OK)
             except Exception as e:
                 logger.error(f"❌ Query embedding failed: {e}")
-                record_span_error(span, e)
+                record_span_error(espan, e)
                 return [{"status": "❌ Failed to embed query."}]
+
+            espan.set_status(STATUS_OK)
 
         try:
             results = client.search(
@@ -101,8 +99,28 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
                 score_threshold=CHUNK_SCORE_THRESHOLD,
                 with_payload=True,
             )
+            retrieved_chunks = [
+                {**(r.payload or {}), "score": r.score} for r in results
+            ]
+
+            for i, doc in enumerate(retrieved_chunks):
+                span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
+                span.set_attribute(
+                    f"retrieval.documents.{i}.document.score", doc["score"]
+                )
+                span.set_attribute(
+                    f"retrieval.documents.{i}.document.content", doc["text"]
+                )
+                span.set_attribute(
+                    f"retrieval.documents.{i}.document.metadata",
+                    [
+                        f"Chunk index: {doc['chunk_index']}",
+                        f"Date modified: {doc['modified_at']}",
+                    ],
+                )
             span.set_status(STATUS_OK)
-            return [{**(r.payload or {}), "score": r.score} for r in results]
+
+            return retrieved_chunks
         except Exception as e:
             logger.error(f"Search error: {e}")
             record_span_error(span, e)
