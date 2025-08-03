@@ -98,6 +98,7 @@ The system is built from modular, testable components:
 
 - Python 3.10+
 - Qdrant running (Docker or native)
+- OpenSearch
 - Text-Generation-WebUI running with a loaded model
 - Optional: Dockerized embedding service (recommended for speed)
 - Phoenix tracing server (optional but highly recommended)
@@ -176,6 +177,7 @@ The system includes a **dedicated LLM-based query rewriter** that improves searc
 - [x] Source deduplication and ordered display
 - [x] Full local LLM support (chat and completion)
 - [x] Full file path display for private/local use
+- [x] Hybrid retrieval: combine BM25 + dense vectors
 
 ### 🧩 In Progress / Optional Enhancements
 - [ ] Add tracing span for chunking step (`split_documents`)
@@ -184,13 +186,12 @@ The system includes a **dedicated LLM-based query rewriter** that improves searc
 ### 🔮 Coming Next
 - [ ] Summarize multiple documents using map-reduce (batch summarization)
 - [ ] Per-document QA mode (single-file workflows)
-- [ ] Hybrid retrieval: combine BM25 + dense vectors
 - [ ] Reranker: refine top-k chunks using cross-encoder or LLM
 - [ ] Named entity extraction (e.g., Gliner)
 - [ ] Advanced chunking (semantic, language-based, LLM-aided)
 - [ ] Session save/load for chat history and file tracking
 - [ ] Indexed file manager (view/delete/reingest)
-- [ ] Offline Docker bundle (Streamlit + Qdrant + Embedder)
+- [ ] Offline Docker bundle (Streamlit + Qdrant + Embedder + OpenSearch)
 - [ ] Agent-based workflows for document reasoning
 
 ---
@@ -201,12 +202,15 @@ The system includes a **dedicated LLM-based query rewriter** that improves searc
 .
 ├── app.py                # Streamlit frontend
 ├── core/
-│   ├── file_loader.py    # PDF/DOCX/TXT loader
-│   ├── chunking.py       # Text chunking logic
-│   ├── embeddings.py     # Embedding API wrapper
-│   ├── vector_store.py   # Qdrant interaction
-│   ├── query.py          # QA logic (rewriting + retrieval + LLM)
-│   └── query_rewriter.py # LLM-based query rewriting
+│   ├── file_loader.py        # PDF/DOCX/TXT loader
+│   ├── chunking.py           # Text chunking logic
+│   ├── embeddings.py         # Embedding API wrapper
+│   ├── vector_store.py       # Qdrant interaction
+│   ├── ingestion.py          # Ingestion orchestrator
+│   ├── query.py              # QA logic (rewriting + retrieval + LLM)
+│   ├── query_rewriter.py     # LLM-based query rewriting
+|   |── opensearch_store.py   # Keyword-based retriever
+|   └── hybrid_search.py      # Combines semantic and keyword-based retrieved results
 ├── embedder_api_multilingual/
 │   ├── app.py            # Embedding service API
 │   ├── config.py         # Model + batching config
