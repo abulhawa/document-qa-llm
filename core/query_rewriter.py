@@ -1,8 +1,6 @@
-# core/query_rewriter.py
-
 from config import logger
 from core.llm import ask_llm
-from tracing import start_span, INPUT_VALUE, OUTPUT_VALUE, record_span_error
+from tracing import start_span, INPUT_VALUE, OUTPUT_VALUE, record_span_error, STATUS_OK
 import json
 
 
@@ -69,21 +67,21 @@ def rewrite_query(original_query: str, temperature: float = 0.2) -> dict:
                 max_tokens=256,
             ).strip()
 
-            span.set_attribute(OUTPUT_VALUE, rewritten)
             span.set_attribute("rewrite.output_raw", rewritten)
-
-            print("rerewritten:", rewritten)
 
             rewritten = json.loads(rewritten)
 
-            print("rerewritten json:", rewritten)
-
             if "clarify" in rewritten:
                 span.set_attribute("rewrite.status", "clarify_required")
+                span.set_attribute(OUTPUT_VALUE, rewritten)
             elif "rewritten" in rewritten:
                 span.set_attribute("rewrite.status", "ok")
+                span.set_attribute(OUTPUT_VALUE, rewritten["rewritten"])
             else:
                 span.set_attribute("rewrite.status", "unexpected_format")
+                span.set_attribute(OUTPUT_VALUE, rewritten)
+
+            span.set_status(STATUS_OK)
 
             return rewritten
 

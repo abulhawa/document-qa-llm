@@ -236,6 +236,7 @@ with st.container():
                         model=selected_model,
                         chat_history=st.session_state.chat_history,
                     )
+                span.set_status(STATUS_OK)
 
             st.session_state.chat_history.append(
                 {"role": "assistant", "content": answer}
@@ -279,6 +280,7 @@ with st.container():
                         model=selected_model,
                     )
                 span.set_attribute(OUTPUT_VALUE, answer)
+                span.set_status(STATUS_OK)
             st.subheader("📝 Answer")
             st.markdown(answer)
             logger.info(f"LLM Answer:\n{answer}")
