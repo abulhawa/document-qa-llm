@@ -1,4 +1,33 @@
-.cache
-*.ipynb
-*.pt
+# Ignore cache and temp files
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+
+# Git-related files
+.git
+.gitignore
+.gitattributes
+
+# Ignore OS-generated files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE settings
+.vscode/
+.idea/
+
+# Ignore system envs and secrets
+.env
+.env.*
+
+# Ignore test output
+*.out
+*.tmp
+
+# Ignore large or raw data
+data/
+datasets/
+downloads/

@@ -4,3 +4,7 @@ sentence-transformers
 qdrant-client
 langchain
 langchain-community
+celery
+redis
+opensearch-py
+arize-phoenix==11.18.0

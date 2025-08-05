@@ -5,7 +5,7 @@ from logging import Logger
 # ───────────────────────────────────────
 # 🔠 Embedding & Chunking
 # ───────────────────────────────────────
-EMBEDDING_API_URL = "http://localhost:8000/embed"
+EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL", "http://localhost:8000/embed")
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base"
 EMBEDDING_BATCH_SIZE = 32
 EMBEDDING_SIZE = 768
@@ -15,7 +15,7 @@ CHUNK_OVERLAP = 50
 # ───────────────────────────────────────
 # 🔍 Qdrant Vector Store
 # ───────────────────────────────────────
-QDRANT_URL = "http://localhost:6333"
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION = "document_chunks"
 CHUNK_SCORE_THRESHOLD = 0.75
 
