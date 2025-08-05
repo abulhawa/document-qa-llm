@@ -1,6 +1,7 @@
 import os
 import subprocess
 import json
+import time
 from typing import List, Optional
 
 import pandas as pd
@@ -26,14 +27,12 @@ st.title("📄 Document Q&A")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-
 # ───────────────────────────────────────
 # 🔹 File/Folder Picker
 # ───────────────────────────────────────
 
 
 def run_picker(mode: str) -> List[str]:
-    """Run external file/folder picker script."""
     try:
         result = subprocess.run(
             ["python", "file_picker.py", mode],
@@ -65,9 +64,24 @@ with col2:
 if selected_files:
     status_table = st.empty()
     status_line = st.empty()
+    progress_bar = st.progress(0)
+    eta_display = st.empty()
+
     status_line.success(f"Found {len(selected_files)} path(s).")
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     status_table.dataframe(df, height=300)
+
+    def update_progress(done: int, total: int, elapsed: float):
+        progress_bar.progress(done / total)
+        if done > 0:
+            eta = (elapsed / done) * (total - done)
+            eta_display.text(
+                f"{done}/{total} files ingested... (elapsed: {elapsed:.1f}s, ETA: {eta:.1f}s)"
+            )
+        else:
+            eta_display.text(
+                f"{done}/{total} files ingested... (elapsed: {elapsed:.1f}s)"
+            )
 
     with start_span("Ingestion chain", CHAIN) as span:
         if len(selected_files) > 5:
@@ -78,11 +92,10 @@ if selected_files:
             preview = selected_files
 
         span.set_attribute(INPUT_VALUE, preview)
-        with st.spinner("🔄 Processing files and folders..."):
-            results = ingest_paths(selected_files)
+        results = ingest_paths(selected_files, progress_callback=update_progress)
 
         successes = [r for r in results if r["success"]]
-        failures = [(r["path"], r["reason"]) for r in results if not r["success"]]
+        failures = [(r["path"], r["status"]) for r in results if not r["success"]]
 
         span.set_attribute("indexed_files", len(successes))
         span.set_attribute("failed_files", len(failures))
@@ -102,7 +115,10 @@ if selected_files:
             [
                 {
                     "File": r["path"],
-                    "Status": "✅ Success" if r["success"] else f"❌ {r['reason']}",
+                    "Status": (
+                        f"✅ {r['status']}" if r["success"] else f"❌ {r['status']}"
+                    ),
+                    "Num. Chunks": r.get("num_chunks", 0),
                 }
                 for r in results
             ]

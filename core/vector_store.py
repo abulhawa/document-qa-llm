@@ -2,9 +2,6 @@ from typing import List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
     PointStruct,
-    Filter,
-    FieldCondition,
-    MatchValue,
     VectorParams,
     Distance,
 )
@@ -125,19 +122,3 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
             logger.error(f"Search error: {e}")
             record_span_error(span, e)
             return []
-
-
-def is_file_up_to_date(checksum: str) -> bool:
-    try:
-        result, _ = client.scroll(
-            collection_name=QDRANT_COLLECTION,
-            scroll_filter=Filter(
-                must=[FieldCondition(key="checksum", match=MatchValue(value=checksum))]
-            ),
-            limit=1,
-            with_payload=False,
-        )
-        return len(result) > 0
-    except Exception as e:
-        logger.warning(f"Checksum check failed: {e}")
-        return False
