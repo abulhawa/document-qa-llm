@@ -7,4 +7,4 @@ langchain-community
 celery
 redis
 opensearch-py
-arize-phoenix==11.18.0
+arize-phoenix-otel
