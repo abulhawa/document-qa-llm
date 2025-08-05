@@ -1,21 +1,19 @@
-# Base image with Python
-FROM python:3.10-slim
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
-# Set working directory inside container
 WORKDIR /app
 ENV PYTHONPATH=/app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install only what your FastAPI embedder app needs
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    pydantic \
+    sentence-transformers
 
 # Copy application code
 COPY app.py .
 COPY config.py .
 
-
-# Expose default FastAPI port (optional, helpful for clarity)
 EXPOSE 8000
 
-# Default command: start FastAPI app via Uvicorn
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
