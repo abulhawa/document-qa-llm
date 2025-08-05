@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from opensearchpy import OpenSearch, helpers
+from opensearchpy import OpenSearch, helpers, exceptions
 from config import OPENSEARCH_HOST, OPENSEARCH_PORT, logger
 from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 
@@ -105,3 +105,16 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
             )
         span.set_status(STATUS_OK)
         return results
+
+
+def is_file_up_to_date(checksum: str) -> bool:
+    """Check if a file with the given checksum is already indexed."""
+    try:
+        response = client.count(
+            index=INDEX_NAME,
+            body={"query": {"term": {"checksum": checksum}}},
+        )
+        return response.get("count", 0) > 0
+    except exceptions.OpenSearchException as e:
+        logger.warning(f"OpenSearch checksum check failed: {e}")
+        return False
