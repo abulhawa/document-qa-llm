@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Callable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from config import logger
+from config import logger, EMBEDDING_BATCH_SIZE
 from utils import compute_checksum, get_file_timestamps
 from core.file_loader import load_documents
 from core.chunking import split_documents
 from core.opensearch_store import index_documents, is_file_up_to_date
 from core.vector_store import index_chunks
+from core.embedding_tasks import embed_and_index_chunks
 from tracing import (
     start_span,
     TOOL,
@@ -51,7 +52,7 @@ def ingest_file(path: str, total_files: int = 1) -> Dict[str, Any]:
     chunks = split_documents(docs)
     if not chunks:
         logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
-        return {"success": False, "status": "Chunking failed", "path": normalized_path}
+        return {"success": False, "status": "No valid content found", "path": normalized_path}
 
     logger.info(f"🧩 Split into {len(chunks)} chunks")
 
@@ -92,6 +93,14 @@ def ingest_file(path: str, total_files: int = 1) -> Dict[str, Any]:
                 f"Skipping embedding for {len(chunks)} chunks from {normalized_path} due to threshold."
             )
             status_message = "Partially indexed - embedding will run in the background"
+            print(
+                f"📣 Sending task to Celery with broker: {embed_and_index_chunks.app.conf.broker_url}"
+            )
+
+            for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
+                batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
+                embed_and_index_chunks.delay(chunks=batch)
+
         else:
             logger.info(f"Embedding {len(chunks)} chunks from {normalized_path}.")
             index_chunks(chunks)

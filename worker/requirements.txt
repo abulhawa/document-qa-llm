@@ -1,0 +1,6 @@
+celery>=5.5
+redis>=6.3
+qdrant-client>=1.15
+requests>=2.32
+opensearch-py>=3.0
+arize-phoenix-otel

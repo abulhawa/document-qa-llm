@@ -66,12 +66,43 @@ services:
     depends_on:
       - opensearch
 
+  redis:
+    image: redis:8.2.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  celery:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - EMBEDDING_API_URL=http://embedder-api:8000/embed
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - .:/app
+      - celery_worker_logs:/app/logs
+
+  flower:
+      image: mher/flower:latest
+      depends_on:
+        - redis
+      environment:
+        - CELERY_BROKER_URL=redis://redis:6379/0
+      ports:
+        - "5555:5555"
     
 volumes:
   qdrant_data:
   phoenix_data:
   opensearch-data:
   hf_cache:
+  celery_worker_logs:
+  redis-data:
 
 networks:
   opensearch-net:
