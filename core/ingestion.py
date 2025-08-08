@@ -20,13 +20,6 @@ from core.chunking import split_documents
 from core.opensearch_store import index_documents, is_file_up_to_date
 from core.vector_store import index_chunks
 from core.embedding_tasks import embed_and_index_chunks
-from tracing import (
-    start_span,
-    TOOL,
-    INPUT_VALUE,
-    OUTPUT_VALUE,
-    record_span_error,
-)
 
 # --- Concurrency from config.py ---
 MAX_WORKERS: int = INGEST_MAX_WORKERS
@@ -93,7 +86,11 @@ def ingest_one(
 
     if not chunks:
         logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
-        return {"success": False, "status": "No valid content found", "path": normalized_path}
+        return {
+            "success": False,
+            "status": "No valid content found",
+            "path": normalized_path,
+        }
 
     logger.info(f"🧩 Split into {len(chunks)} chunks")
 
@@ -119,7 +116,10 @@ def ingest_one(
         try:
             from utils.opensearch_utils import delete_files_by_checksum
             from utils.qdrant_utils import delete_vectors_by_checksum
-            logger.info(f"♻️ Reingest replace: deleting existing docs/vectors for checksum={checksum}")
+
+            logger.info(
+                f"♻️ Reingest replace: deleting existing docs/vectors for checksum={checksum}"
+            )
             try:
                 delete_files_by_checksum([checksum])
             except Exception as e:
@@ -211,40 +211,40 @@ def ingest(
     completed = 0
     failures = 0
 
-    with start_span("ingest.batch", TOOL) as span:
-        # Thread pool for parallel ingestion
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            future_to_path = {
-                executor.submit(ingest_one, f, force=force, replace=replace, total_files=total): f
-                for f in doc_files
-            }
-            for future in as_completed(future_to_path):
-                p = future_to_path[future]
+    # Thread pool for parallel ingestion
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_path = {
+            executor.submit(
+                ingest_one, f, force=force, replace=replace, total_files=total
+            ): f
+            for f in doc_files
+        }
+        for future in as_completed(future_to_path):
+            p = future_to_path[future]
+            try:
+                result = future.result()
+            except Exception as e:
+                failures += 1
+                logger.exception(f"❌ Ingestion failed for {p}: {e}")
+                result = {"success": False, "status": str(e), "path": p}
+            results.append(result)
+            completed += 1
+
+            # Circuit breaker: stop early on many failures
+            if MAX_FAILURES and failures >= MAX_FAILURES:
+                logger.error(
+                    f"⛔ Circuit breaker tripped: {failures} failures (limit {MAX_FAILURES}). Stopping early."
+                )
+                # Try to cancel any remaining futures
+                for f in future_to_path.keys():
+                    f.cancel()
+                break
+
+            if progress_callback:
+                elapsed = time.time() - start_time
                 try:
-                    result = future.result()
+                    progress_callback(completed, total, elapsed)
                 except Exception as e:
-                    failures += 1
-                    logger.exception(f"❌ Ingestion failed for {p}: {e}")
-                    record_span_error(span, e)
-                    result = {"success": False, "status": str(e), "path": p}
-                results.append(result)
-                completed += 1
-
-                # Circuit breaker: stop early on many failures
-                if MAX_FAILURES and failures >= MAX_FAILURES:
-                    logger.error(
-                        f"⛔ Circuit breaker tripped: {failures} failures (limit {MAX_FAILURES}). Stopping early."
-                    )
-                    # Try to cancel any remaining futures
-                    for f in future_to_path.keys():
-                        f.cancel()
-                    break
-
-                if progress_callback:
-                    elapsed = time.time() - start_time
-                    try:
-                        progress_callback(completed, total, elapsed)
-                    except Exception as e:
-                        logger.warning(f"Progress callback failed: {e}")
+                    logger.warning(f"Progress callback failed: {e}")
 
     return results
