@@ -2,12 +2,38 @@ import os
 import logging
 from logging import Logger
 
+
+# ───────────────────────────────────────
+# ⚙️ Ingestion Concurrency & Limits
+# ───────────────────────────────────────
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)).strip())
+    except Exception:
+        return default
+
+def _env_bool(name: str, default: bool) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+# New ingestion controls
+INGEST_MAX_WORKERS = _env_int("INGEST_MAX_WORKERS", 8)
+INGEST_IO_CONCURRENCY = _env_int("INGEST_IO_CONCURRENCY", INGEST_MAX_WORKERS)
+INGEST_MAX_FAILURES = _env_int("INGEST_MAX_FAILURES", 10)
+
+# Optional: tune delete batching / timeouts used by utils (only if you want central control)
+OPENSEARCH_DELETE_BATCH = _env_int("OPENSEARCH_DELETE_BATCH", 1024)
+QDRANT_DELETE_BATCH = _env_int("QDRANT_DELETE_BATCH", 64)
+OPENSEARCH_REQUEST_TIMEOUT = _env_int("OPENSEARCH_REQUEST_TIMEOUT", 60)
+
 # ───────────────────────────────────────
 # 🔠 Embedding & Chunking
 # ───────────────────────────────────────
 EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL", "http://localhost:8000/embed")
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-base"
-EMBEDDING_BATCH_SIZE = 32
+EMBEDDING_BATCH_SIZE = _env_int("EMBEDDING_BATCH_SIZE", 32)
 EMBEDDING_SIZE = 768
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 50
