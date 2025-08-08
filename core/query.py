@@ -65,8 +65,10 @@ def answer_question(
     with start_span("Retriever", RETRIEVER) as span:
         try:
             span.set_attribute(INPUT_VALUE, rewritten_query)
+            top_results = retrieve_hybrid(
+                rewritten_query, top_k_each=20, final_k=top_k
+            )
             span.set_attribute("top_k", top_k)
-            top_results = retrieve_hybrid(rewritten_query, top_k_each=20, final_k=5)
             span.set_attribute("results_found", len(top_results))
 
             retrieved_summary = [
