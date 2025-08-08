@@ -152,7 +152,6 @@ def ingest_one(
             )
             for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
                 batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
-                # Consider adding task retry/backoff/acks_late in the Celery task decorator
                 embed_and_index_chunks.delay(chunks=batch)
             status_message = "Partially indexed - embedding will run in the background"
         else:

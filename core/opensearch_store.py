@@ -1,13 +1,13 @@
 from typing import List, Dict, Any
 from opensearchpy import OpenSearch, helpers, exceptions
-from config import OPENSEARCH_HOST, OPENSEARCH_PORT, logger
+from config import OPENSEARCH_URL, logger
 from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 
 # Define your index name
 INDEX_NAME = "documents"
 
 # Set up the OpenSearch client
-client = OpenSearch(hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}])
+client = OpenSearch(hosts=[OPENSEARCH_URL])
 
 # Analyzer/mapping config (optional: can also be created manually in advance)
 INDEX_SETTINGS = {
