@@ -4,7 +4,7 @@ import time
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Callable, Optional
+from typing import List, Dict, Any, Callable, Optional, Iterable, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import (
@@ -176,21 +176,30 @@ def ingest_one(
 
 
 def ingest(
-    inputs: List[str],
+    inputs: Union[str, Iterable[str]],
     *,
     expand_dirs: bool = True,
     force: bool = False,
     replace: bool = True,
     progress_callback: Optional[Callable[[int, int, float], None]] = None,
 ) -> List[Dict[str, Any]]:
-    """Ingest a list of file paths and/or directories.
+    """Ingest one or more file paths and/or directories.
 
-    - If expand_dirs=True, directories are traversed for .pdf/.docx/.txt files.
-    - Reingestion is controlled by force/replace flags.
+    ``inputs`` may be a single string path or any iterable of paths. If
+    ``expand_dirs`` is True, any directories will be walked for supported
+    document types. Reingestion is controlled by the ``force`` and
+    ``replace`` flags.
     """
-    # Expand inputs
+
+    # Normalise inputs to a list for easier processing
+    if isinstance(inputs, (str, os.PathLike)):
+        iter_inputs = [inputs]
+    else:
+        iter_inputs = list(inputs)
+
+    # Expand inputs into concrete document files
     doc_files: List[str] = []
-    for p in inputs:
+    for p in iter_inputs:
         if os.path.isfile(p) and p.lower().endswith((".pdf", ".docx", ".txt")):
             doc_files.append(p)
         elif expand_dirs and os.path.isdir(p):

@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from core.ingest import ingest
+from core.ingestion import ingest
 
 # Test a local file
 print("Testing file ingestion...")
