@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["celery", "-A", "worker.celery_worker", "worker", "--loglevel=info", "--hostname=celery@%h"]
+CMD ["celery", "-A", "worker.celery_worker", "worker", "--loglevel=info", "--hostname=celery@%h", "--prefetch-multiplier=1"]
