@@ -1,5 +1,5 @@
 from qdrant_client import QdrantClient, models
-from config import QDRANT_URL, QDRANT_COLLECTION
+from config import QDRANT_URL, QDRANT_COLLECTION, logger
 from typing import Optional
 
 client = QdrantClient(url=QDRANT_URL)
@@ -23,11 +23,13 @@ def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
         )
         return result.count
     except Exception as e:
-        print(f"❌ Qdrant count error for checksum={checksum}: {e}")
+        logger.error("❌ Qdrant count error for checksum=%s: %s", checksum, e)
         return None
 
 
 from typing import Iterable
+
+
 def delete_vectors_by_checksum(checksum: str) -> None:
     """Delete all vectors in Qdrant for a given checksum."""
     try:
@@ -44,7 +46,7 @@ def delete_vectors_by_checksum(checksum: str) -> None:
             ),
         )
     except Exception as e:
-        print(f"❌ Qdrant delete error for checksum={checksum}: {e}")
+        logger.error("❌ Qdrant delete error for checksum=%s: %s", checksum, e)
 
 
 def delete_vectors_many_by_checksum(checksums: Iterable[str]) -> None:
@@ -67,4 +69,6 @@ def delete_vectors_many_by_checksum(checksums: Iterable[str]) -> None:
                 ),
             )
         except Exception as e:
-            print(f"❌ Qdrant batch delete error for {len(part)} checksum(s): {e}")
+            logger.error(
+                "❌ Qdrant batch delete error for %d checksum(s): %s", len(part), e
+            )
