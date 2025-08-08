@@ -12,11 +12,13 @@ def _env_int(name: str, default: int) -> int:
     except Exception:
         return default
 
+
 def _env_bool(name: str, default: bool) -> bool:
     v = os.getenv(name)
     if v is None:
         return default
     return v.strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 # New ingestion controls
 INGEST_MAX_WORKERS = _env_int("INGEST_MAX_WORKERS", 8)
@@ -48,9 +50,7 @@ CHUNK_SCORE_THRESHOLD = 0.75
 # ───────────────────────────────────────
 # 🔍 OPENSEARCH
 # ───────────────────────────────────────
-OPENSEARCH_HOST = "localhost"
-OPENSEARCH_PORT = 9200
-
+OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
 
 # ───────────────────────────────────────
 # 🧠 LLM API (text-generation-webui)

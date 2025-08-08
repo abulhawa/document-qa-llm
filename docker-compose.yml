@@ -5,6 +5,7 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    networks: [appnet]
 
   embedder-api:
     build:
@@ -21,6 +22,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    networks: [appnet]
 
   phoenix:
     image: arizephoenix/phoenix:latest
@@ -31,6 +33,7 @@ services:
       - phoenix_data:/root/.phoenix
     environment:
       - PHOENIX_SERVER_PORT=6006
+    networks: [appnet]
 
   opensearch:
     image: opensearchproject/opensearch:3.1.0
@@ -38,8 +41,8 @@ services:
       - discovery.type=single-node
       - bootstrap.memory_lock=true
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
-      - DISABLE_INSTALL_DEMO_CONFIG=true # Prevents execution of bundled demo script which installs demo certificates and security configurations to OpenSearch
-      - DISABLE_SECURITY_PLUGIN=true # Disables Security plugin
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
     ulimits:
       memlock:
         soft: -1
@@ -49,8 +52,7 @@ services:
     ports:
       - "9200:9200"
       - "9600:9600"
-    networks:
-      - opensearch-net
+    networks: [appnet]
 
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:3.1.0
@@ -61,10 +63,9 @@ services:
       - "5601:5601"
     expose:
       - "5601"
-    networks:
-      - opensearch-net
     depends_on:
       - opensearch
+    networks: [appnet]
 
   redis:
     image: redis:8.2.0-alpine
@@ -72,6 +73,7 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    networks: [appnet]
 
   celery:
     build:
@@ -79,23 +81,29 @@ services:
       dockerfile: worker/Dockerfile
     depends_on:
       - redis
+      - opensearch
+      - qdrant
+      - embedder-api
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - EMBEDDING_API_URL=http://embedder-api:8000/embed
       - QDRANT_URL=http://qdrant:6333
+      - OPENSEARCH_URL=http://opensearch:9200
     volumes:
       - .:/app
       - celery_worker_logs:/app/logs
+    networks: [appnet]
 
   flower:
-      image: mher/flower:latest
-      depends_on:
-        - redis
-      environment:
-        - CELERY_BROKER_URL=redis://redis:6379/0
-      ports:
-        - "5555:5555"
-    
+    image: mher/flower:latest
+    depends_on:
+      - redis
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    networks: [appnet]
+
 volumes:
   qdrant_data:
   phoenix_data:
@@ -105,4 +113,4 @@ volumes:
   redis-data:
 
 networks:
-  opensearch-net:
+  appnet: {}
