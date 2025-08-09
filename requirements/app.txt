@@ -1,0 +1,5 @@
+-r shared.txt
+
+# App-only
+streamlit>=1.46,<2
+arize-phoenix-otel

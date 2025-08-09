@@ -1,0 +1,8 @@
+# Shared libraries (pinned to consistent minors)
+requests==2.32.*
+qdrant-client==1.14.*
+opensearch-py==3.*
+
+# Both app and worker use Celery client & Redis driver
+celery>=5.5,<6
+redis>=6,<7
