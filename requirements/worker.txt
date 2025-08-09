@@ -1,0 +1,10 @@
+-r shared.txt
+
+# Minimal LangChain split packages
+langchain-core==0.3.*
+langchain-community==0.3.*
+langchain-text-splitters==0.3.*
+
+# Loader backends actually used by file_loader.py
+pypdf>=5,<6
+docx2txt>=0.9,<1.0
