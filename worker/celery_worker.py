@@ -9,4 +9,3 @@ app.config_from_object("config")
 # Autodiscover tasks from your main project
 app.autodiscover_tasks(["core"], related_name="embedding_tasks")
 app.autodiscover_tasks(["core"], related_name="ingestion_tasks")
-
