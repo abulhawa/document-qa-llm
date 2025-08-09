@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional, Tuple
-from core.opensearch_store import client, INDEX_NAME
+from core.opensearch_store import client, get_client, INDEX_NAME
 from typing import Iterable
 from opensearchpy import exceptions
 from config import OPENSEARCH_DELETE_BATCH, OPENSEARCH_REQUEST_TIMEOUT, logger
@@ -177,6 +177,7 @@ def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
         ops.append({"update": {"_index": INDEX_NAME, "_id": doc_id}})
         ops.append({"doc": {"has_embedding": True}})
 
+    client = get_client()
     resp = client.bulk(
         body=ops,
         params={"refresh": "true", "timeout": OPENSEARCH_REQUEST_TIMEOUT},
