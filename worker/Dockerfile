@@ -2,11 +2,11 @@ FROM python:3.13-slim
 
 # Set working directory
 WORKDIR /app
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-COPY worker/requirements.txt requirements.txt
+COPY requirements/shared.txt requirements/worker.txt /tmp/req/
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r /tmp/req/worker.txt
 
 COPY . .
 
