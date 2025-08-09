@@ -6,8 +6,18 @@ from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 # Define your index name
 INDEX_NAME = "documents"
 
-# Set up the OpenSearch client
-client = OpenSearch(hosts=[OPENSEARCH_URL])
+
+_client = None
+
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = OpenSearch(hosts=[OPENSEARCH_URL])
+    return _client
+
+
+client = get_client()
 
 # Analyzer/mapping config (optional: can also be created manually in advance)
 INDEX_SETTINGS = {
@@ -40,6 +50,7 @@ INDEX_SETTINGS = {
 
 
 def ensure_index_exists():
+    client = get_client()
     if not client.indices.exists(index=INDEX_NAME):
         logger.info(f"Creating OpenSearch index: {INDEX_NAME}")
         client.indices.create(index=INDEX_NAME, body=INDEX_SETTINGS)
@@ -48,6 +59,7 @@ def ensure_index_exists():
 def index_documents(chunks: List[Dict[str, Any]]) -> None:
     """Index a list of chunks into OpenSearch."""
 
+    client = get_client()
     ensure_index_exists()
     actions = [
         {
@@ -70,6 +82,7 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         span.set_attribute(INPUT_VALUE, query)
         span.set_attribute("top_k", top_k)
 
+        client = get_client()
         response = client.search(
             index=INDEX_NAME,
             body={
@@ -110,6 +123,7 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
 def is_file_up_to_date(checksum: str) -> bool:
     """Check if a file with the given checksum is already indexed."""
     try:
+        client = get_client()
         response = client.count(
             index=INDEX_NAME,
             body={"query": {"term": {"checksum": checksum}}},
