@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Callable, Optional, Iterable, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from worker.celery_worker import app as celery_app
 from config import (
     logger,
     EMBEDDING_BATCH_SIZE,
@@ -17,16 +17,30 @@ from config import (
 from utils.file_utils import compute_checksum, get_file_timestamps
 from core.file_loader import load_documents
 from core.chunking import split_documents
-from core.opensearch_store import index_documents, is_file_up_to_date
-from core.vector_store import index_chunks
-from core.embedding_tasks import embed_and_index_chunks
+
+# State checks & local indexing helpers
+from utils.opensearch_utils import (
+    is_file_up_to_date,
+    index_documents,
+    set_has_embedding_true_by_ids,
+)
+
+# Local embedding + Qdrant upsert (used for SMALL files)
+from utils import qdrant_utils
+
+# Celery task that performs OS index + embed + Qdrant + flag flip (used for LARGE files)
+from core.ingestion_tasks import index_and_embed_chunks
+
 
 # --- Concurrency from config.py ---
 MAX_WORKERS: int = INGEST_MAX_WORKERS
 IO_CONCURRENCY: int = INGEST_IO_CONCURRENCY
 MAX_FAILURES: int = INGEST_MAX_FAILURES
+
+# Size heuristics (unchanged behavior)
 MAX_FILES_FOR_FULL_EMBEDDING = 15
 CHUNK_EMBEDDING_THRESHOLD = 60
+
 # IO semaphore to limit simultaneous file reads (helps avoid too many open files)
 _io_semaphore = threading.Semaphore(IO_CONCURRENCY)
 
@@ -47,22 +61,25 @@ def ingest_one(
     replace: bool = True,
     total_files: int = 1,
 ) -> Dict[str, Any]:
-    """Ingest a single file path. Optionally force reingestion and replace existing data.
+    """
+    Ingest a single file path:
+      1) load + split locally
+      2) build chunk metadata (UUIDv5 ids)
+      3) SMALL files  -> do ALL locally (OS + embed + Qdrant + flag flip)
+         LARGE files  -> queue ALL to Celery (OS + embed + Qdrant + flag flip)
 
-    Returns a result dict with keys: success, status, path, (optional) num_chunks.
+    Returns:
+      dict with keys: success, status, path, and optionally num_chunks, batches
     """
     logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = os.path.normpath(path).replace("\\", "/")
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
     checksum = compute_checksum(normalized_path)
 
+    # Skip if already indexed and unchanged (based on OS state)
     if not force and is_file_up_to_date(checksum):
         logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
-        return {
-            "success": False,
-            "status": "Already indexed",
-            "path": normalized_path,
-        }
+        return {"success": False, "status": "Already indexed", "path": normalized_path}
 
     timestamps = get_file_timestamps(normalized_path)
     created = timestamps.get("created")
@@ -94,10 +111,7 @@ def ingest_one(
 
     logger.info(f"🧩 Split into {len(chunks)} chunks")
 
-    skip_embedding = len(chunks) > CHUNK_EMBEDDING_THRESHOLD or (
-        total_files > MAX_FILES_FOR_FULL_EMBEDDING and len(chunks) > 30
-    )
-
+    # Build per-chunk metadata; UUIDv5 id works for both OS and Qdrant
     for i, chunk in enumerate(chunks):
         chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{checksum}-{i}"))
         chunk["chunk_index"] = i
@@ -108,10 +122,12 @@ def ingest_one(
         chunk["created_at"] = created
         chunk["modified_at"] = modified
         chunk["page"] = chunk.get("page", None)
-        chunk["location_percent"] = round((i / len(chunks)) * 100)
-        chunk["has_embedding"] = not skip_embedding
+        # position approx. (0..100)
+        chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)
+        # Celery will flip this after embedding
+        chunk["has_embedding"] = False
 
-    # If reingestion is forced and replace=True, clear existing index entries for this checksum first
+    # Optional: on force+replace, purge existing entries
     if force and replace:
         try:
             from utils.opensearch_utils import delete_files_by_checksum
@@ -131,48 +147,71 @@ def ingest_one(
         except Exception as e:
             logger.warning(f"Pre-delete imports failed: {e}")
 
-    logger.info(f"Indexing {len(chunks)} chunks to OpenSearch for: {normalized_path}")
-    try:
-        index_documents(chunks)
-    except Exception as e:
-        logger.error(f"❌ Failed to index document in OpenSearch: {e}")
-        return {
-            "success": False,
-            "status": "OpenSearch indexing failed",
-            "path": normalized_path,
-        }
+    # Decide small vs large (same thresholds as before)
+    skip_embedding = len(chunks) > CHUNK_EMBEDDING_THRESHOLD or (
+        total_files > MAX_FILES_FOR_FULL_EMBEDDING and len(chunks) > 30
+    )
 
+    if not skip_embedding:
+        # SMALL file → do EVERYTHING locally
+        try:
+            logger.info(f"Indexing {len(chunks)} chunks to OpenSearch (small file).")
+            index_documents(chunks)
+
+            logger.info(f"Embedding + upserting {len(chunks)} chunks locally.")
+            ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
+            if not ok:
+                raise RuntimeError("Qdrant upsert returned falsy")
+
+            ids = [c["id"] for c in chunks]
+            updated, _errs = set_has_embedding_true_by_ids(ids)
+
+            return {
+                "success": True,
+                "num_chunks": len(chunks),
+                "batches": 0,
+                "path": normalized_path,
+                "status": "Successfully indexed",
+            }
+        except Exception as e:
+            logger.error(f"❌ Local pipeline failed: {e}")
+            return {
+                "success": False,
+                "status": "Local indexing failed",
+                "path": normalized_path,
+                "num_chunks": len(chunks),
+            }
+
+    # LARGE file → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
+    batches = 0
     try:
-        if skip_embedding:
-            logger.info(
-                f"📦 Large batch detected — deferring embedding of {len(chunks)} chunks to Celery (batch size {EMBEDDING_BATCH_SIZE})."
+        logger.info(
+            f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
+            f"in batches of {EMBEDDING_BATCH_SIZE}."
+        )
+        for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
+            batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
+            celery_app.send_task(
+                "core.ingestion_tasks.index_and_embed_chunks",
+                args=[batch],
             )
-            print(
-                f"📣 Sending task to Celery with broker: {embed_and_index_chunks.app.conf.broker_url}"
-            )
-            for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
-                batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
-                embed_and_index_chunks.delay(chunks=batch)
-            status_message = "Partially indexed - embedding will run in the background"
-        else:
-            logger.info(f"Embedding {len(chunks)} chunks from {normalized_path}.")
-            index_chunks(chunks)
-            status_message = "Successfully indexed"
+            batches += 1
+
+        return {
+            "success": True,
+            "num_chunks": len(chunks),
+            "batches": batches,
+            "path": normalized_path,
+            "status": "Partially indexed — background worker will finish",
+        }
     except Exception as e:
-        logger.error(f"❌ Failed to embed chunks: {e}")
+        logger.error(f"❌ Failed to enqueue background tasks: {e}")
         return {
             "success": False,
-            "status": "Indexed, but embedding failed",
+            "status": "Queueing failed",
             "path": normalized_path,
             "num_chunks": len(chunks),
         }
-
-    return {
-        "success": True,
-        "num_chunks": len(chunks),
-        "path": normalized_path,
-        "status": status_message,
-    }
 
 
 def ingest(
@@ -183,21 +222,19 @@ def ingest(
     replace: bool = True,
     progress_callback: Optional[Callable[[int, int, float], None]] = None,
 ) -> List[Dict[str, Any]]:
-    """Ingest one or more file paths and/or directories.
-
-    ``inputs`` may be a single string path or any iterable of paths. If
-    ``expand_dirs`` is True, any directories will be walked for supported
-    document types. Reingestion is controlled by the ``force`` and
-    ``replace`` flags.
     """
+    Ingest one or more file paths and/or directories.
 
-    # Normalise inputs to a list for easier processing
+    `inputs` may be a single string path or any iterable of paths.
+    If `expand_dirs` is True, any directories will be walked for supported types.
+    """
+    # Normalize inputs to a list
     if isinstance(inputs, (str, os.PathLike)):
         iter_inputs = [inputs]
     else:
         iter_inputs = list(inputs)
 
-    # Expand inputs into concrete document files
+    # Expand into concrete files
     doc_files: List[str] = []
     for p in iter_inputs:
         if os.path.isfile(p) and p.lower().endswith((".pdf", ".docx", ".txt")):
@@ -238,12 +275,11 @@ def ingest(
             results.append(result)
             completed += 1
 
-            # Circuit breaker: stop early on many failures
+            # Circuit breaker on too many failures
             if MAX_FAILURES and failures >= MAX_FAILURES:
                 logger.error(
                     f"⛔ Circuit breaker tripped: {failures} failures (limit {MAX_FAILURES}). Stopping early."
                 )
-                # Try to cancel any remaining futures
                 for f in future_to_path.keys():
                     f.cancel()
                 break

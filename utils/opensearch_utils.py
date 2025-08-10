@@ -1,8 +1,70 @@
 from typing import List, Dict, Any, Optional, Tuple
-from core.opensearch_store import client, get_client, INDEX_NAME
+from core.opensearch_client import get_client
 from typing import Iterable
-from opensearchpy import exceptions
-from config import OPENSEARCH_DELETE_BATCH, OPENSEARCH_REQUEST_TIMEOUT, logger
+from opensearchpy import helpers, exceptions
+
+from config import (
+    OPENSEARCH_INDEX,
+    OPENSEARCH_DELETE_BATCH,
+    OPENSEARCH_REQUEST_TIMEOUT,
+    logger,
+)
+
+# Analyzer/mapping config (optional: can also be created manually in advance)
+INDEX_SETTINGS = {
+    "settings": {
+        "analysis": {
+            "analyzer": {
+                "custom_text_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "stop", "asciifolding"],
+                }
+            }
+        }
+    },
+    "mappings": {
+        "properties": {
+            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "path": {"type": "text"},
+            "chunk_index": {"type": "integer"},
+            "checksum": {"type": "keyword"},
+            "filetype": {"type": "keyword"},
+            "indexed_at": {"type": "date"},
+            "created_at": {"type": "date"},
+            "modified_at": {"type": "date"},
+            "page": {"type": "integer"},
+            "location_percent": {"type": "float"},
+        }
+    },
+}
+
+
+def ensure_index_exists():
+    client = get_client()
+    if not client.indices.exists(index=OPENSEARCH_INDEX):
+        logger.info(f"Creating OpenSearch index: {OPENSEARCH_INDEX}")
+        client.indices.create(index=OPENSEARCH_INDEX, body=INDEX_SETTINGS)
+
+
+def index_documents(chunks: List[Dict[str, Any]]) -> None:
+    """Index a list of chunks into OpenSearch."""
+
+    client = get_client()
+    ensure_index_exists()
+    actions = [
+        {
+            "_index": OPENSEARCH_INDEX,
+            "_id": chunk["id"],
+            "_source": {k: v for k, v in chunk.items() if k != "id"},
+        }
+        for chunk in chunks
+    ]
+    success_count, errors = helpers.bulk(client, actions)
+    if errors:
+        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+    else:
+        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
 
 
 def list_files_from_opensearch(
@@ -19,8 +81,9 @@ def list_files_from_opensearch(
     Returns:
         List of file metadata dicts
     """
+    client = get_client()
     response = client.search(
-        index=INDEX_NAME,
+        index=OPENSEARCH_INDEX,
         body={
             "size": 0,
             "aggs": {
@@ -75,6 +138,7 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     """Delete all OpenSearch docs that match any of the given checksums.
     Uses batched `terms` delete_by_query for speed. Returns total deleted count.
     """
+    client = get_client()
     total_deleted = 0
     unique = [c for c in {c for c in checksums if c}]
     if not unique:
@@ -87,7 +151,7 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
         batch = unique[i : i + CHUNK]
         try:
             resp = client.delete_by_query(
-                index=INDEX_NAME,
+                index=OPENSEARCH_INDEX,
                 body={"query": {"terms": {"checksum": batch}}},
                 params={
                     "refresh": "true",
@@ -114,6 +178,7 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
     """Return checksums that appear under more than one distinct path.
     Uses an aggregation over `checksum` with a cardinality sub-agg on `path`.
     """
+    client = get_client()
     try:
         body = {
             "size": 0,
@@ -126,7 +191,7 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
                 }
             },
         }
-        resp = client.search(index=INDEX_NAME, body=body)
+        resp = client.search(index=OPENSEARCH_INDEX, body=body)
         buckets = resp.get("aggregations", {}).get("by_checksum", {}).get("buckets", [])
         dups = [
             b["key"] for b in buckets if b.get("distinct_paths", {}).get("value", 0) > 1
@@ -148,7 +213,7 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
                     }
                 },
             }
-            resp = client.search(index=INDEX_NAME, body=body)
+            resp = client.search(index=OPENSEARCH_INDEX, body=body)
             buckets = (
                 resp.get("aggregations", {}).get("by_checksum", {}).get("buckets", [])
             )
@@ -174,7 +239,7 @@ def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
 
     ops = []
     for doc_id in ids:
-        ops.append({"update": {"_index": INDEX_NAME, "_id": doc_id}})
+        ops.append({"update": {"_index": OPENSEARCH_INDEX, "_id": doc_id}})
         ops.append({"doc": {"has_embedding": True}})
 
     client = get_client()
@@ -197,3 +262,17 @@ def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
         f"🔖 OpenSearch flip has_embedding: updated/noop={updated}, errors={errors}"
     )
     return updated, errors
+
+
+def is_file_up_to_date(checksum: str) -> bool:
+    """Check if a file with the given checksum is already indexed."""
+    try:
+        client = get_client()
+        response = client.count(
+            index=OPENSEARCH_INDEX,
+            body={"query": {"term": {"checksum": checksum}}},
+        )
+        return response.get("count", 0) > 0
+    except exceptions.OpenSearchException as e:
+        logger.warning(f"OpenSearch checksum check failed: {e}")
+        return False
