@@ -86,12 +86,12 @@ services:
       - embedder-api
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - EMBEDDING_API_URL=http://embedder-api:8000/embed
       - QDRANT_URL=http://qdrant:6333
       - OPENSEARCH_URL=http://opensearch:9200
     volumes:
       - .:/app
-      - celery_worker_logs:/app/logs
     networks: [appnet]
 
   flower:
