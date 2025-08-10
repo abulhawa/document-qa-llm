@@ -1,108 +1,82 @@
-from __future__ import annotations
-
-import os
-import time
-import uuid
-from datetime import datetime, timezone
-from typing import Iterable
-
-from celery import group
-
-from worker.celery_worker import app
-from core.file_loader import load_documents
-from core.chunking import split_documents
-from core.opensearch_store import index_documents
-from core.embedding_tasks import embed_and_index_chunks, LoggedTask
-from utils.file_utils import compute_checksum, get_file_timestamps
+from celery import shared_task
+from typing import List, Dict, Any
 from config import logger
+from utils.opensearch_utils import index_documents, set_has_embedding_true_by_ids
+from utils import qdrant_utils
 
 
-@app.task(
-    name="core.ingestion_tasks.ingest_paths",
+@shared_task(
+    name="core.ingestion_tasks.index_and_embed_chunks",
     bind=True,
-    base=LoggedTask,
-    acks_late=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_backoff_max=600,
-    retry_jitter=True,
     max_retries=3,
-    soft_time_limit=1800,
-    time_limit=2100,
+    default_retry_delay=10,
+    retry_backoff=True,
+    retry_backoff_max=60,
 )
-def ingest_paths(
-    self,
-    paths: Iterable[str],
-    force: bool = False,
-    replace: bool = False,
-    batch_size: int = 32,
-):
-    """Ingest one or more file paths and dispatch embedding jobs."""
-    t0 = time.perf_counter()
-    task_id = self.request.id
-    paths = list(paths)
-    total_files = len(paths)
-    logger.info(f"🚀 [Task {task_id}] ingesting {total_files} file(s)")
+def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    One Celery task per batch of chunks.
 
-    embed_jobs = []
+    Steps:
+      1) Index to OpenSearch (uses _id = chunk['id'])
+      2) Embed + upsert to Qdrant
+      3) Flip has_embedding=true in OpenSearch for those ids
 
+    Progress reporting (coarse, low overhead):
+      - state="PROGRESS", meta={"stage": "...", "progress": 0.33/0.66/0.95, "processed": n, "total": N}
+    """
+    if not chunks:
+        return {"ok": True, "indexed": 0, "upserted": 0, "flipped": 0}
+
+    total = len(chunks)
     try:
-        for idx, path in enumerate(paths):
-            file_start = time.perf_counter()
-            logger.info(f"📥 [Task {task_id}] processing {path}")
-            normalized = os.path.normpath(path).replace("\\", "/")
-            checksum = compute_checksum(normalized)
-            timestamps = get_file_timestamps(normalized)
+        # 1) Index to OpenSearch
+        index_documents(chunks)
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "indexed_os",
+                "progress": 0.33,
+                "processed": 0,
+                "total": total,
+            },
+        )
 
-            docs = load_documents(normalized)
-            chunks = split_documents(docs)
-            indexed_at = datetime.now(timezone.utc).isoformat()
+        # 2) Embed + upsert to Qdrant
+        ok = qdrant_utils.index_chunks(chunks)
+        if not ok:
+            raise RuntimeError("Qdrant upsert failed for batch")
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "upserted_qdrant",
+                "progress": 0.66,
+                "processed": total,
+                "total": total,
+            },
+        )
 
-            for i, chunk in enumerate(chunks):
-                chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{checksum}-{i}"))
-                chunk["chunk_index"] = i
-                chunk["path"] = normalized
-                chunk["checksum"] = checksum
-                chunk["indexed_at"] = indexed_at
-                chunk["created_at"] = timestamps.get("created")
-                chunk["modified_at"] = timestamps.get("modified")
-
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i : i + batch_size]
-                batch_start = time.perf_counter()
-                index_documents(batch)
-                batch_dt = time.perf_counter() - batch_start
-                logger.info(
-                    f"📝 [Task {task_id}] Indexed batch of {len(batch)} chunks in {batch_dt:.2f}s"
-                )
-                embed_jobs.append(embed_and_index_chunks.s(batch))
-
-            files_done = idx + 1
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "msg": f"Processed {normalized}",
-                    "files_done": files_done,
-                    "total_files": total_files,
-                    "queued_jobs": len(embed_jobs),
-                },
-            )
-            file_dt = time.perf_counter() - file_start
-            logger.info(f"🏁 [Task {task_id}] Finished {normalized} in {file_dt:.2f}s")
-
-        if embed_jobs:
-            group(embed_jobs).apply_async()
+        # 3) Flip OS flag
+        ids = [c["id"] for c in chunks if c.get("id")]
+        updated, errors = set_has_embedding_true_by_ids(ids)
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "stage": "flipped_flags",
+                "progress": 0.95,
+                "processed": total,
+                "total": total,
+            },
+        )
 
         return {
-            "status": "ok",
-            "files_done": total_files,
-            "queued_jobs": len(embed_jobs),
+            "ok": True,
+            "indexed": total,
+            "upserted": total,
+            "flipped": updated,
+            "flip_errors": errors,
         }
-    except Exception:
-        logger.warning("Transient failure in ingest_paths; will retry", exc_info=True)
-        raise
-    finally:
-        dt = time.perf_counter() - t0
-        logger.info(
-            f"🏁 [Task {task_id}] ingest_paths done in {dt:.2f}s (files={total_files})"
-        )
+
+    except Exception as e:
+        logger.exception("❌ index_and_embed_chunks failed: %s", e)
+        raise self.retry(exc=e)

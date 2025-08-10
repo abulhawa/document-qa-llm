@@ -1,15 +1,13 @@
 from typing import List, Dict, Any
+from utils.qdrant_utils import ensure_collection_exists
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
     PointStruct,
-    VectorParams,
-    Distance,
 )
 from config import (
     QDRANT_URL,
     QDRANT_COLLECTION,
     CHUNK_SCORE_THRESHOLD,
-    EMBEDDING_SIZE,
     logger,
 )
 from core.embeddings import embed_texts
@@ -25,49 +23,6 @@ from tracing import (
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
-
-
-def ensure_collection_exists() -> None:
-    collections = client.get_collections().collections
-    if QDRANT_COLLECTION in [c.name for c in collections]:
-        logger.info(f"Collection '{QDRANT_COLLECTION}' exists.")
-        return
-
-    logger.info(f"Creating collection '{QDRANT_COLLECTION}'...")
-    client.create_collection(
-        collection_name=QDRANT_COLLECTION,
-        vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
-    )
-    logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
-
-
-def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
-
-    ensure_collection_exists()
-
-    texts: List[str] = [chunk["text"] for chunk in chunks]
-    try:
-        embeddings = embed_texts(texts)
-    except Exception as e:
-        logger.error(f"Embedding failed: {e}")
-        return False
-
-    points = [
-        PointStruct(
-            id=chunk["id"],
-            vector=vector,
-            payload=chunk,
-        )
-        for vector, chunk in zip(embeddings, chunks)
-    ]
-
-    try:
-        client.upsert(collection_name=QDRANT_COLLECTION, points=points)
-        logger.info(f"✅ Indexed {len(points)} chunks.")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Indexing to Qdrant failed: {e}")
-        return False
 
 
 def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
