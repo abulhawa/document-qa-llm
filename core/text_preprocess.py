@@ -15,13 +15,6 @@ import math
 PAGE_OF_RE = re.compile(r"^\s*page\s+\d+(\s+of\s+\d+)?\s*$", re.IGNORECASE)
 STANDALONE_NUM_RE = re.compile(r"^\s*\d+\s*$")
 
-# Code tagging
-FENCED_CODE_RE = re.compile(r"```(.*?)```", re.DOTALL)
-INDENT_CODE_RE = re.compile(r"^\s{4,}")
-CODE_TOKENS_RE = re.compile(r"(;|\{|\}|#include|def\s|class\s|function\s|var\s|let\s)")
-# Code-fence line sentinel (for line-by-line scans)
-FENCE_LINE_RE = re.compile(r"^\s*```")
-
 # Table tagging (very light heuristics)
 TABLE_PIPE_RE = re.compile(r"\S\s*\|\s*\S")  # lines containing pipes with content
 TABLE_DASH_RE = re.compile(r"^\s*-{3,}\s*$")  # horizontal-rule-ish rows
@@ -79,7 +72,6 @@ class PreprocessConfig:
 
     # Tagging
     tag_tables: bool = True
-    tag_code: bool = True
 
     # Bullet / symbol-only cleanup
     clean_symbol_only_lines: bool = (
@@ -146,9 +138,6 @@ def preprocess_document(
 
         if cfg.tag_tables:
             t = _mark_table_blocks(t)
-
-        if cfg.tag_code:
-            t = _mark_code_blocks(t)
 
         if cfg.clean_symbol_only_lines:
             t = _clean_symbol_only_and_bullets(t)
@@ -436,12 +425,11 @@ def _should_apply_softwrap(doc_type: str, cfg: PreprocessConfig) -> bool:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Helpers: table / code tagging (light)
+# Helpers: table tagging (light)
 # ──────────────────────────────────────────────────────────────────────────────
 def _mark_table_blocks(text: str) -> str:
     """
     Safer table tagging:
-      • Skip inside code (``` fences or existing [CODE]…[/CODE]).
       • Require >=2 consecutive 'content' rows with consistent columns.
       • Support '|' or TAB-delimited rows.
       • Markdown dashed separators are allowed *inside* a block but don't count as content rows.
@@ -449,7 +437,6 @@ def _mark_table_blocks(text: str) -> str:
     lines = text.split("\n")
     out: List[str] = []
     i = 0
-    in_code = False
 
     def _pipe_cols(s: str) -> Optional[int]:
         # cheap checks before any split
@@ -471,22 +458,6 @@ def _mark_table_blocks(text: str) -> str:
     while i < len(lines):
         ln = lines[i]
 
-        # Track code regions to avoid tagging inside them
-        if ln.startswith("[CODE]") or FENCE_LINE_RE.match(ln):
-            in_code = True
-            out.append(ln)
-            i += 1
-            continue
-        if ln.startswith("[/CODE]") or (in_code and FENCE_LINE_RE.match(ln)):
-            in_code = False
-            out.append(ln)
-            i += 1
-            continue
-        if in_code:
-            out.append(ln)
-            i += 1
-            continue
-
         # Candidate row type?
         pipe_cols = _pipe_cols(ln)
         tab_cols = _tab_cols(ln)
@@ -506,15 +477,6 @@ def _mark_table_blocks(text: str) -> str:
         block: List[str] = []
         while j < len(lines):
             lnj = lines[j]
-
-            # Stop at code starts to avoid spanning into code
-            if (
-                lnj.startswith("[CODE]")
-                or lnj.startswith("[/CODE]")
-                or FENCE_LINE_RE.match(lnj)
-            ):
-                break
-
             if delim == "pipe":
                 cols = _pipe_cols(lnj)
                 if cols is None:
@@ -548,74 +510,6 @@ def _mark_table_blocks(text: str) -> str:
     return "\n".join(out)
 
 
-def _mark_code_blocks(text: str) -> str:
-    """
-    1) Convert fenced ``` blocks to [CODE]…[/CODE].
-    2) Then scan remaining lines for code-ish regions (indented/token-heavy),
-       without re-tagging inside existing [CODE] blocks.
-    """
-    t = FENCED_CODE_RE.sub(r"[CODE]\n\1\n[/CODE]", text)
-
-    lines = t.split("\n")
-    out: List[str] = []
-    in_code = False
-    in_table = False
-    i = 0
-    while i < len(lines):
-        ln = lines[i]
-
-        if ln.startswith("[CODE]"):
-            in_code = True
-            out.append(ln)
-            i += 1
-            continue
-        if ln.startswith("[/CODE]"):
-            in_code = False
-            out.append(ln)
-            i += 1
-            continue
-        if ln.startswith("[TABLE]"):
-            in_table = True
-            out.append(ln)
-            i += 1
-            continue
-        if ln.startswith("[/TABLE]"):
-            in_table = False
-            out.append(ln)
-            i += 1
-            continue
-
-        if in_code or in_table:
-            out.append(ln)
-            i += 1
-            continue
-
-        is_codeish = bool(INDENT_CODE_RE.search(ln)) or bool(CODE_TOKENS_RE.search(ln))
-        if is_codeish:
-            j = i
-            while j < len(lines):
-                lnj = lines[j]
-                if (
-                    lnj.startswith("[CODE]")
-                    or lnj.startswith("[/CODE]")
-                    or lnj.startswith("[TABLE]")
-                    or lnj.startswith("[/TABLE]")
-                ):
-                    break
-                if not (INDENT_CODE_RE.search(lnj) or CODE_TOKENS_RE.search(lnj)):
-                    break
-                j += 1
-            block = lines[i:j]
-            out.append("[CODE] " + "\n".join(block) + "\n[/CODE]")
-            i = j
-            continue
-
-        out.append(ln)
-        i += 1
-
-    return "\n".join(out)
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers: final whitespace cleanup
 # ──────────────────────────────────────────────────────────────────────────────
@@ -627,27 +521,16 @@ def _clean_symbol_only_and_bullets(text: str) -> str:
       - If a line is symbol-only and contains a bullet, and the next non-blank line exists and has text,
         merge: "<bullet> <next line>".
       - If a line is symbol-only without a following text line, drop it (or turn into a blank to preserve spacing).
-      - Skip entirely inside [CODE]/[TABLE] blocks.
+      - Skip entirely inside [TABLE] blocks.
     """
     lines = text.split("\n")
     out: list[str] = []
     i = 0
-    in_code = False
     in_table = False
     while i < len(lines):
         ln = lines[i]
 
         # Track explicit blocks to avoid touching their contents
-        if ln.startswith("[CODE]"):
-            in_code = True
-            out.append(ln)
-            i += 1
-            continue
-        if ln.startswith("[/CODE]"):
-            in_code = False
-            out.append(ln)
-            i += 1
-            continue
         if ln.startswith("[TABLE]"):
             in_table = True
             out.append(ln)
@@ -658,12 +541,12 @@ def _clean_symbol_only_and_bullets(text: str) -> str:
             out.append(ln)
             i += 1
             continue
-        if in_code or in_table:
+        if in_table:
             out.append(ln)
             i += 1
             continue
 
-        # Only consider symbol-only lines outside code/table
+        # Only consider symbol-only lines outside table
         if SYMBOL_ONLY_RE.match(ln):
             # If this line contains any bullet glyph, try to merge with the *next* non-blank line (lookahead=1)
             if any(ch in BULLET_GLYPHS for ch in ln):
@@ -716,11 +599,6 @@ def _run_smoke_tests() -> None:  # pragma: no cover
     page2 = "My Report\nACME Inc.\nPage 2 of 10\n\nFurther details."
     txt2, _ = preprocess_document([page2], cfg, doc_type="pdf")
     assert "Page 2 of 10" not in txt2
-
-    # Code tagging: fenced + indented
-    page3 = "text\n```\ndef hello():\n    print('x')\n```\n    def foo():\n        pass\nend"
-    txt3, _ = preprocess_document([page3], cfg, doc_type="pdf")
-    assert "[CODE]" in txt3 and "[/CODE]" in txt3
 
     # Soft wrap: join lowercase-starting continuation
     page4 = "This is a line\nthat continues on next.\nBut This is new."
