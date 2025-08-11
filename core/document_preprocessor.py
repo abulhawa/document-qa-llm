@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Iterable, List, Dict
-from core.text_preprocess import preprocess_document, PreprocessConfig
+from core.preprocessing import preprocess_document, PreprocessConfig
 from langchain_core.documents import Document
 
 

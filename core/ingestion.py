@@ -5,7 +5,8 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Callable, Optional, Iterable, Union
-from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
+from core.document_preprocessor import preprocess_to_documents
+from core.preprocessing import PreprocessConfig
 from core.file_loader import load_documents
 from core.chunking import split_documents
 from concurrent.futures import ThreadPoolExecutor, as_completed
