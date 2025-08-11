@@ -153,7 +153,6 @@ def ask_llm(
 
 def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
     """Check if LLM server is online and a model is loaded.
-
     Returns:
         Dict with keys:
             - server_online: bool
@@ -162,7 +161,6 @@ def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
             - status_message: str
             - active: bool (server and model are ready)
     """
-    span = get_current_span()
     result = {
         "server_online": False,
         "model_loaded": False,
@@ -170,9 +168,6 @@ def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
         "status_message": "LLM server is offline!",
         "active": False,
     }
-
-    span.set_attribute("llm.check.timeout", timeout)
-
     try:
         resp = requests.get(LLM_MODEL_INFO_ENDPOINT, timeout=timeout)
         if resp.status_code == 200:
@@ -187,17 +182,6 @@ def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
                 result["model_loaded"] = True
                 result["status_message"] = "LLM is ready!"
                 result["active"] = True
-        else:
-            span.set_attribute("llm.check.bad_status", resp.status_code)
-
     except requests.RequestException as e:
         logger.warning(f"LLM server unreachable: {e}")
-        record_span_error(span, e)
-
-    # Trace the result
-    span.set_attribute("llm.server_online", result["server_online"])
-    span.set_attribute("llm.model_loaded", result["model_loaded"])
-    span.set_attribute("llm.model_name", result["current_model"] or "None")
-    span.set_attribute(OUTPUT_VALUE, json.dumps(result))
-
     return result
