@@ -118,7 +118,7 @@ The system is built from modular, testable components:
 3. **Launch the Streamlit app**
 
    ```bash
-   streamlit run app.py
+   streamlit run main.py
    ```
 
 ---
