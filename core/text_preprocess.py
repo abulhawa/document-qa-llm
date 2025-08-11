@@ -6,31 +6,6 @@ import re
 import unicodedata
 import ftfy
 import math
-from tracing import start_span, TOOL
-from hashlib import blake2s
-
-TRACE_ONLY_ON_CHANGE: bool = True
-
-
-def _maybe_trace_step(step: str, before: str, after: str, **attrs) -> str:
-    """Emit a span only when output differs from input."""
-    if TRACE_ONLY_ON_CHANGE and before == after:
-        return after
-    with start_span(f"preprocess.{step}", kind=TOOL) as span:
-        try:
-            pre_h = blake2s(before.encode("utf-8"), digest_size=8).hexdigest()
-            post_h = blake2s(after.encode("utf-8"), digest_size=8).hexdigest()
-            span.set_attribute("pre.len", len(before))
-            span.set_attribute("post.len", len(after))
-            span.set_attribute("delta.len", len(after) - len(before))
-            span.set_attribute("pre.hash8", pre_h)
-            span.set_attribute("post.hash8", post_h)
-            for k, v in attrs.items():
-                span.set_attribute(k, v)
-        except Exception:
-            # Never let tracing break preprocessing
-            pass
-    return after
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -133,8 +108,7 @@ def preprocess_document(
     # 1) Normalize each page early (ftfy + Unicode)
     norm_pages = []
     for i, p in enumerate(pages):
-        before, t = p, _normalize_text(p, cfg)
-        t = _maybe_trace_step("normalize", before, t, page=i + 1)
+        t = _normalize_text(p, cfg)
         norm_pages.append(t)
 
     # 2) Optionally detect repeating headers/footers across pages
@@ -152,44 +126,34 @@ def preprocess_document(
 
         # Remove repeating headers/footers (exact match policy)
         if cfg.remove_headers_footers and (headers_to_drop or footers_to_drop):
-            before, t = t, _strip_headers_footers(
+            t = _strip_headers_footers(
                 t,
                 headers_to_drop,
                 footers_to_drop,
                 cfg.header_footer_lines_top,
                 cfg.header_footer_lines_bottom,
             )
-            t = _maybe_trace_step("hdrftr", before, t, page=idx)
 
         if cfg.remove_page_artifacts:
-            before, t = t, _strip_page_artifacts(t, cfg)
-            t = _maybe_trace_step("page_artifacts", before, t, page=idx)
+            t = _strip_page_artifacts(t, cfg)
 
         # Hyphenation + soft wraps typically only needed for PDFs
         if _should_apply_hyphenation(doc_type, cfg):
-            before, t = t, _join_hyphenated_linebreaks(t, cfg)
-            t = _maybe_trace_step(
-                "hyphenation", before, t, page=idx, strategy=cfg.hyphenation_strategy
-            )
+            t = _join_hyphenated_linebreaks(t, cfg)
 
         if _should_apply_softwrap(doc_type, cfg):
-            before, t = t, _repair_soft_wraps(t)
-            t = _maybe_trace_step("softwrap", before, t, page=idx)
+            t = _repair_soft_wraps(t)
 
         if cfg.tag_tables:
-            before, t = t, _mark_table_blocks(t)
-            t = _maybe_trace_step("tables", before, t, page=idx)
+            t = _mark_table_blocks(t)
 
         if cfg.tag_code:
-            before, t = t, _mark_code_blocks(t)
-            t = _maybe_trace_step("code", before, t, page=idx)
+            t = _mark_code_blocks(t)
 
         if cfg.clean_symbol_only_lines:
-            before, t = t, _clean_symbol_only_and_bullets(t)
-            t = _maybe_trace_step("symbols", before, t, page=idx)
+            t = _clean_symbol_only_and_bullets(t)
 
-        before, t = t, _final_whitespace_cleanup(t)
-        t = _maybe_trace_step("whitespace", before, t, page=idx)
+        t = _final_whitespace_cleanup(t)
 
         out_pages.append(t)
 
@@ -572,7 +536,7 @@ def _mark_table_blocks(text: str) -> str:
                 block.append(lnj)
                 j += 1
 
-        # Only tag if we’re confident: ≥2 content rows
+        # Only tag if we are confident: ≥2 content rows
         if content_rows >= 2:
             out.append("[TABLE]\n" + "\n".join(block) + "\n[/TABLE]")
             i = j

@@ -88,6 +88,7 @@ def ingest_one(
         logger.error(f"❌ Failed to load document: {e}")
         return {"success": False, "status": "Load failed", "path": normalized_path}
 
+    logger.info(f"Preprocessing {len(docs)} documents")
     try:
         docs_list = preprocess_to_documents(
             docs_like=docs,
