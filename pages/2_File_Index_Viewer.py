@@ -283,10 +283,8 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
                 scope_options.append("Only selected")
             scope = st.selectbox("Scope", scope_options, index=0)
 
-        delete_vectors = False
         confirm = ""
         if action == "Delete":
-            delete_vectors = st.checkbox("Also delete vectors (Qdrant)", value=True)
             confirm = st.text_input("Type to confirm (e.g., DELETE 3)", value="")
 
         submitted = st.form_submit_button("Run")
@@ -318,18 +316,17 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
                 ingest(paths, force=True)
             st.success(f"Queued reingestion for {len(paths)} file(s).")
-        else:
+        elif action == "Delete":
             with st.spinner(f"Deleting {len(checksums)} file(s) from OpenSearch…"):
                 deleted = delete_files_by_checksum(checksums)
             st.info(
                 f"OpenSearch deleted {deleted} chunk docs (across {len(checksums)} file checksums)."
             )
-            if delete_vectors:
-                with st.spinner(
-                    f"Deleting vectors in Qdrant for {len(checksums)} file(s)…"
-                ):
-                    delete_vectors_many_by_checksum(checksums)
-                st.success("Qdrant deletion requested.")
+            with st.spinner(
+                f"Deleting vectors in Qdrant for {len(checksums)} file(s)…"
+            ):
+                delete_vectors_many_by_checksum(checksums)
+            st.success("Qdrant deletion requested.")
         # Refresh cache after action
         load_indexed_files.clear()
     except Exception as e:
@@ -368,12 +365,10 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
             logger.exception(f"Row reingest failed: {e}")
             st.error(f"Row reingest failed: {e}")
 
-    del_vec = c2.toggle("Delete vectors (Qdrant)", value=True, key=f"row_delvec_{idx}")
     if c2.button("🗑️ Delete from Index", use_container_width=True):
         try:
             delete_files_by_checksum([row["Checksum"]])
-            if del_vec:
-                delete_vectors_many_by_checksum([row["Checksum"]])
+            delete_vectors_many_by_checksum([row["Checksum"]])
             st.success(f"Deleted: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:
