@@ -98,18 +98,48 @@ The system is built from modular, testable components:
 
 ---
 
+## 🚀 Getting Started
+
+1. **Install dependencies**
+
+   ```bash
+   pip install -r requirements/app.txt
+   ```
+
+2. **Start the services**
+
+   Ensure Qdrant, OpenSearch, Redis, the embedder API, and your Text-Generation-WebUI are running.
+   With Docker:
+
+   ```bash
+   docker-compose up qdrant opensearch redis embedder-api celery
+   ```
+
+3. **Launch the Streamlit app**
+
+   ```bash
+   streamlit run app.py
+   ```
+
+---
+
 ## 📌 Current Status
 
 - ✅ Ingestion supports mixed file/folder input, with deduplication
+- ✅ File Index Viewer & manager UI for re-sync, stats, and delete
 - ✅ Modular pipeline orchestrated by `ingestion.py`
+- ✅ Batched embedding via API and Celery
 - ✅ Phoenix tracing across ingestion and QA flows
 - ✅ Vector store: Qdrant only (no SQLite)
+- ✅ Hybrid search (BM25 + dense vectors)
 - ✅ Source filenames and pages displayed with each answer
-- ✅ Batched embedding via API and Celery
 - ✅ Works with both chat and completion LLMs (e.g. Mistral, GPTQ)
 - ✅ Query rewriting layer supports clarification and intent extraction
 - ✅ Progress bar and estimated time remaining during ingestion
-- ⚠️ Streaming answers (token-by-token) is currently disabled
+
+### ⚠️ Known Limitations
+
+- Streaming answers (token-by-token) is currently disabled
 
 ---
 
@@ -164,6 +194,7 @@ These milestones are fully implemented and working in the system:
 
 - [x] Query rewriting (clarify + keywords)
 - [x] Hybrid search (BM25 + dense vectors)
+- [x] Index viewer & manager UI (status, re-sync, stats, delete)
 - [x] Embedder API + Celery pipeline
 - [x] Multi-file + folder ingestion
 - [x] Phoenix tracing (QA + ingestion)
@@ -173,7 +204,6 @@ These milestones are fully implemented and working in the system:
 ### 🔧 Near-Term Enhancements
 Next steps actively being planned or started:
 
-- [ ] Index viewer & manager UI (status, re-sync, stats, delete)
 - [ ] Reranker (cross-encoder or LLM-based)
 - [ ] Per-document QA mode
 - [ ] Session save/load for chat + files
@@ -181,10 +211,10 @@ Next steps actively being planned or started:
 ### 🔮 Coming Next
 Mid-term roadmap items queued for future sprints:
 
-- [ ] Batch summarization (map-reduce)
-- [ ] Advanced chunking (semantic, LLM-aided)
-- [ ] Offline Docker bundle (TGW + Embedder + Qdrant + OpenSearch)
-- [ ] Agent workflows (document reasoning)
+- [ ] Batch summarization (map-reduce) – summarize many documents at once
+- [ ] Advanced chunking (semantic, LLM-aided) – segment text into retrieval-friendly pieces
+- [ ] Offline Docker bundle (TGW + Embedder + Qdrant + OpenSearch) – one-command local deployment
+- [ ] Agent workflows (document reasoning) – multi-step agents for deeper analysis
 
 ---
 
