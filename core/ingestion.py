@@ -5,6 +5,9 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Callable, Optional, Iterable, Union
+from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
+from core.file_loader import load_documents
+from core.chunking import split_documents
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from worker.celery_worker import app as celery_app
 from config import (
@@ -15,21 +18,12 @@ from config import (
     INGEST_MAX_FAILURES,
 )
 from utils.file_utils import compute_checksum, get_file_timestamps
-from core.file_loader import load_documents
-from core.chunking import split_documents
-
-# State checks & local indexing helpers
+from utils import qdrant_utils
 from utils.opensearch_utils import (
     is_file_up_to_date,
     index_documents,
     set_has_embedding_true_by_ids,
 )
-
-# Local embedding + Qdrant upsert (used for SMALL files)
-from utils import qdrant_utils
-
-# Celery task that performs OS index + embed + Qdrant + flag flip (used for LARGE files)
-from core.ingestion_tasks import index_and_embed_chunks
 
 
 # --- Concurrency from config.py ---
@@ -94,9 +88,19 @@ def ingest_one(
         logger.error(f"❌ Failed to load document: {e}")
         return {"success": False, "status": "Load failed", "path": normalized_path}
 
+    try:
+        docs_list = preprocess_to_documents(
+            docs_like=docs,
+            source_path=normalized_path,
+            cfg=PreprocessConfig(),
+            doc_type=ext,
+        )
+    except Exception as e:
+        logger.warning(f"Preprocess step skipped due to error: {e}")
+
     logger.info("✂️ Splitting document into chunks")
     try:
-        chunks = split_documents(docs)
+        chunks = split_documents(docs_list)
     except Exception as e:
         logger.error(f"❌ Failed to split document: {e}")
         return {"success": False, "status": "Split failed", "path": normalized_path}
@@ -182,36 +186,36 @@ def ingest_one(
                 "num_chunks": len(chunks),
             }
 
-    # LARGE file → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
-    batches = 0
-    try:
-        logger.info(
-            f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
-            f"in batches of {EMBEDDING_BATCH_SIZE}."
-        )
-        for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
-            batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
-            celery_app.send_task(
-                "core.ingestion_tasks.index_and_embed_chunks",
-                args=[batch],
+    else:  # LARGE file → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
+        batches = 0
+        try:
+            logger.info(
+                f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
+                f"in batches of {EMBEDDING_BATCH_SIZE}."
             )
-            batches += 1
+            for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
+                batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
+                celery_app.send_task(
+                    "core.ingestion_tasks.index_and_embed_chunks",
+                    args=[batch],
+                )
+                batches += 1
 
-        return {
-            "success": True,
-            "num_chunks": len(chunks),
-            "batches": batches,
-            "path": normalized_path,
-            "status": "Partially indexed — background worker will finish",
-        }
-    except Exception as e:
-        logger.error(f"❌ Failed to enqueue background tasks: {e}")
-        return {
-            "success": False,
-            "status": "Queueing failed",
-            "path": normalized_path,
-            "num_chunks": len(chunks),
-        }
+            return {
+                "success": True,
+                "num_chunks": len(chunks),
+                "batches": batches,
+                "path": normalized_path,
+                "status": "Partially indexed — background worker will finish",
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to enqueue background tasks: {e}")
+            return {
+                "success": False,
+                "status": "Queueing failed",
+                "path": normalized_path,
+                "num_chunks": len(chunks),
+            }
 
 
 def ingest(
