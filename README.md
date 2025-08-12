@@ -64,6 +64,9 @@ The system is built from modular, testable components:
 - 🧱 Modular architecture (easy to swap models or vector DB)
 - 📊 Tracing and observability with Phoenix
 - 🔒 Fully local: no cloud APIs, no internet needed
+- 🧼 **Robust text preprocessing** (PDF-first): header/footer stripping, page-number cleanup,
+  hyphenation repair, conservative soft-wrap joining, **table tagging**, and removal of
+  symbol-only / empty-bullet lines to prevent junk chunks.  
 
 ---
 
