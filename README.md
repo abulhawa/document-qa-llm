@@ -77,7 +77,7 @@ The system is built from modular, testable components:
 - Files are recursively scanned, chunked, embedded, and indexed
 - Ingestion is logged and deduplicated via checksum and path tracking
 - Duplicate files (same checksum in different locations) are indexed and viewable in the duplicates page
-- Chunk identifiers are derived from file path and chunk index so identical files in different folders are stored separately
+
 
 ### 💬 Ask Questions
 - Choose between chat or completion mode
