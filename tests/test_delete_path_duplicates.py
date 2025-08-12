@@ -86,8 +86,8 @@ def test_delete_single_path_leaves_other_duplicate(monkeypatch):
     monkeypatch.setattr(qdrant_utils, "client", dummy_qdrant)
 
     pairs = [("b/foo.txt", "abc")]
-    deleted = opensearch_utils.delete_files_by_path_and_checksum(pairs)
-    qdrant_utils.delete_vectors_many_by_path_and_checksum(pairs)
+    deleted = opensearch_utils.delete_files_by_path_checksum(pairs)
+    qdrant_utils.delete_vectors_by_path_checksum(pairs)
 
     assert deleted == 1
     assert dummy_os.docs == [{"path": "a/foo.txt", "checksum": "abc"}]
