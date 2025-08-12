@@ -49,7 +49,7 @@ def retrieve_hybrid(
                     **r,
                     "score_vector": 0.0,
                     "score_bm25": score,
-                    "source": "semantic",
+                    "source": "keyword",
                 }
 
         for doc in combined.values():
