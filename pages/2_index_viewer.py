@@ -8,12 +8,12 @@ from typing import List, Dict, Any
 from utils.time_utils import format_timestamp
 from utils.opensearch_utils import (
     list_files_from_opensearch,
-    delete_files_by_path_and_checksum,
+    delete_files_by_path_checksum,
     get_duplicate_checksums,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
-    delete_vectors_many_by_path_and_checksum,
+    delete_vectors_by_path_checksum,
 )
 from core.ingestion import ingest
 from config import logger
@@ -324,16 +324,16 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
             with st.spinner(
-                f"Deleting {len(pairs)} path(s) from OpenSearch…"
+                f"Deleting {len(pairs)} path(s) from OpenSearch…",
             ):
-                deleted = delete_files_by_path_and_checksum(pairs)
+                deleted = delete_files_by_path_checksum(pairs)
             st.info(
-                f"OpenSearch deleted {deleted} chunk docs across {len(pairs)} path(s)."
+                f"OpenSearch deleted {deleted} chunk docs across {len(pairs)} path(s).",
             )
             with st.spinner(
-                f"Deleting vectors in Qdrant for {len(pairs)} path(s)…"
+                f"Deleting vectors in Qdrant for {len(pairs)} path(s)…",
             ):
-                delete_vectors_many_by_path_and_checksum(pairs)
+                delete_vectors_by_path_checksum(pairs)
             st.success("Qdrant deletion requested.")
         # Refresh cache after action
         load_indexed_files.clear()
@@ -375,8 +375,8 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c2.button("🗑️ Delete from Index", use_container_width=True):
         try:
-            delete_files_by_path_and_checksum([(row["Path"], row["Checksum"])])
-            delete_vectors_many_by_path_and_checksum([(row["Path"], row["Checksum"])])
+            delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
+            delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
             st.success(f"Deleted path: {row['Path']}")
             load_indexed_files.clear()
         except Exception as e:

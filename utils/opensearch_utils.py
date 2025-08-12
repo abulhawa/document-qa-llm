@@ -1,6 +1,5 @@
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
-from typing import Iterable
 from opensearchpy import helpers, exceptions
 
 from config import (
@@ -177,12 +176,14 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     return total_deleted
 
 
-def delete_files_by_path_and_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
+def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
     """Delete OpenSearch docs matching specific (path, checksum) pairs.
 
     Each pair targets a unique file instance so duplicates with the same
-    checksum but different paths can be removed individually.
+    checksum but different paths can be removed individually. The deletion
+    is batched for efficiency.
     """
+
     client = get_client()
     total_deleted = 0
     unique = [(p, c) for p, c in { (p, c) for p, c in pairs if p and c }]
@@ -361,7 +362,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
                     "bool": {
                         "must": [
                             {"term": {"checksum": checksum}},
-                            {"match_phrase": {"path": path}},
+                            {"term": {"path.keyword": path}},
                         ]
                     }
                 }

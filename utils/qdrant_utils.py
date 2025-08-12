@@ -57,7 +57,7 @@ def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
 
 def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
     """
-    Return the number of chunks in Qdrant matching the given checksum.
+    Return the number of chunks in Qdrant matching the given path.
     """
     try:
         result = client.count(
@@ -73,7 +73,7 @@ def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
         )
         return result.count
     except Exception as e:
-        logger.error("❌ Qdrant count error for checksum=%s: %s", path, e)
+        logger.error("❌ Qdrant count error for path=%s: %s", path, e)
         return None
 
 
@@ -123,11 +123,12 @@ def delete_vectors_many_by_checksum(checksums: Iterable[str]) -> None:
             )
 
 
-def delete_vectors_many_by_path_and_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
-    """Delete vectors in Qdrant for specific (path, checksum) pairs."""
-    unique = [(p, c) for p, c in { (p, c) for p, c in pairs if p and c }]
+def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
+    """Delete vectors matching both path and checksum for each pair."""
+    unique = {(p, c) for p, c in pairs if p and c}
     if not unique:
         return
+
     for path, checksum in unique:
         flt = models.Filter(
             must=[
