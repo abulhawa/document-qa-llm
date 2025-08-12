@@ -47,13 +47,21 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
             results = client.search(
                 collection_name=QDRANT_COLLECTION,
                 query_vector=query_embedding,
-                limit=top_k,
+                limit=top_k * 3,
                 score_threshold=CHUNK_SCORE_THRESHOLD,
                 with_payload=True,
             )
-            retrieved_chunks = [
-                {**(r.payload or {}), "score": r.score} for r in results
-            ]
+            retrieved_chunks = []
+            seen_checksums = set()
+            for r in results:
+                payload = r.payload or {}
+                checksum = payload.get("checksum")
+                if checksum in seen_checksums:
+                    continue
+                seen_checksums.add(checksum)
+                retrieved_chunks.append({**payload, "score": r.score})
+                if len(retrieved_chunks) >= top_k:
+                    break
 
             for i, doc in enumerate(retrieved_chunks):
                 span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
