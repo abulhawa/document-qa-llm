@@ -8,12 +8,12 @@ from typing import List, Dict, Any
 from utils.time_utils import format_timestamp
 from utils.opensearch_utils import (
     list_files_from_opensearch,
-    delete_files_by_checksum,
+    delete_files_by_path_checksum,
     get_duplicate_checksums,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
-    delete_vectors_many_by_checksum,
+    delete_vectors_by_path_checksum,
 )
 from core.ingestion import ingest
 from config import logger
@@ -307,8 +307,14 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             st.error(f"Confirmation mismatch. Please type exactly: DELETE {expected}")
             return
 
-    checksums = targets["Checksum"].dropna().astype(str).unique().tolist()
-    paths = targets["Path"].dropna().astype(str).unique().tolist()
+    pairs = (
+        targets[["Path", "Checksum"]]
+        .dropna()
+        .astype(str)
+        .itertuples(index=False, name=None)
+    )
+    pairs = list(pairs)
+    paths = sorted({p for p, _ in pairs})
 
     try:
         if action == "Reingest":
@@ -316,15 +322,15 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
                 ingest(paths, force=True)
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
-            with st.spinner(f"Deleting {len(checksums)} file(s) from OpenSearch…"):
-                deleted = delete_files_by_checksum(checksums)
+            with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
+                deleted = delete_files_by_path_checksum(pairs)
             st.info(
-                f"OpenSearch deleted {deleted} chunk docs (across {len(checksums)} file checksums)."
+                f"OpenSearch deleted {deleted} chunk docs (across {len(pairs)} file path/checksum pairs)."
             )
             with st.spinner(
-                f"Deleting vectors in Qdrant for {len(checksums)} file(s)…"
+                f"Deleting vectors in Qdrant for {len(pairs)} file(s)…"
             ):
-                delete_vectors_many_by_checksum(checksums)
+                delete_vectors_by_path_checksum(pairs)
             st.success("Qdrant deletion requested.")
         # Refresh cache after action
         load_indexed_files.clear()
@@ -366,8 +372,8 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c2.button("🗑️ Delete from Index", use_container_width=True):
         try:
-            delete_files_by_checksum([row["Checksum"]])
-            delete_vectors_many_by_checksum([row["Checksum"]])
+            delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
+            delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
             st.success(f"Deleted: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:

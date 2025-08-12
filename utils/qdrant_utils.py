@@ -5,7 +5,7 @@ from qdrant_client.http.models import (
     Distance,
 )
 from config import QDRANT_URL, QDRANT_COLLECTION, EMBEDDING_SIZE, logger
-from typing import Optional, List, Dict, Any, Iterable
+from typing import Optional, List, Dict, Any, Iterable, Tuple
 
 from core.embeddings import embed_texts
 
@@ -120,4 +120,32 @@ def delete_vectors_many_by_checksum(checksums: Iterable[str]) -> None:
         except Exception as e:
             logger.error(
                 "❌ Qdrant batch delete error for %d checksum(s): %s", len(part), e
+            )
+
+
+def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
+    """Delete vectors matching both path and checksum for each pair."""
+    unique = {(p, c) for p, c in pairs if p and c}
+    if not unique:
+        return
+
+    for path, checksum in unique:
+        flt = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="path", match=models.MatchValue(value=path)
+                ),
+                models.FieldCondition(
+                    key="checksum", match=models.MatchValue(value=checksum)
+                ),
+            ]
+        )
+        try:
+            client.delete(
+                collection_name=QDRANT_COLLECTION,
+                points_selector=models.FilterSelector(filter=flt),
+            )
+        except Exception as e:
+            logger.error(
+                "❌ Qdrant delete error for path=%s checksum=%s: %s", path, checksum, e
             )
