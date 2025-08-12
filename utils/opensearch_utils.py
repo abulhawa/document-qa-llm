@@ -1,6 +1,5 @@
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
-from typing import Iterable
 from opensearchpy import helpers, exceptions
 
 from config import (
@@ -178,35 +177,39 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
 
 
 def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
-    """Delete docs matching both path and checksum for each provided pair.
+    """Delete OpenSearch docs matching specific (path, checksum) pairs.
 
-    Args:
-        pairs: iterable of (path, checksum) tuples.
-
-    Returns:
-        Total number of deleted documents.
+    Each pair targets a unique file instance so duplicates with the same
+    checksum but different paths can be removed individually. The deletion
+    is batched for efficiency.
     """
+
     client = get_client()
     total_deleted = 0
-    # remove duplicates / ignore falsy
-    unique = {(p, c) for p, c in pairs if p and c}
+    unique = [(p, c) for p, c in { (p, c) for p, c in pairs if p and c }]
     if not unique:
         return 0
 
-    for path, checksum in unique:
+    CHUNK = OPENSEARCH_DELETE_BATCH
+
+    for i in range(0, len(unique), CHUNK):
+        batch = unique[i : i + CHUNK]
+        must = []
+        for path, checksum in batch:
+            must.append(
+                {
+                    "bool": {
+                        "must": [
+                            {"term": {"path.keyword": path}},
+                            {"term": {"checksum": checksum}},
+                        ]
+                    }
+                }
+            )
         try:
             resp = client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"term": {"checksum": checksum}},
-                                {"match_phrase": {"path": path}},
-                            ]
-                        }
-                    }
-                },
+                body={"query": {"bool": {"must": must}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
@@ -216,16 +219,14 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
             deleted = int(resp.get("deleted", 0))
             total_deleted += deleted
             logger.info(
-                f"🗑️ OpenSearch deleted {deleted} docs for path={path} checksum={checksum}."
+                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
             )
         except exceptions.OpenSearchException as e:
             logger.exception(
-                f"OpenSearch delete failed for path={path} checksum={checksum}: {e}"
+                f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
             )
         except Exception as e:
-            logger.exception(
-                f"Unexpected error deleting path={path} checksum={checksum}: {e}"
-            )
+            logger.exception(f"Unexpected error deleting a batch: {e}")
 
     return total_deleted
 

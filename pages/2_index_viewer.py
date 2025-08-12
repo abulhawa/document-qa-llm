@@ -284,7 +284,9 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
 
         confirm = ""
         if action == "Delete":
-            confirm = st.text_input("Type to confirm (e.g., DELETE 3)", value="")
+            confirm = st.text_input(
+                "Type to confirm (e.g., DELETE 3 paths)", value=""
+            )
 
         submitted = st.form_submit_button("Run")
 
@@ -325,10 +327,11 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
                 deleted = delete_files_by_path_checksum(pairs)
             st.info(
-                f"OpenSearch deleted {deleted} chunk docs (across {len(pairs)} file path/checksum pairs)."
+                f"OpenSearch deleted {deleted} chunks across {len(pairs)} file(s).",
             )
             with st.spinner(
-                f"Deleting vectors in Qdrant for {len(pairs)} file(s)…"
+                f"Deleting vectors in Qdrant for {len(pairs)} path(s)…",
+
             ):
                 delete_vectors_by_path_checksum(pairs)
             st.success("Qdrant deletion requested.")
