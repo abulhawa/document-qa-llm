@@ -309,13 +309,14 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             st.error(f"Confirmation mismatch. Please type exactly: DELETE {expected}")
             return
 
-    paths = targets["Path"].dropna().astype(str).unique().tolist()
-    pairs = list(
-        {
-            (row["Path"], row["Checksum"])
-            for _, row in targets[["Path", "Checksum"]].dropna().iterrows()
-        }
+    pairs = (
+        targets[["Path", "Checksum"]]
+        .dropna()
+        .astype(str)
+        .itertuples(index=False, name=None)
     )
+    pairs = list(pairs)
+    paths = sorted({p for p, _ in pairs})
 
     try:
         if action == "Reingest":
@@ -323,15 +324,14 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
                 ingest(paths, force=True)
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
-            with st.spinner(
-                f"Deleting {len(pairs)} path(s) from OpenSearch…",
-            ):
+            with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
                 deleted = delete_files_by_path_checksum(pairs)
             st.info(
-                f"OpenSearch deleted {deleted} chunk docs across {len(pairs)} path(s).",
+                f"OpenSearch deleted {deleted} chunks across {len(pairs)} file(s).",
             )
             with st.spinner(
                 f"Deleting vectors in Qdrant for {len(pairs)} path(s)…",
+
             ):
                 delete_vectors_by_path_checksum(pairs)
             st.success("Qdrant deletion requested.")
@@ -377,7 +377,7 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
         try:
             delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
             delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
-            st.success(f"Deleted path: {row['Path']}")
+            st.success(f"Deleted: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:
             logger.exception(f"Row delete failed: {e}")

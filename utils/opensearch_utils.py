@@ -194,9 +194,9 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
 
     for i in range(0, len(unique), CHUNK):
         batch = unique[i : i + CHUNK]
-        should = []
+        must = []
         for path, checksum in batch:
-            should.append(
+            must.append(
                 {
                     "bool": {
                         "must": [
@@ -209,7 +209,7 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
         try:
             resp = client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={"query": {"bool": {"should": should}}},
+                body={"query": {"bool": {"must": must}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
