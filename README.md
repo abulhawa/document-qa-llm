@@ -60,7 +60,7 @@ The system is built from modular, testable components:
 - 🧠 Completion Mode (single Q&A)
 - 📁 Multi-file + folder ingestion, with parallel processing
 - 🧾 Source attribution (filename + page or position)
-- 🗃️ File deduplication based on checksum
+- 🗃️ File deduplication by checksum + path tracking
 - 🧱 Modular architecture (easy to swap models or vector DB)
 - 📊 Tracing and observability with Phoenix
 - 🔒 Fully local: no cloud APIs, no internet needed
@@ -75,7 +75,9 @@ The system is built from modular, testable components:
 ### 📥 Ingest Documents
 - Upload one or more files and/or folders
 - Files are recursively scanned, chunked, embedded, and indexed
-- Ingestion is logged and deduplicated via checksum tracking
+- Ingestion is logged and deduplicated via checksum and path tracking
+- Duplicate files (same checksum in different locations) are indexed and viewable in the duplicates page
+- Chunk identifiers are derived from file path and chunk index so identical files in different folders are stored separately
 
 ### 💬 Ask Questions
 - Choose between chat or completion mode

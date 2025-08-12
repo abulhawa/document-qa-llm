@@ -12,14 +12,14 @@ def test_ingest_accepts_single_path(tmp_path, monkeypatch):
 
     # Stub out external dependencies used during ingestion
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
-    monkeypatch.setattr("core.ingestion.index_chunks", lambda chunks: None)
-    class DummyTask:
-        app = type("obj", (), {"conf": type("obj", (), {"broker_url": ""})()})
-        @staticmethod
-        def delay(*args, **kwargs):
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    class DummyApp:
+        def send_task(self, *args, **kwargs):
             pass
-    monkeypatch.setattr("core.ingestion.embed_and_index_chunks", DummyTask())
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda checksum: False)
+    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
+    monkeypatch.setattr(
+        "core.ingestion.is_file_up_to_date", lambda checksum, path: False
+    )
 
     result_str = ingest(str(sample))
     result_list = ingest([str(sample)])
