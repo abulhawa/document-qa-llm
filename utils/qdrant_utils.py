@@ -57,7 +57,7 @@ def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
 
 def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
     """
-    Return the number of chunks in Qdrant matching the given checksum.
+    Return the number of chunks in Qdrant matching the given path.
     """
     try:
         result = client.count(
@@ -73,7 +73,7 @@ def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
         )
         return result.count
     except Exception as e:
-        logger.error("❌ Qdrant count error for checksum=%s: %s", path, e)
+        logger.error("❌ Qdrant count error for path=%s: %s", path, e)
         return None
 
 
