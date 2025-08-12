@@ -26,12 +26,19 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         logger.info(f"OpenSearch returned {len(hits)} hits before deduplication.")
         span.set_attribute("raw_hits", len(hits))
 
-        results = [
-            {**hit["_source"], "score": hit["_score"], "_id": hit["_id"]}
-            for hit in hits
-        ]
+        results = []
+        seen_checksums = set()
+        for hit in hits:
+            src = hit.get("_source", {})
+            checksum = src.get("checksum")
+            if checksum in seen_checksums:
+                continue
+            seen_checksums.add(checksum)
+            results.append({**src, "score": hit.get("_score"), "_id": hit.get("_id")})
+            if len(results) >= top_k:
+                break
 
-        logger.info(f"Returning {len(results)} results.")
+        logger.info(f"Returning {len(results)} results after deduplication.")
 
         for i, doc in enumerate(results):
             span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])

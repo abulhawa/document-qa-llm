@@ -227,6 +227,36 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
             return []
 
 
+def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
+    """Return a list of files (unique paths) associated with a checksum."""
+    client = get_client()
+    resp = client.search(
+        index=OPENSEARCH_INDEX,
+        body={"size": 10000, "query": {"term": {"checksum": checksum}}},
+    )
+    hits = resp.get("hits", {}).get("hits", [])
+    files: Dict[str, Dict[str, Any]] = {}
+    for hit in hits:
+        src = hit.get("_source", {})
+        path = src.get("path")
+        if not path:
+            continue
+        info = files.setdefault(
+            path,
+            {
+                "path": path,
+                "filetype": src.get("filetype"),
+                "created_at": src.get("created_at"),
+                "modified_at": src.get("modified_at"),
+                "indexed_at": src.get("indexed_at"),
+                "checksum": checksum,
+                "num_chunks": 0,
+            },
+        )
+        info["num_chunks"] += 1
+    return list(files.values())
+
+
 def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
     """
     Bulk-update docs by _id to set has_embedding=True.
@@ -264,15 +294,24 @@ def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
     return updated, errors
 
 
-def is_file_up_to_date(checksum: str) -> bool:
-    """Check if a file with the given checksum is already indexed."""
+def is_file_up_to_date(checksum: str, path: str) -> bool:
+    """Check if a file with the given checksum and path is already indexed."""
     try:
         client = get_client()
         response = client.count(
             index=OPENSEARCH_INDEX,
-            body={"query": {"term": {"checksum": checksum}}},
+            body={
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"checksum": checksum}},
+                            {"match_phrase": {"path": path}},
+                        ]
+                    }
+                }
+            },
         )
         return response.get("count", 0) > 0
     except exceptions.OpenSearchException as e:
-        logger.warning(f"OpenSearch checksum check failed: {e}")
+        logger.warning(f"OpenSearch checksum/path check failed: {e}")
         return False
