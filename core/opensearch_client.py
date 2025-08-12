@@ -1,5 +1,3 @@
-# core/opensearch_client.py
-from __future__ import annotations
 from functools import lru_cache
 from opensearchpy import OpenSearch
 from config import OPENSEARCH_URL
