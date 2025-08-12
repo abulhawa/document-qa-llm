@@ -177,6 +177,59 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     return total_deleted
 
 
+def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
+    """Delete docs matching both path and checksum for each provided pair.
+
+    Args:
+        pairs: iterable of (path, checksum) tuples.
+
+    Returns:
+        Total number of deleted documents.
+    """
+    client = get_client()
+    total_deleted = 0
+    # remove duplicates / ignore falsy
+    unique = {(p, c) for p, c in pairs if p and c}
+    if not unique:
+        return 0
+
+    for path, checksum in unique:
+        try:
+            resp = client.delete_by_query(
+                index=OPENSEARCH_INDEX,
+                body={
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"checksum": checksum}},
+                                {"match_phrase": {"path": path}},
+                            ]
+                        }
+                    }
+                },
+                params={
+                    "refresh": "true",
+                    "conflicts": "proceed",
+                    "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+                },
+            )
+            deleted = int(resp.get("deleted", 0))
+            total_deleted += deleted
+            logger.info(
+                f"🗑️ OpenSearch deleted {deleted} docs for path={path} checksum={checksum}."
+            )
+        except exceptions.OpenSearchException as e:
+            logger.exception(
+                f"OpenSearch delete failed for path={path} checksum={checksum}: {e}"
+            )
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error deleting path={path} checksum={checksum}: {e}"
+            )
+
+    return total_deleted
+
+
 def get_duplicate_checksums(limit: int = 10000) -> List[str]:
     """Return checksums that appear under more than one distinct path.
     Uses an aggregation over `checksum` with a cardinality sub-agg on `path`.
