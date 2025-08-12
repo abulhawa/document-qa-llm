@@ -12,7 +12,7 @@ from utils.opensearch_utils import (
     get_duplicate_checksums,
 )
 from utils.qdrant_utils import (
-    count_qdrant_chunks_by_checksum,
+    count_qdrant_chunks_by_path,
     delete_vectors_many_by_checksum,
 )
 from core.ingestion import ingest
@@ -130,15 +130,14 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     if need_counts and not fdf.empty:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        visible_checksums = fdf["Checksum"].dropna().astype(str).unique().tolist()
+        visible_paths = fdf["Path"].dropna().astype(str).unique().tolist()
         memo = st.session_state.setdefault("_qdrant_count_memo", {})
-        missing = [cs for cs in visible_checksums if cs not in memo]
+        missing = [cs for cs in visible_paths if cs not in memo]
         if missing:
             with st.spinner(f"Counting Qdrant chunks for {len(missing)} file(s)…"):
                 with ThreadPoolExecutor(max_workers=8) as ex:
                     futs = {
-                        ex.submit(count_qdrant_chunks_by_checksum, cs): cs
-                        for cs in missing
+                        ex.submit(count_qdrant_chunks_by_path, cs): cs for cs in missing
                     }
                     for fut in as_completed(futs):
                         cs = futs[fut]
@@ -148,7 +147,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                             memo[cs] = 0
         # update counts in the DataFrame for filtering and display
         fdf["Qdrant Chunks"] = (
-            fdf["Checksum"].astype(str).map(memo).fillna(fdf.get("Qdrant Chunks", 0))
+            fdf["Path"].astype(str).map(memo).fillna(fdf.get("Qdrant Chunks", 0))
         )
 
     # Now that counts exist (if needed), apply the 'missing embeddings' filter
