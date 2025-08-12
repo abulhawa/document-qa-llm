@@ -177,6 +177,59 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     return total_deleted
 
 
+def delete_files_by_path_and_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
+    """Delete OpenSearch docs matching specific (path, checksum) pairs.
+
+    Each pair targets a unique file instance so duplicates with the same
+    checksum but different paths can be removed individually.
+    """
+    client = get_client()
+    total_deleted = 0
+    unique = [(p, c) for p, c in { (p, c) for p, c in pairs if p and c }]
+    if not unique:
+        return 0
+
+    CHUNK = OPENSEARCH_DELETE_BATCH
+
+    for i in range(0, len(unique), CHUNK):
+        batch = unique[i : i + CHUNK]
+        should = []
+        for path, checksum in batch:
+            should.append(
+                {
+                    "bool": {
+                        "must": [
+                            {"term": {"path.keyword": path}},
+                            {"term": {"checksum": checksum}},
+                        ]
+                    }
+                }
+            )
+        try:
+            resp = client.delete_by_query(
+                index=OPENSEARCH_INDEX,
+                body={"query": {"bool": {"should": should}}},
+                params={
+                    "refresh": "true",
+                    "conflicts": "proceed",
+                    "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+                },
+            )
+            deleted = int(resp.get("deleted", 0))
+            total_deleted += deleted
+            logger.info(
+                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
+            )
+        except exceptions.OpenSearchException as e:
+            logger.exception(
+                f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
+            )
+        except Exception as e:
+            logger.exception(f"Unexpected error deleting a batch: {e}")
+
+    return total_deleted
+
+
 def get_duplicate_checksums(limit: int = 10000) -> List[str]:
     """Return checksums that appear under more than one distinct path.
     Uses an aggregation over `checksum` with a cardinality sub-agg on `path`.
