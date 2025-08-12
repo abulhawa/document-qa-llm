@@ -61,7 +61,16 @@ def retrieve_hybrid(
             reverse=True,
         )
 
-        for i, doc in enumerate(sorted_docs):
+        unique_docs: List[Dict[str, Any]] = []
+        seen_checksums = set()
+        for doc in sorted_docs:
+            cs = doc.get("checksum")
+            if cs in seen_checksums:
+                continue
+            seen_checksums.add(cs)
+            unique_docs.append(doc)
+
+        for i, doc in enumerate(unique_docs):
             span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
             span.set_attribute(
                 f"retrieval.documents.{i}.document.score", doc["hybrid_score"]
@@ -77,5 +86,7 @@ def retrieve_hybrid(
             )
         span.set_status(STATUS_OK)
 
-        logger.info(f"✅ Hybrid search returned {len(sorted_docs)} unique results")
-    return sorted_docs[:final_k]
+        logger.info(
+            f"✅ Hybrid search returned {len(unique_docs)} results after checksum dedup"
+        )
+    return unique_docs[:final_k]

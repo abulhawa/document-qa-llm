@@ -12,6 +12,11 @@ pages = [
         title="File Index Viewer",
         icon="📂",
     ),
+    st.Page(
+        "pages/3_duplicates_viewer.py",
+        title="Duplicate Files",
+        icon="🗂️",
+    ),
 ]
 
 pg = st.navigation(pages, position="top")
