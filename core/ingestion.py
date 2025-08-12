@@ -116,9 +116,11 @@ def ingest_one(
 
     logger.info(f"🧩 Split into {len(chunks)} chunks")
 
-    # Build per-chunk metadata; UUIDv5 id works for both OS and Qdrant
+    # Build per-chunk metadata; UUIDv5 id uses path+chunk index so duplicates across paths get unique ids
     for i, chunk in enumerate(chunks):
-        chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{checksum}-{i}"))
+        chunk["id"] = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"{normalized_path}-{i}")
+        )
         chunk["chunk_index"] = i
         chunk["path"] = normalized_path
         chunk["checksum"] = checksum

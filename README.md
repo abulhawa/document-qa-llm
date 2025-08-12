@@ -78,6 +78,7 @@ The system is built from modular, testable components:
 - Ingestion is logged and deduplicated via checksum and path tracking
 - Duplicate files (same checksum in different locations) are indexed and viewable in the duplicates page
 
+
 ### 💬 Ask Questions
 - Choose between chat or completion mode
 - Type natural-language questions (e.g., "What is this contract about?")
