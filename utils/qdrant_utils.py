@@ -132,12 +132,8 @@ def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
     for path, checksum in unique:
         flt = models.Filter(
             must=[
-                models.FieldCondition(
-                    key="path", match=models.MatchValue(value=path)
-                ),
-                models.FieldCondition(
-                    key="checksum", match=models.MatchValue(value=checksum)
-                ),
+                models.FieldCondition(key="path", match=models.MatchValue(value=path)),
+                models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum)),
             ]
         )
         try:
