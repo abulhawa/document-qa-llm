@@ -186,7 +186,7 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
 
     client = get_client()
     total_deleted = 0
-    unique = [(p, c) for p, c in { (p, c) for p, c in pairs if p and c }]
+    unique = [(p, c) for p, c in {(p, c) for p, c in pairs if p and c}]
     if not unique:
         return 0
 
@@ -194,12 +194,12 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
 
     for i in range(0, len(unique), CHUNK):
         batch = unique[i : i + CHUNK]
-        must = []
+        should = []
         for path, checksum in batch:
-            must.append(
+            should.append(
                 {
                     "bool": {
-                        "must": [
+                        "filter": [
                             {"term": {"path.keyword": path}},
                             {"term": {"checksum": checksum}},
                         ]
@@ -209,14 +209,19 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
         try:
             resp = client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={"query": {"bool": {"must": must}}},
+                body={"query": {"bool": {"should": should, "minimum_should_match": 1}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
                     "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+                    "slices": "auto",
                 },
             )
             deleted = int(resp.get("deleted", 0))
+            conflicts = resp.get("version_conflicts", 0)
+            failures = resp.get("failures", [])
+            if failures:
+                logger.warning("delete_by_query had failures: %s", failures)
             total_deleted += deleted
             logger.info(
                 f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
