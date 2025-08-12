@@ -137,18 +137,18 @@ def ingest_one(
     # Optional: on force+replace, purge existing entries
     if force and replace:
         try:
-            from utils.opensearch_utils import delete_files_by_checksum
-            from utils.qdrant_utils import delete_vectors_by_checksum
+            from utils.opensearch_utils import delete_files_by_path_checksum
+            from utils.qdrant_utils import delete_vectors_by_path_checksum
 
             logger.info(
                 f"♻️ Reingest replace: deleting existing docs/vectors for checksum={checksum}"
             )
             try:
-                delete_files_by_checksum([checksum])
+                delete_files_by_path_checksum([(normalized_path, checksum)])
             except Exception as e:
                 logger.warning(f"OpenSearch pre-delete failed: {e}")
             try:
-                delete_vectors_by_checksum(checksum)
+                delete_vectors_by_path_checksum([(normalized_path, checksum)])
             except Exception as e:
                 logger.warning(f"Qdrant pre-delete failed: {e}")
         except Exception as e:
