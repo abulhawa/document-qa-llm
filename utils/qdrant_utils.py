@@ -55,7 +55,7 @@ def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
         return False
 
 
-def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
+def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
     """
     Return the number of chunks in Qdrant matching the given checksum.
     """
@@ -65,7 +65,7 @@ def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
             count_filter=models.Filter(
                 must=[
                     models.FieldCondition(
-                        key="checksum", match=models.MatchValue(value=checksum)
+                        key="path", match=models.MatchValue(value=path)
                     ),
                 ]
             ),
@@ -73,7 +73,7 @@ def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
         )
         return result.count
     except Exception as e:
-        logger.error("❌ Qdrant count error for checksum=%s: %s", checksum, e)
+        logger.error("❌ Qdrant count error for checksum=%s: %s", path, e)
         return None
 
 

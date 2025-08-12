@@ -26,7 +26,10 @@ INDEX_SETTINGS = {
     "mappings": {
         "properties": {
             "text": {"type": "text", "analyzer": "custom_text_analyzer"},
-            "path": {"type": "text"},
+            "path": {
+                "type": "text",
+                "fields": {"keyword": {"type": "keyword", "ignore_above": 2048}},
+            },
             "chunk_index": {"type": "integer"},
             "checksum": {"type": "keyword"},
             "filetype": {"type": "keyword"},
@@ -88,13 +91,13 @@ def list_files_from_opensearch(
             "size": 0,
             "aggs": {
                 "files": {
-                    "terms": {"field": "checksum", "size": size},
+                    "terms": {"field": "path.keyword", "size": size},
                     "aggs": {
                         "top_chunk": {
                             "top_hits": {
                                 "size": 1,
                                 "_source": [
-                                    "path",
+                                    "checksum",
                                     "created_at",
                                     "modified_at",
                                     "indexed_at",
@@ -111,7 +114,7 @@ def list_files_from_opensearch(
 
     results = []
     for bucket in response["aggregations"]["files"]["buckets"]:
-        checksum = bucket["key"]
+        path = bucket["key"]
         doc_count = bucket["doc_count"]
         top_hit = bucket["top_chunk"]["hits"]["hits"][0]
         top_source = top_hit["_source"]
@@ -119,9 +122,9 @@ def list_files_from_opensearch(
 
         results.append(
             {
-                "checksum": checksum,
-                "path": top_source.get("path"),
-                "filename": top_source.get("path", "").split("/")[-1],
+                "path": path,
+                "checksum": top_source.get("checksum"),
+                "filename": path.split("/")[-1],
                 "created_at": top_source.get("created_at"),
                 "modified_at": top_source.get("modified_at"),
                 "indexed_at": top_source.get("indexed_at"),
