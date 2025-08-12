@@ -70,8 +70,8 @@ def ingest_one(
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
     checksum = compute_checksum(normalized_path)
 
-    # Skip if already indexed and unchanged (based on OS state)
-    if not force and is_file_up_to_date(checksum):
+    # Skip if already indexed and unchanged (based on checksum + path)
+    if not force and is_file_up_to_date(checksum, normalized_path):
         logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
         return {"success": False, "status": "Already indexed", "path": normalized_path}
 
