@@ -361,7 +361,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
                     "bool": {
                         "must": [
                             {"term": {"checksum": checksum}},
-                            {"match_phrase": {"path": path}},
+                            {"term": {"path.keyword": path}},
                         ]
                     }
                 }
