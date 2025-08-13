@@ -126,6 +126,15 @@ The system is built from modular, testable components:
    streamlit run main.py
    ```
 
+### Run tests
+
+Install development requirements and run the test suite:
+
+```bash
+pip install -r requirements/shared.txt -r requirements/dev.txt
+pytest
+```
+
 ---
 
 ## 📌 Current Status
