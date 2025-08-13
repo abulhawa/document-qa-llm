@@ -31,3 +31,4 @@ Thumbs.db
 data/
 datasets/
 downloads/
+.venv/
