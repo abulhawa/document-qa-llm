@@ -1,6 +1,7 @@
 from celery import shared_task
 from typing import List, Dict, Any
 from config import logger
+from utils.file_utils import normalize_path
 from utils.opensearch_utils import index_documents, set_has_embedding_true_by_ids
 from utils import qdrant_utils
 
@@ -27,6 +28,10 @@ def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]
     """
     if not chunks:
         return {"ok": True, "indexed": 0, "upserted": 0, "flipped": 0}
+
+    for c in chunks:
+        if c.get("path"):
+            c["path"] = normalize_path(c["path"])
 
     total = len(chunks)
     try:
