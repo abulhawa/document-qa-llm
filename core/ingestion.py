@@ -22,6 +22,7 @@ from utils.file_utils import (
     get_file_timestamps,
     hash_path,
     get_file_size,
+    normalize_path,
 )
 from utils import qdrant_utils
 from utils.opensearch_utils import (
@@ -77,7 +78,7 @@ def ingest_one(
       dict with keys: success, status, path, and optionally num_chunks, batches
     """
     logger.info(f"📥 Starting ingestion for: {path}")
-    normalized_path = os.path.normpath(path).replace("\\", "/")
+    normalized_path = normalize_path(path)
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
     log = IngestLogEmitter(path=normalized_path, op=op, source=source, run_id=run_id)
     if retry_of:
@@ -288,13 +289,13 @@ def ingest(
     doc_files: List[str] = []
     for p in iter_inputs:
         if os.path.isfile(p) and p.lower().endswith((".pdf", ".docx", ".txt")):
-            doc_files.append(p)
+            doc_files.append(normalize_path(p))
         elif expand_dirs and os.path.isdir(p):
             for dirpath, _, filenames in os.walk(p):
                 for fname in filenames:
                     if fname.lower().endswith((".pdf", ".docx", ".txt")):
                         full_path = os.path.join(dirpath, fname)
-                        doc_files.append(full_path)
+                        doc_files.append(normalize_path(full_path))
 
     if not doc_files:
         logger.warning("⚠️ No valid document files found in provided inputs.")
