@@ -10,6 +10,20 @@ python -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip wheel setuptools
+# Ensure app environment installs cleanly
+echo "Installing app requirements"
+if ! python -m pip install -r requirements/app.txt; then
+  echo "Failed to install app requirements" >&2
+  exit 1
+fi
+
+# Ensure worker environment installs cleanly
+echo "Installing worker requirements"
+if ! python -m pip install -r requirements/worker.txt; then
+  echo "Failed to install worker requirements" >&2
+  exit 1
+fi
+
 # Install runtime deps used by tests + dev tools
 python -m pip install -r requirements/shared.txt -r requirements/dev.txt
 

@@ -38,8 +38,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
-            requirements/shared.txt
-            requirements/dev.txt
+              requirements/shared.txt
+              requirements/dev.txt
+              requirements/app.txt
+              requirements/worker.txt
 
       - name: Run tests
         shell: bash
