@@ -133,7 +133,9 @@ def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
         flt = models.Filter(
             must=[
                 models.FieldCondition(key="path", match=models.MatchValue(value=path)),
-                models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum)),
+                models.FieldCondition(
+                    key="checksum", match=models.MatchValue(value=checksum)
+                ),
             ]
         )
         try:
@@ -145,3 +147,4 @@ def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
             logger.error(
                 "❌ Qdrant delete error for path=%s checksum=%s: %s", path, checksum, e
             )
+    logger.info(f"🗑️ Qdrant deleted vectors for {len(unique)} path/checksum pair(s).")
