@@ -17,6 +17,11 @@ pages = [
         title="Duplicate Files",
         icon="🗂️",
     ),
+    st.Page(
+        "pages/4_ingest_logs.py",
+        title="Ingestion Logs",
+        icon="📝",
+    ),
 ]
 
 pg = st.navigation(pages, position="top")

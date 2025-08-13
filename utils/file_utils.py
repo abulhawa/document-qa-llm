@@ -17,6 +17,19 @@ def normalize_path(path: str) -> str:
     return os.path.normpath(path).replace("\\", "/")
 
 
+def hash_path(path: str) -> str:
+    """Return a stable hash for a given path string."""
+    return hashlib.sha256(path.encode("utf-8")).hexdigest()
+
+
+def get_file_size(path: str) -> int:
+    """Return file size in bytes, or 0 if unavailable."""
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
 def get_file_timestamps(path: str) -> dict:
     """
     Returns creation and modification timestamps in ISO format.
