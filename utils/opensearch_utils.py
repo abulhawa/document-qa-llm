@@ -461,7 +461,10 @@ def search_ingest_logs(
                 rng["gte"] = start
             if end:
                 rng["lte"] = end
-            query.setdefault("filter", []).append({"range": {"attempt_at": rng}})
+            # ensure the range filter lives under the bool query
+            query["bool"].setdefault("filter", []).append(
+                {"range": {"attempt_at": rng}}
+            )
         body = {"size": size, "sort": [{"attempt_at": "desc"}], "query": query}
         resp = client.search(index=INGEST_LOG_INDEX, body=body)
         hits = resp.get("hits", {}).get("hits", [])
