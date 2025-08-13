@@ -17,13 +17,20 @@ from config import (
     INGEST_IO_CONCURRENCY,
     INGEST_MAX_FAILURES,
 )
-from utils.file_utils import compute_checksum, get_file_timestamps
+from utils.file_utils import (
+    compute_checksum,
+    get_file_timestamps,
+    hash_path,
+    get_file_size,
+)
 from utils import qdrant_utils
 from utils.opensearch_utils import (
     is_file_up_to_date,
+    is_duplicate_checksum,
     index_documents,
     set_has_embedding_true_by_ids,
 )
+from utils.ingest_logging import IngestLogEmitter
 
 
 # --- Concurrency from config.py ---
@@ -54,6 +61,10 @@ def ingest_one(
     force: bool = False,
     replace: bool = True,
     total_files: int = 1,
+    op: str = "ingest",
+    source: str = "ingest_page",
+    run_id: str | None = None,
+    retry_of: str | None = None,
 ) -> Dict[str, Any]:
     """
     Ingest a single file path:
@@ -68,53 +79,76 @@ def ingest_one(
     logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = os.path.normpath(path).replace("\\", "/")
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
-    checksum = compute_checksum(normalized_path)
-
-    # Skip if already indexed and unchanged (based on checksum + path)
-    if not force and is_file_up_to_date(checksum, normalized_path):
-        logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
-        return {"success": False, "status": "Already indexed", "path": normalized_path}
-
-    timestamps = get_file_timestamps(normalized_path)
-    created = timestamps.get("created")
-    modified = timestamps.get("modified")
-    indexed_at = datetime.now(timezone.utc).isoformat()
-
-    logger.info(f"📄 Loading: {normalized_path}")
-    try:
-        with _io_guard():
-            docs = load_documents(normalized_path)
-    except Exception as e:
-        logger.error(f"❌ Failed to load document: {e}")
-        return {"success": False, "status": "Load failed", "path": normalized_path}
-
-    logger.info(f"🧼 Preprocessing {len(docs)} documents")
-    try:
-        docs_list = preprocess_to_documents(
-            docs_like=docs,
-            source_path=normalized_path,
-            cfg=PreprocessConfig(),
-            doc_type=ext,
+    log = IngestLogEmitter(path=normalized_path, op=op, source=source, run_id=run_id)
+    if retry_of:
+        log.set(retry_of=retry_of)
+    with log:
+        checksum = compute_checksum(normalized_path)
+        log.set(
+            checksum=checksum,
+            path_hash=hash_path(normalized_path),
+            bytes=get_file_size(normalized_path),
         )
-    except Exception as e:
-        logger.warning(f"Preprocess step skipped due to error: {e}")
 
-    logger.info("✂️ Splitting document into chunks")
-    try:
-        chunks = split_documents(docs_list)
-    except Exception as e:
-        logger.error(f"❌ Failed to split document: {e}")
-        return {"success": False, "status": "Split failed", "path": normalized_path}
+        # Skip if already indexed and unchanged (based on checksum + path)
+        if not force and is_file_up_to_date(checksum, normalized_path):
+            logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
+            log.done(status="skipped_up_to_date")
+            return {
+                "success": False,
+                "status": "Already indexed",
+                "path": normalized_path,
+            }
 
-    if not chunks:
-        logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
-        return {
-            "success": False,
-            "status": "No valid content found",
-            "path": normalized_path,
-        }
+        if not force and is_duplicate_checksum(checksum, normalized_path):
+            logger.info(f"♻️ Duplicate file detected: {normalized_path}")
+            log.done(status="duplicate")
+            return {"success": False, "status": "Duplicate", "path": normalized_path}
 
-    logger.info(f"🧩 Split into {len(chunks)} chunks")
+        timestamps = get_file_timestamps(normalized_path)
+        created = timestamps.get("created")
+        modified = timestamps.get("modified")
+        indexed_at = datetime.now(timezone.utc).isoformat()
+
+        logger.info(f"📄 Loading: {normalized_path}")
+        try:
+            with _io_guard():
+                docs = load_documents(normalized_path)
+        except Exception as e:
+            logger.error(f"❌ Failed to load document: {e}")
+            log.fail(stage="load", error_type=e.__class__.__name__, reason=str(e))
+            return {"success": False, "status": "Load failed", "path": normalized_path}
+
+        logger.info(f"🧼 Preprocessing {len(docs)} documents")
+        try:
+            docs_list = preprocess_to_documents(
+                docs_like=docs,
+                source_path=normalized_path,
+                cfg=PreprocessConfig(),
+                doc_type=ext,
+            )
+        except Exception as e:
+            logger.warning(f"Preprocess step skipped due to error: {e}")
+            docs_list = docs
+
+        logger.info("✂️ Splitting document into chunks")
+        try:
+            chunks = split_documents(docs_list)
+        except Exception as e:
+            logger.error(f"❌ Failed to split document: {e}")
+            log.fail(stage="extract", error_type=e.__class__.__name__, reason=str(e))
+            return {"success": False, "status": "Split failed", "path": normalized_path}
+
+        if not chunks:
+            logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
+            log.done(status="skipped_up_to_date")
+            return {
+                "success": False,
+                "status": "No valid content found",
+                "path": normalized_path,
+            }
+
+        logger.info(f"🧩 Split into {len(chunks)} chunks")
 
     # Build per-chunk metadata; UUIDv5 id uses path+chunk index so duplicates across paths get unique ids
     for i, chunk in enumerate(chunks):
@@ -173,6 +207,7 @@ def ingest_one(
             ids = [c["id"] for c in chunks]
             updated, _errs = set_has_embedding_true_by_ids(ids)
 
+            log.done(status="success")
             return {
                 "success": True,
                 "num_chunks": len(chunks),
@@ -182,6 +217,8 @@ def ingest_one(
             }
         except Exception as e:
             logger.error(f"❌ Local pipeline failed: {e}")
+            stage = "index_vec" if "qdrant" in str(e).lower() else "index_os"
+            log.fail(stage=stage, error_type=e.__class__.__name__, reason=str(e))
             return {
                 "success": False,
                 "status": "Local indexing failed",
@@ -204,6 +241,7 @@ def ingest_one(
                 )
                 batches += 1
 
+            log.done(status="success")
             return {
                 "success": True,
                 "num_chunks": len(chunks),
@@ -213,6 +251,7 @@ def ingest_one(
             }
         except Exception as e:
             logger.error(f"❌ Failed to enqueue background tasks: {e}")
+            log.fail(stage="index_os", error_type=e.__class__.__name__, reason=str(e))
             return {
                 "success": False,
                 "status": "Queueing failed",
@@ -228,6 +267,10 @@ def ingest(
     force: bool = False,
     replace: bool = True,
     progress_callback: Optional[Callable[[int, int, float], None]] = None,
+    op: str = "ingest",
+    source: str = "ingest_page",
+    run_id: str | None = None,
+    retry_map: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Ingest one or more file paths and/or directories.
@@ -257,6 +300,9 @@ def ingest(
         logger.warning("⚠️ No valid document files found in provided inputs.")
         return []
 
+    if run_id is None:
+        run_id = str(uuid.uuid4())
+
     start_time = time.time()
     results: List[Dict[str, Any]] = []
     total = len(doc_files)
@@ -267,7 +313,15 @@ def ingest(
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_path = {
             executor.submit(
-                ingest_one, f, force=force, replace=replace, total_files=total
+                ingest_one,
+                f,
+                force=force,
+                replace=replace,
+                total_files=total,
+                op=op,
+                source=source,
+                run_id=run_id,
+                retry_of=(retry_map.get(f) if retry_map else None),
             ): f
             for f in doc_files
         }
