@@ -5,8 +5,8 @@ class DummyClient:
     def __init__(self):
         self.docs = []
 
-    def index(self, index: str, id: str, document: dict):
-        self.docs.append(document)
+    def index(self, index: str, id: str, body: dict, **kwargs):
+        self.docs.append(body)
 
 
 def test_logs_emitted_for_up_to_date(monkeypatch, tmp_path):
