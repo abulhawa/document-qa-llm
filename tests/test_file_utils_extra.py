@@ -14,11 +14,16 @@ def test_file_utils(tmp_path):
 
     checksum = compute_checksum(str(file_path))
     assert len(checksum) == 64
+    alt_path = str(file_path).replace(os.sep, "\\")
+    assert compute_checksum(alt_path) == checksum
 
     assert normalize_path("a\\b/c") == "a/b/c"
 
     assert hash_path("abc")
 
     assert get_file_size("does-not-exist") == 0
+    assert get_file_size("does\\not\\exist") == 0
     ts = get_file_timestamps("does-not-exist")
+    assert ts == {"created": "", "modified": ""}
+    ts = get_file_timestamps("does\\not\\exist")
     assert ts == {"created": "", "modified": ""}
