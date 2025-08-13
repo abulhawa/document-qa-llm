@@ -7,3 +7,4 @@ sample_docs/
 *.env
 debugging.ipynb
 qdrant_threshold_eval.py
+.coverage

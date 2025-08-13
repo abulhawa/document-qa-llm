@@ -1,0 +1,46 @@
+# .github/workflows/tests.yml
+name: tests
+
+on:
+  push:
+    branches: [ master, dev ]
+    paths:
+      - "**.py"
+      - "requirements/**"
+      - "scripts/test.sh"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    branches: [ master, dev ]     # PRs targeting these branches
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements/shared.txt
+            requirements/dev.txt
+
+      - name: Run tests
+        shell: bash
+        run: bash scripts/test.sh

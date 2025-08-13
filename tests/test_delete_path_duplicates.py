@@ -49,10 +49,10 @@ def test_delete_single_path_leaves_other_duplicate(monkeypatch):
             should = body["query"]["bool"]["should"]
             deleted = 0
             for clause in should:
-                must = clause["bool"]["must"]
-                term_path = must[0]["term"]
+                filter = clause["bool"]["filter"]
+                term_path = filter[0]["term"]
                 path = term_path.get("path.keyword") or term_path.get("path")
-                checksum = must[1]["term"]["checksum"]
+                checksum = filter[1]["term"]["checksum"]
                 before = len(self.docs)
                 self.docs = [
                     d for d in self.docs if not (d["path"] == path and d["checksum"] == checksum)
