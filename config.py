@@ -52,6 +52,7 @@ CHUNK_SCORE_THRESHOLD = 0.75
 # ───────────────────────────────────────
 OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
 OPENSEARCH_INDEX = "documents"
+INGEST_LOG_INDEX = "ingest_logs"
 
 # ───────────────────────────────────────
 # 🧠 LLM API (text-generation-webui)
