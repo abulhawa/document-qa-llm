@@ -6,6 +6,7 @@ from config import (
     OPENSEARCH_INDEX,
     OPENSEARCH_DELETE_BATCH,
     OPENSEARCH_REQUEST_TIMEOUT,
+    INGEST_LOG_INDEX,
     logger,
 )
 
@@ -41,12 +42,49 @@ INDEX_SETTINGS = {
     },
 }
 
+INGEST_LOGS_SETTINGS = {
+    "settings": {"index": {"number_of_shards": 1}},
+    "mappings": {
+        "properties": {
+            "log_id": {"type": "keyword"},
+            "run_id": {"type": "keyword"},
+            "op": {"type": "keyword"},
+            "source": {"type": "keyword"},
+            "path": {"type": "keyword"},
+            "path_hash": {"type": "keyword"},
+            "checksum": {"type": "keyword"},
+            "status": {"type": "keyword"},
+            "stage": {"type": "keyword"},
+            "reason": {"type": "text"},
+            "error_type": {"type": "keyword"},
+            "attempt_at": {"type": "date"},
+            "duration_ms": {"type": "long"},
+            "bytes": {"type": "long"},
+            "user": {"type": "keyword"},
+            "host": {"type": "keyword"},
+            "retry_of": {"type": "keyword"},
+        }
+    },
+}
+
 
 def ensure_index_exists():
     client = get_client()
     if not client.indices.exists(index=OPENSEARCH_INDEX):
         logger.info(f"Creating OpenSearch index: {OPENSEARCH_INDEX}")
         client.indices.create(index=OPENSEARCH_INDEX, body=INDEX_SETTINGS)
+
+
+def ensure_ingest_log_index_exists():
+    try:
+        client = get_client()
+        if not hasattr(client, "indices"):
+            return
+        if not client.indices.exists(index=INGEST_LOG_INDEX):
+            logger.info(f"Creating OpenSearch index: {INGEST_LOG_INDEX}")
+            client.indices.create(index=INGEST_LOG_INDEX, body=INGEST_LOGS_SETTINGS)
+    except Exception as e:
+        logger.warning(f"Ingest log index check failed: {e}")
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> None:
@@ -194,9 +232,9 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
 
     for i in range(0, len(unique), CHUNK):
         batch = unique[i : i + CHUNK]
-        must = []
+        should = []
         for path, checksum in batch:
-            must.append(
+            should.append(
                 {
                     "bool": {
                         "must": [
@@ -209,7 +247,7 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
         try:
             resp = client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={"query": {"bool": {"must": must}}},
+                body={"query": {"bool": {"should": should}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
@@ -372,3 +410,57 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
     except exceptions.OpenSearchException as e:
         logger.warning(f"OpenSearch checksum/path check failed: {e}")
         return False
+
+
+def is_duplicate_checksum(checksum: str, path: str) -> bool:
+    """Check if checksum exists for a different path."""
+    try:
+        client = get_client()
+        response = client.count(
+            index=OPENSEARCH_INDEX,
+            body={
+                "query": {
+                    "bool": {
+                        "must": [{"term": {"checksum": checksum}}],
+                        "must_not": [{"term": {"path.keyword": path}}],
+                    }
+                }
+            },
+        )
+        return response.get("count", 0) > 0
+    except exceptions.OpenSearchException as e:
+        logger.warning(f"OpenSearch duplicate check failed: {e}")
+        return False
+
+
+def search_ingest_logs(
+    *,
+    status: str | None = None,
+    path_query: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    size: int = 100,
+) -> List[Dict[str, Any]]:
+    """Search ingest_logs index with optional filters."""
+    try:
+        client = get_client()
+        must: List[Dict[str, Any]] = []
+        if status:
+            must.append({"term": {"status": status}})
+        if path_query:
+            must.append({"wildcard": {"path": f"*{path_query}*"}})
+        query: Dict[str, Any] = {"bool": {"must": must}}
+        if start or end:
+            rng: Dict[str, Any] = {}
+            if start:
+                rng["gte"] = start
+            if end:
+                rng["lte"] = end
+            query.setdefault("filter", []).append({"range": {"attempt_at": rng}})
+        body = {"size": size, "sort": [{"attempt_at": "desc"}], "query": query}
+        resp = client.search(index=INGEST_LOG_INDEX, body=body)
+        hits = resp.get("hits", {}).get("hits", [])
+        return [{"log_id": h.get("_id"), **h.get("_source", {})} for h in hits]
+    except exceptions.OpenSearchException as e:
+        logger.warning(f"Search ingest logs failed: {e}")
+        return []

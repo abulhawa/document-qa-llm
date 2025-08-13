@@ -321,7 +321,7 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
     try:
         if action == "Reingest":
             with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
-                ingest(paths, force=True)
+                ingest(paths, force=True, op="reingest", source="viewer")
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
             with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
@@ -366,7 +366,7 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c1.button("🔄 Reingest File", use_container_width=True):
         try:
-            ingest([row["Path"]], force=True)
+            ingest([row["Path"]], force=True, op="reingest", source="viewer")
             st.success(f"Reingestion triggered for: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:
