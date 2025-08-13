@@ -30,7 +30,6 @@ status_param = None if status_filter == "all" else status_filter
 logs = search_ingest_logs(
     status=status_param, path_query=path_filter or None, start=start_str, end=end_str, size=200
 )
-
 if logs:
     df = pd.DataFrame(
         [
