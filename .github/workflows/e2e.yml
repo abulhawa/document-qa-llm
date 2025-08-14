@@ -20,6 +20,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements/shared.txt
+            requirements/dev.txt
+            requirements/app.txt
+            requirements/worker.txt
 
       - name: ♻️ Cache pip dependencies
         uses: actions/cache@v4
