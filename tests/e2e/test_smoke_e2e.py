@@ -18,7 +18,7 @@ def test_smoke_e2e(streamlit_app, page):
     assert "select" in alert_text.lower() or "picker failed" in alert_text.lower()
 
     # Chat page: submit query and ensure answer rendered without console errors
-    page.get_by_role("link", name="Chat").click()
+    page.get_by_role("link", name="Ask Your Documents").click()
     page.fill("textarea[placeholder='Ask a question...']", "What is Document QA?")
     page.press("textarea[placeholder='Ask a question...']", "Enter")
     page.wait_for_selector("div[data-testid='stChatMessage']")
