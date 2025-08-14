@@ -1,150 +1,207 @@
-import os, socket, threading, pytest, sys
+# tests/e2e/conftest.py
+
+import json
+import os
+import socket
 import subprocess
+import sys
+import threading
 import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-import requests
-from playwright.sync_api import sync_playwright
-from playwright._impl._errors import Error as PlaywrightError
+from socketserver import ThreadingMixIn
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import pytest
+
+ART_DIR = Path(os.getenv("ARTIFACTS_DIR", "artifacts"))
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_makereport(item, call):
+    # Let pytest run the test and get the report
+    outcome = yield
+    rep = outcome.get_result()
+    # Stash the report on the item so fixtures can inspect it
+    setattr(item, "rep_" + rep.when, rep)
+
+@pytest.fixture(autouse=True)
+def _dump_on_failure(request):
+    yield
+    # After the test: if it used Playwright and failed at call stage, dump artifacts
+    if "page" in request.fixturenames and getattr(request.node, "rep_call", None) and request.node.rep_call.failed:
+        page = request.getfixturevalue("page")
+        ART_DIR.mkdir(parents=True, exist_ok=True)
+        testname = request.node.name.replace("/", "_")
+        page.screenshot(path=str(ART_DIR / f"{testname}.png"), full_page=True)
+        (ART_DIR / f"{testname}.html").write_text(page.content(), encoding="utf-8")
+# ─────────────────────────────
+# Minimal threaded mock LLM
+# ─────────────────────────────
+
+STUB_TEXT = "Stub answer."
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_args, **_kwargs):  # silence default logs
+        return
+
+    def _read_json(self):
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        if n <= 0:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n).decode("utf-8"))
+        except Exception:
+            return {}
+
+    def _send_json(self, obj: dict, code: int = 200):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/v1/internal/model/info":
+            self._send_json({"model_name": "stub-model"}); return
+        if self.path == "/v1/internal/model/list":
+            self._send_json({"data": [{"id": "stub-model"}]}); return
+        self.send_response(404); self.end_headers()
+
+    def do_POST(self):
+        _ = self._read_json()  # drain body
+
+        if self.path == "/v1/chat/completions":
+            self._send_json({
+                "id": "chatcmpl-stub", "object": "chat.completion", "created": 0, "model": "stub-model",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": STUB_TEXT}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 2, "total_tokens": 2},
+            }); return
+
+        if self.path == "/v1/completions":
+            self._send_json({
+                "id": "cmpl-stub", "object": "text_completion", "created": 0, "model": "stub-model",
+                "choices": [{"index": 0, "text": STUB_TEXT, "logprobs": None, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 2, "total_tokens": 2},
+            }); return
+
+        if self.path == "/api/v1/generate":
+            self._send_json({"results": [{"text": STUB_TEXT}]}); return
+
+        if self.path == "/v1/internal/model/load":
+            self._send_json({"status": "ok", "model_name": "stub-model"}); return
+
+        self.send_response(404); self.end_headers()
 
 
-def _find_free_port() -> int:
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
+def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/v1/internal/model/info":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"model_name":"stub-model"}')
-        elif self.path == "/v1/internal/model/list":
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'{"data":[{"id":"stub-model"}]}')
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def do_POST(self):
-        if self.path in ("/v1/chat/completions", "/v1/completions", "/api/v1/generate"):
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"choices":[{"message":{"content":"stub"}}]}')
-        else:
-            self.send_response(404)
-            self.end_headers()
+def _wait_http_ok(url: str, timeout_s: float = 5.0):
+    deadline = time.time() + timeout_s
+    last_err = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=0.5):
+                return
+        except Exception as e:
+            last_err = e
+            time.sleep(0.05)
+    raise RuntimeError(f"Timed out waiting for {url}. Last error: {last_err}")
 
 
-def _run_mock_llm_server(port: int):
-    server = HTTPServer(("127.0.0.1", port), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server, thread
+def _repo_root() -> Path:
+    # this file is tests/e2e/conftest.py → repo root is 2 levels up
+    return Path(__file__).resolve().parents[2]
 
+# ─────────────────────────────
+# Fixtures
+# ─────────────────────────────
 
 @pytest.fixture(scope="session")
 def llm_stub_base():
-    # Start a primary stub on a free port
-    port = _find_free_port()
-    server, thread = _run_mock_llm_server(port)
+    """Start the mock LLM on a free port and return base URL."""
+    port = _free_port()
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    t = threading.Thread(target=server.serve_forever, daemon=True); t.start()
+
     base = f"http://127.0.0.1:{port}"
-
-    # CI guardrail: also try to bind :5000 as a fallback target if it's free
-    try:
-        s5000, t5000 = _run_mock_llm_server(5000)
-    except OSError:
-        s5000 = t5000 = None  # some other process might be using it locally
-
-    # Sanity-check stub is reachable
-    for _ in range(20):
-        try:
-            r = requests.get(f"{base}/v1/internal/model/info", timeout=0.2)
-            if r.ok:
-                break
-        except Exception:
-            time.sleep(0.05)
+    _wait_http_ok(f"{base}/v1/internal/model/info", timeout_s=5.0)
 
     yield base
 
     server.shutdown()
-    thread.join(timeout=3)
-    if s5000:
-        s5000.shutdown()
-    if t5000:
-        t5000.join(timeout=3)
+    t.join(timeout=3)
 
 
 @pytest.fixture(scope="session")
-def streamlit_app(llm_stub_base, tmp_path_factory):
-    # Pick a port for the web app itself
-    app_port = _find_free_port()
+def streamlit_app(llm_stub_base):
+    """Launch Streamlit with env pointing to the mock; return app URL."""
+    root = _repo_root()
+    entry = root / os.getenv("STREAMLIT_APP", "main.py")  # change if your entry is different
+    assert entry.exists(), f"Streamlit entry not found: {entry}"
+
+    app_port = _free_port()
     app_url = f"http://127.0.0.1:{app_port}"
 
-    # Build the exact env we'll give to Streamlit (and all its child processes)
+    env = os.environ.copy()
     base = llm_stub_base
-    child_env = os.environ.copy()
-    child_env.update(
-        {
-            "LLM_BASE": base,
-            "LLM_GENERATE_ENDPOINT": f"{base}/api/v1/generate",
-            "LLM_COMPLETION_ENDPOINT": f"{base}/v1/completions",
-            "LLM_CHAT_ENDPOINT": f"{base}/v1/chat/completions",
-            "LLM_MODEL_LIST_ENDPOINT": f"{base}/v1/internal/model/list",
-            "LLM_MODEL_LOAD_ENDPOINT": f"{base}/v1/internal/model/load",
-            "LLM_MODEL_INFO_ENDPOINT": f"{base}/v1/internal/model/info",
-            # Streamlit niceties for CI:
-            "PYTHONUNBUFFERED": "1",
-            "STREAMLIT_BROWSER_GATHERUSAGESTATS": "false",
-        }
-    )
+    env.update({
+        "LLM_BASE": base,
+        "LLM_GENERATE_ENDPOINT":   f"{base}/api/v1/generate",
+        "LLM_COMPLETION_ENDPOINT": f"{base}/v1/completions",
+        "LLM_CHAT_ENDPOINT":       f"{base}/v1/chat/completions",
+        "LLM_MODEL_LIST_ENDPOINT": f"{base}/v1/internal/model/list",
+        "LLM_MODEL_LOAD_ENDPOINT": f"{base}/v1/internal/model/load",
+        "LLM_MODEL_INFO_ENDPOINT": f"{base}/v1/internal/model/info",
+        # Streamlit stability
+        "PYTHONUNBUFFERED": "1",
+        "BROWSER": "none",
+        "STREAMLIT_SERVER_FILEWATCHERTYPE": "none",
+        "STREAMLIT_SERVER_ADDRESS": "127.0.0.1",
+    })
+    env["PYTHONPATH"] = str(root) + os.pathsep + env.get("PYTHONPATH", "")
 
-    # Start Streamlit as a subprocess with the env explicitly set
     proc = subprocess.Popen(
         [
-            sys.executable,
-            "-m",
-            "streamlit",
-            "run",
-            "main.py",
-            "--server.headless",
-            "true",
-            "--server.port",
-            str(app_port),
-            "--browser.gatherUsageStats",
-            "false",
+            sys.executable, "-m", "streamlit", "run", str(entry),
+            "--server.headless", "true",
+            "--server.port", str(app_port),
+            "--server.address", "127.0.0.1",
+            "--server.fileWatcherType", "none",
+            "--browser.gatherUsageStats", "false",
         ],
-        env=child_env,
+        cwd=str(root),
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
 
-    # Wait until it's serving
-    import urllib.request, time
-
+    # wait until serving
     start = time.time()
-    last_log = ""
-    while time.time() - start < 30:
+    timeout = 90 if os.name == "nt" else 45
+    while time.time() - start < timeout:
         try:
-            with urllib.request.urlopen(app_url, timeout=0.5) as _:
+            with urllib.request.urlopen(app_url, timeout=0.5):
                 break
         except Exception:
-            # Read a bit of output to aid debugging on CI
-            if proc.stdout:
-                try:
-                    last_log = proc.stdout.readline().strip() or last_log
-                except Exception:
-                    pass
+            if proc.poll() is not None:
+                if proc.stdout:
+                    print("==== Streamlit stdout (crashed) ====")
+                    print(proc.stdout.read())
+                raise RuntimeError("Streamlit exited before ready.")
             time.sleep(0.2)
     else:
-        # Dump logs if it failed to boot
         if proc.stdout:
+            print("==== Streamlit stdout (timeout) ====")
             print(proc.stdout.read())
         raise RuntimeError("Streamlit app failed to start in time.")
 
@@ -157,51 +214,13 @@ def streamlit_app(llm_stub_base, tmp_path_factory):
         proc.kill()
 
 
-@pytest.fixture(scope="session")
-def browser():
-    """Provide a headless Chromium browser for tests.
-
-    If the required browser binaries are missing (e.g. when running locally
-    without having executed ``playwright install``), they will be installed on
-    the fly.
-    """
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(headless=True)
-        except PlaywrightError:
-            # Install required browser binaries and system dependencies if missing.
-            subprocess.run(
-                ["playwright", "install", "--with-deps", "chromium"],
-                check=True,
-            )
-            browser = p.chromium.launch(headless=True)
-        yield browser
-        browser.close()
-
-
-@pytest.fixture
-def page(browser):
-    context = browser.new_context()
-    page = context.new_page()
-    page.console_logs = []
-    page.on("console", lambda msg: page.console_logs.append(f"{msg.type}: {msg.text}"))
-    yield page
-    context.close()
-
-
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    rep = outcome.get_result()
-    setattr(item, "rep_" + rep.when, rep)
-
-
+# ─────────────────────────────
+# Playwright timeouts
+# (assumes pytest-playwright is installed)
+# ─────────────────────────────
 @pytest.fixture(autouse=True)
-def capture_artifacts(request, page):
-    yield
-    if request.node.rep_call.failed:
-        artifacts = Path("artifacts")
-        artifacts.mkdir(exist_ok=True)
-        page.screenshot(path=str(artifacts / f"{request.node.name}.png"))
-        log_file = artifacts / f"{request.node.name}.log"
-        log_file.write_text("\n".join(page.console_logs))
+def _playwright_timeouts(page, context):
+    context.set_default_timeout(3000)
+    context.set_default_navigation_timeout(30000)
+    page.set_default_timeout(3000)
+    page.set_default_navigation_timeout(30000)

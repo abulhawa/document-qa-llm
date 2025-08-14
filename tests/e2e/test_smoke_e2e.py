@@ -23,10 +23,13 @@ def test_smoke_e2e(streamlit_app, page):
 
     # Chat page: navigate and optionally submit a query if chat is available
     page.get_by_role("link", name="Ask Your Documents").click()
-    page.wait_for_timeout(500)
-    page.fill("textarea[placeholder='Ask a question...']", "What is Document QA?")
-    page.press("textarea[placeholder='Ask a question...']", "Enter")
-    page.wait_for_selector("div[data-testid='stChatMessage']")
+    page.set_default_timeout(1_000)
+    page.wait_for_timeout(200)
+    # Ensure the form area is actually rendered (wait only this step up to 3s)
+    page.get_by_role("button", name="Get Answer", exact=True).wait_for(timeout=3_000)
+    page.get_by_label("Your question", exact=True).fill("What is Document QA?")
+    page.get_by_role("button", name="Get Answer", exact=True).click()
+    page.get_by_role("heading", name="📝 Answer", exact=True).wait_for(timeout=3_000)
     assert not any("error" in m.lower() for m in page.console_logs)
 
     # Index Viewer: navigate and exercise basic controls if data is present
