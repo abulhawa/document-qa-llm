@@ -3,12 +3,73 @@ import socket
 import subprocess
 import sys
 import time
+import json
+import threading
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 import requests
 from playwright.sync_api import sync_playwright
 from playwright._impl._errors import Error as PlaywrightError
+
+
+class MockLLMHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/v1/internal/model/info":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"model_name": "mock"}).encode())
+        elif self.path == "/v1/internal/model/list":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"model_names": ["mock"]}).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        if length:
+            self.rfile.read(length)
+        if self.path == "/v1/completions":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({"choices": [{"text": "Generic response"}]}).encode()
+            )
+        elif self.path == "/v1/chat/completions":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps({
+                    "choices": [
+                        {
+                            "message": {"content": json.dumps({"rewritten": "mock"})}
+                        }
+                    ]
+                }).encode()
+            )
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        return
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_llm_server():
+    server = HTTPServer(("localhost", 5000), MockLLMHandler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.daemon = True
+    thread.start()
+    yield
+    server.shutdown()
 
 
 def _get_free_port() -> int:
@@ -71,17 +132,23 @@ def streamlit_app() -> str:
 def browser():
     """Provide a headless Chromium browser for tests.
 
-    If the required browser binaries are missing (e.g. when running locally
-    without having executed ``playwright install``), they will be installed on
-    the fly.
+    If the required browser binaries or system dependencies are missing,
+    they will be installed on the fly.
     """
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(headless=True)
         except PlaywrightError:
-            # Install missing browser binaries without attempting system package installs
+            # Install missing browser binaries and system dependencies
             subprocess.run(
-                [sys.executable, "-m", "playwright", "install", "chromium"],
+                [
+                    sys.executable,
+                    "-m",
+                    "playwright",
+                    "install",
+                    "--with-deps",
+                    "chromium",
+                ],
                 check=True,
             )
             browser = p.chromium.launch(headless=True)
