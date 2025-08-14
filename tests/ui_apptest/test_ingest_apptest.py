@@ -33,21 +33,6 @@ def _stub_tracing(monkeypatch):
         TOOL="TOOL",
     )
     monkeypatch.setitem(sys.modules, "tracing", dummy)
-
-
-def test_ingest_validation_on_empty_selection(monkeypatch):
-    monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: [])
-    monkeypatch.setattr("ui.ingestion_ui.run_folder_picker", lambda: [])
-
-    at = AppTest.from_file("pages/1_ingest.py", default_timeout=10)
-    at.run()
-
-    # Click the Ingest button with no selection
-    at.button[2].click().run()
-
-    assert at.warning[0].value == "Please select at least one file or folder."
-
-
 def test_ingest_success_and_progress(monkeypatch):
     # Mock selection and ingestion
     monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: ["/tmp/a.txt"])
@@ -77,11 +62,11 @@ def test_ingest_success_and_progress(monkeypatch):
     at = AppTest.from_file("pages/1_ingest.py", default_timeout=10)
     at.run()
 
-    # Select file and ingest
+    # Select file which triggers ingestion automatically
     at.button[0].click().run()
-    at.button[2].click().run()
 
     # Success notice and log row
+    assert "Found 1 path" in at.success[0].value
     assert "Queued" in at.success[1].value
     assert len(at.dataframe[0].value) == 1
 
