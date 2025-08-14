@@ -33,10 +33,9 @@ def test_smoke_e2e(streamlit_app, page):
     # Index Viewer: navigate and exercise basic controls if data is present
     page.get_by_role("link", name="File Index Viewer").click()
     page.wait_for_timeout(500)
-    if page.locator("table").count() > 0:
-        rows_before = page.locator("table tbody tr").count()
-        page.fill("input[aria-label='Filter by path substring']", "zzz")
-        page.wait_for_timeout(500)
-        rows_after = page.locator("table tbody tr").count()
-        assert rows_after <= rows_before
-        assert page.locator("button:has-text('Download')").is_visible()
+    rows_before = page.locator("table tbody tr").count()
+    page.fill("input[aria-label='Filter by path substring']", "zzz")
+    page.wait_for_timeout(500)
+    rows_after = page.locator("table tbody tr").count()
+    assert rows_after <= rows_before
+    assert page.locator("button:has-text('Download')").is_visible()
