@@ -52,28 +52,6 @@ jobs:
       - name: 🌐 Install Playwright Chromium (with Linux deps)
         run: python -m playwright install --with-deps chromium
 
-      - name: 🚀 Launch Streamlit (headless) on :8501
-        env:
-          BROWSER: none
-        run: |
-          set -e
-          streamlit run main.py --server.headless true --server.port 8501 &
-          echo "🔍 Waiting for Streamlit to be ready..."
-          python -c "
-          import time, urllib.request, sys
-          url = 'http://localhost:8501'
-          for _ in range(90):
-              try:
-                  with urllib.request.urlopen(url, timeout=2) as r:
-                      if r.status == 200:
-                          print('✅ Streamlit is up')
-                          sys.exit(0)
-              except Exception:
-                  time.sleep(1)
-          print('❌ Streamlit did not start in time')
-          sys.exit(1)
-          "
-
       - name: 🧪 Run Playwright E2E tests
         run: pytest -q tests/e2e --maxfail=1 --disable-warnings
 

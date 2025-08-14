@@ -1,11 +1,13 @@
+import os
+import socket
 import subprocess
 import time
-import socket
 from pathlib import Path
 
-import requests
 import pytest
+import requests
 from playwright.sync_api import sync_playwright
+from playwright._impl._errors import Error as PlaywrightError
 
 
 def _get_free_port() -> int:
@@ -16,13 +18,72 @@ def _get_free_port() -> int:
 
 @pytest.fixture(scope="session")
 def streamlit_app() -> str:
-    return "http://localhost:8501"
+    """Start the Streamlit app on a free port and yield its URL.
+
+    This allows running the E2E tests locally without having to manually
+    launch the application first. The server is terminated once the test
+    session finishes.
+    """
+
+    port = _get_free_port()
+    url = f"http://localhost:{port}"
+
+    env = os.environ.copy()
+    # Prevent Streamlit from opening a real browser window.
+    env.setdefault("BROWSER", "none")
+
+    proc = subprocess.Popen(
+        [
+            "streamlit",
+            "run",
+            "main.py",
+            "--server.headless",
+            "true",
+            "--server.port",
+            str(port),
+        ],
+        env=env,
+    )
+
+    # Wait for the server to become responsive.
+    for _ in range(90):
+        try:
+            r = requests.get(url, timeout=1)
+            if r.status_code == 200:
+                break
+        except Exception:
+            time.sleep(1)
+    else:
+        proc.kill()
+        raise RuntimeError("Streamlit did not start in time")
+
+    yield url
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 @pytest.fixture(scope="session")
 def browser():
+    """Provide a headless Chromium browser for tests.
+
+    If the required browser binaries are missing (e.g. when running locally
+    without having executed ``playwright install``), they will be installed on
+    the fly.
+    """
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        try:
+            browser = p.chromium.launch(headless=True)
+        except PlaywrightError:
+            # Install required browser binaries and system dependencies if missing.
+            subprocess.run(
+                ["playwright", "install", "--with-deps", "chromium"],
+                check=True,
+            )
+            browser = p.chromium.launch(headless=True)
         yield browser
         browser.close()
 
