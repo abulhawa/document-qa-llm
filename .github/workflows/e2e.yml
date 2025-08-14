@@ -1,7 +1,15 @@
 name: E2E (Playwright)
 
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [ master, dev ]
+    paths:
+      - "**.py"
+      - "requirements/**"
+      - "scripts/test.sh"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    branches: [ master, dev ]
 
 concurrency:
   group: e2e-${{ github.ref }}
