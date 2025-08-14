@@ -49,10 +49,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: 🌐 Install Playwright and dependencies
-        uses: microsoft/playwright-github-action@v1
-        with:
-          with-deps: true
+      - name: 🌐 Install Playwright Chromium (with Linux deps)
+        run: python -m playwright install --with-deps chromium
 
       - name: 🚀 Launch Streamlit (headless) on :8501
         env:
