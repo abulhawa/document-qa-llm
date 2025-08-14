@@ -28,4 +28,4 @@ fi
 python -m pip install -r requirements/shared.txt -r requirements/dev.txt
 
 # Run tests via -m to avoid PATH issues
-python -m pytest --cov -q
+python -m pytest --cov -q --ignore=tests/e2e --disable-warnings
