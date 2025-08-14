@@ -2,7 +2,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 
-def test_duplicate_groups_render_and_delete(monkeypatch):
+def test_duplicate_table_renders(monkeypatch):
     checksums = ["c1", "c2"]
     file_template = {
         "filetype": "txt",
@@ -32,15 +32,8 @@ def test_duplicate_groups_render_and_delete(monkeypatch):
     at = AppTest.from_file("pages/3_duplicates_viewer.py", default_timeout=10)
     at.run()
 
-    subheaders = [s.value for s in at.subheader]
-    assert "c1 (2 files)" in subheaders
-    assert "c2 (1 file)" in subheaders
-
-    delete_buttons = [b for b in at.button if b.label == "Delete group"]
-    assert len(delete_buttons) == 2
-
-    delete_buttons[0].click().run()
-
-    assert [s.value for s in at.subheader] == ["c2 (1 file)"]
-    assert len(at.session_state["duplicate_groups"]) == 1
-    assert at.session_state["duplicate_groups"][0]["checksum"] == "c2"
+    # One dataframe showing all duplicate files
+    assert len(at.dataframe) == 1
+    df = at.dataframe[0].value
+    assert len(df) == 3
+    assert df["Checksum"].value_counts().to_dict() == {"c1": 2, "c2": 1}
