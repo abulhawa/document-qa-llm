@@ -53,7 +53,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: 🧪 Run Playwright E2E tests
-        run: pytest -q tests/e2e --maxfail=1 --disable-warnings
+        run: pytest -q tests/e2e -s --maxfail=1 --disable-warnings
 
       - name: 📤 Upload Playwright artifacts on failure
         if: failure()
