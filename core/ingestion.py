@@ -76,7 +76,7 @@ def ingest_one(
          LARGE files  -> queue ALL to Celery (OS + embed + Qdrant + flag flip)
 
     Returns:
-      dict with keys: success, status, path, and optionally num_chunks, batches
+      dict with keys: success, status, path, and optionally num_chunks
     """
     logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = normalize_path(path)
@@ -217,7 +217,6 @@ def ingest_one(
             return {
                 "success": True,
                 "num_chunks": len(chunks),
-                "batches": 0,
                 "path": normalized_path,
                 "status": "Successfully indexed",
             }
@@ -233,7 +232,6 @@ def ingest_one(
             }
 
     else:  # LARGE file → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
-        batches = 0
         try:
             logger.info(
                 f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
@@ -245,13 +243,11 @@ def ingest_one(
                     "core.ingestion_tasks.index_and_embed_chunks",
                     args=[batch],
                 )
-                batches += 1
 
             log.done(status="Success")
             return {
                 "success": True,
                 "num_chunks": len(chunks),
-                "batches": batches,
                 "path": normalized_path,
                 "status": "Partially indexed — background worker will finish",
             }

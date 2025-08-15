@@ -83,7 +83,6 @@ if selected_files:
                 for r in results
             ],
             "Num. Chunks": [r.get("num_chunks", 0) for r in results],
-            "Batches": [r.get("batches", "") for r in results],
         }
     )
     status_table.dataframe(summary_df, height=300)

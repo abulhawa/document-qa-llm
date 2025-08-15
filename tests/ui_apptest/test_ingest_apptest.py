@@ -33,6 +33,8 @@ def _stub_tracing(monkeypatch):
         TOOL="TOOL",
     )
     monkeypatch.setitem(sys.modules, "tracing", dummy)
+
+
 def test_ingest_success_and_progress(monkeypatch):
     # Mock selection and ingestion
     monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: ["/tmp/a.txt"])
@@ -53,7 +55,6 @@ def test_ingest_success_and_progress(monkeypatch):
                 "success": True,
                 "status": "ok",
                 "num_chunks": 1,
-                "batches": 1,
             }
         ]
 
@@ -77,7 +78,9 @@ def test_ingest_success_and_progress(monkeypatch):
         elems = []
         if getattr(node, "type", "") == "progress":
             elems.append(node)
-        for child in getattr(node, "children", {}).values() if hasattr(node, "children") else []:
+        for child in (
+            getattr(node, "children", {}).values() if hasattr(node, "children") else []
+        ):
             elems.extend(find_progress(child))
         return elems
 

@@ -118,5 +118,4 @@ def test_ingest_one_batching(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
 
     result = ingest_one(str(f))
-    assert result["batches"] == 3
     assert len(calls) == 3
