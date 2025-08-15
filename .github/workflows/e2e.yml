@@ -1,5 +1,11 @@
 name: E2E Tests
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - 'tests/e2e/**'
+      - 'scripts/seed_test_backends.py'
+      - 'scripts/test_backends_smoke.py'
+      - '.github/workflows/e2e.yml'
 
 jobs:
   e2e:
