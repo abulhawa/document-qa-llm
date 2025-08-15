@@ -43,7 +43,6 @@ jobs:
             /tmp/os-image.tar
             /tmp/qd-image.tar
           key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.15.3
-          save-always: true
 
       - name: Load cached images (if hit)
         if: steps.img-cache.outputs.cache-hit == 'true'
@@ -129,7 +128,6 @@ jobs:
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: ${{ runner.os }}-msplaywright-${{ env.PW_VERSION }}-chromium
-          save-always: true
 
       - name: Install Playwright Chromium
         env:
