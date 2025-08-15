@@ -1,35 +1,24 @@
 name: E2E Tests
-on: push
+on: [push, pull_request]
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
 
-    services:
-      opensearch:
-        image: opensearchproject/opensearch:3.1.0
-        env:
-          discovery.type: single-node
-          plugins.security.disabled: "true"
-          OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-        options: >-
-          --health-cmd="curl -fsS http://localhost:9200 >/dev/null || exit 1"
-          --health-interval=5s --health-timeout=5s --health-retries=60
-      qdrant:
-        image: qdrant/qdrant:v1.9.0
-        options: >-
-          --health-cmd="curl -fsS http://localhost:6333/readyz >/dev/null || exit 1"
-          --health-interval=5s --health-timeout=5s --health-retries=60
-
     env:
+      # Image tags
+      OS_IMAGE: opensearchproject/opensearch:2.14.0
+      QD_IMAGE: qdrant/qdrant:v1.9.0
+
+      # App/test env
       CI: "true"
       TEST_MODE: "e2e"
       NAMESPACE: "ci"
-      OPENSEARCH_URL: "http://opensearch:9200"
-      QDRANT_URL: "http://qdrant:6333"
+      OPENSEARCH_URL: "http://localhost:9200"
+      QDRANT_URL: "http://localhost:6333"
       USE_STUB_EMBEDDER: "true"
       USE_STUB_LLM: "true"
-      LLM_BASE_URL: "http://127.0.0.1:8001"
+      LLM_BASE_URL: http://127.0.0.1:8001
 
     steps:
       - uses: actions/checkout@v4
@@ -44,30 +33,63 @@ jobs:
             requirements/app.txt
             requirements/worker.txt
 
-      - name: Install deps
+      # Cache the Docker images as tarballs between runs
+      - name: Cache docker images
+        id: img-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/os-image.tar
+            /tmp/qd-image.tar
+          key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.9.0
+
+      - name: Load cached images (if hit)
+        if: steps.img-cache.outputs.cache-hit == 'true'
+        run: |
+          docker load -i /tmp/os-image.tar
+          docker load -i /tmp/qd-image.tar
+          docker images
+
+      - name: Pull images (if miss) and save to cache
+        if: steps.img-cache.outputs.cache-hit != 'true'
+        run: |
+          docker pull "$OS_IMAGE"
+          docker pull "$QD_IMAGE"
+          docker save "$OS_IMAGE" -o /tmp/os-image.tar
+          docker save "$QD_IMAGE" -o /tmp/qd-image.tar
+
+      - name: Start OpenSearch & Qdrant
+        run: |
+          docker run -d --name os -p 9200:9200 \
+            -e "discovery.type=single-node" \
+            -e "plugins.security.disabled=true" \
+            -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
+            "$OS_IMAGE"
+
+          docker run -d --name qd -p 6333:6333 "$QD_IMAGE"
+
+      - name: Wait until services ready
+        shell: bash
+        run: |
+          for i in {1..60}; do curl -fsS http://localhost:9200 >/dev/null && break; sleep 2; done
+          for i in {1..60}; do curl -fsS http://localhost:6333/readyz >/dev/null && break; sleep 2; done
+
+      - name: Install Python deps
         run: |
           python -m pip install -U pip
           pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt
-          pip install fastapi uvicorn pydantic python-dotenv
+          pip install fastapi uvicorn pydantic
 
-      - name: Verify services are up
+      - name: Start stub services
         run: |
-          curl -f $OPENSEARCH_URL
-          curl -f $QDRANT_URL/readyz
+          nohup python scripts/stub_embedder.py >/dev/null 2>&1 &
+          nohup python scripts/stub_llm.py >/dev/null 2>&1 &
 
-      - name: Start stub embedder
-        run: nohup python scripts/stub_embedder.py >/dev/null 2>&1 &
-
-      - name: Start stub LLM
-        run: nohup python scripts/stub_llm.py >/dev/null 2>&1 &
-
-      - name: Seed OS + Qdrant
+      - name: Seed OpenSearch + Qdrant
         run: python scripts/seed_test_backends.py
 
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
       - name: Run E2E tests
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: 0
-        run: pytest -q tests/e2e --maxfail=1 --disable-warnings
+        run: pytest -q -m "e2e"
