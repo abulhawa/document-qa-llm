@@ -2,7 +2,7 @@ import os
 import sys
 import types
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Stub opensearchpy before importing module under test
 opensearchpy_stub = types.SimpleNamespace(OpenSearch=object, helpers=types.SimpleNamespace(), exceptions=Exception)
