@@ -8,7 +8,7 @@ jobs:
     env:
       # Image tags
       OS_IMAGE: opensearchproject/opensearch:2.14.0
-      QD_IMAGE: qdrant/qdrant:v1.14.2
+      QD_IMAGE: qdrant/qdrant:v1.15.3
 
       # App/test env
       TEST_MODE: e2e
@@ -39,7 +39,7 @@ jobs:
           path: |
             /tmp/os-image.tar
             /tmp/qd-image.tar
-          key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.14.2
+          key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.15.3
 
       - name: Load cached images (if hit)
         if: steps.img-cache.outputs.cache-hit == 'true'
