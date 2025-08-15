@@ -33,8 +33,8 @@ class FakeClient:
         return {'deleted': len(q['bool']['should'])}
     def search(self, index, body):
         return {'hits': {'hits': [
-            {'_id': '1', '_score': 1.0, '_source': {'path': 'p', 'checksum': 'c', 'text': 't', 'chunk_index':0, 'modified_at':'2020'}},
-            {'_id': '2', '_score': 0.5, '_source': {'path': 'p2', 'checksum': 'c2', 'text': 't2', 'chunk_index':1, 'modified_at':'2019'}},
+            {'_id': '1', '_score': 1.0, '_source': {'path': 'p', 'checksum': 'c', 'text': 't', 'chunk_index':0, 'modified_at':'2020', 'bytes': 123, 'size': '123 B'}},
+            {'_id': '2', '_score': 0.5, '_source': {'path': 'p2', 'checksum': 'c2', 'text': 't2', 'chunk_index':1, 'modified_at':'2019', 'bytes': 456, 'size': '456 B'}},
         ]}}
 
 
@@ -90,3 +90,4 @@ def test_get_files_by_checksum(monkeypatch):
     files = osu.get_files_by_checksum('c')
     assert files[0]['path'] == 'p'
     assert files[0]['num_chunks'] == 1
+    assert files[0]['bytes'] == 123

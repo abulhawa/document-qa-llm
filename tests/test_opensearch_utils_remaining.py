@@ -60,6 +60,8 @@ def test_list_files_from_opensearch(monkeypatch):
                                                     "modified_at": 2,
                                                     "indexed_at": 3,
                                                     "filetype": "txt",
+                                                    "bytes": 100,
+                                                    "size": "100 B",
                                                 },
                                             }
                                         ]
@@ -80,6 +82,8 @@ def test_list_files_from_opensearch(monkeypatch):
                                                     "modified_at": 5,
                                                     "indexed_at": 6,
                                                     "filetype": "pdf",
+                                                    "bytes": 200,
+                                                    "size": "200 B",
                                                 },
                                             }
                                         ]
@@ -96,6 +100,8 @@ def test_list_files_from_opensearch(monkeypatch):
     assert files[0]["num_chunks"] == 2
     assert files[1]["filename"] == "file2.pdf"
     assert files[1]["first_chunk_id"] == "2"
+    assert files[0]["bytes"] == 100
+    assert files[1]["size"] == "200 B"
 
 
 def test_get_duplicate_checksums_with_fallback(monkeypatch):

@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 from utils.opensearch_utils import get_duplicate_checksums, get_files_by_checksum
+from utils.file_utils import format_file_size
 
 st.set_page_config(page_title="Duplicate Files", page_icon="🗂️")
 
@@ -23,9 +24,10 @@ else:
                     "Modified": f.get("modified_at"),
                     "Indexed": f.get("indexed_at"),
                     "Chunks": f.get("num_chunks"),
+                    "Size": f.get("bytes", 0),
                 }
             )
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df.style.format({"Size": format_file_size}), use_container_width=True)
     csv = df.to_csv(index=False).encode("utf-8")
     st.download_button("Download CSV", csv, "duplicate_files.csv", "text/csv")

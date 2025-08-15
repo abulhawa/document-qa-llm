@@ -23,6 +23,7 @@ from utils.file_utils import (
     hash_path,
     get_file_size,
     normalize_path,
+    format_file_size,
 )
 from utils import qdrant_utils
 from utils.opensearch_utils import (
@@ -85,10 +86,12 @@ def ingest_one(
         log.set(retry_of=retry_of)
     with log:
         checksum = compute_checksum(normalized_path)
+        size_bytes = get_file_size(normalized_path)
         log.set(
             checksum=checksum,
             path_hash=hash_path(normalized_path),
-            bytes=get_file_size(normalized_path),
+            bytes=size_bytes,
+            size=format_file_size(size_bytes),
         )
 
         # Skip if already indexed and unchanged (based on checksum + path)
@@ -163,6 +166,8 @@ def ingest_one(
         chunk["indexed_at"] = indexed_at
         chunk["created_at"] = created
         chunk["modified_at"] = modified
+        chunk["bytes"] = size_bytes
+        chunk["size"] = format_file_size(size_bytes)
         chunk["page"] = chunk.get("page", None)
         # position approx. (0..100)
         chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)

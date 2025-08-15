@@ -8,6 +8,7 @@ __all__ = [
     "hash_path",
     "get_file_size",
     "get_file_timestamps",
+    "format_file_size",
 ]
 
 
@@ -38,6 +39,28 @@ def get_file_size(path: str) -> int:
         return os.path.getsize(path)
     except OSError:
         return 0
+
+
+def format_file_size(num_bytes: int) -> str:
+    """Return a human-friendly string for a byte size.
+
+    Uses binary multiples (KB, MB, GB, ...) and keeps one decimal place for
+    non-integer values. Falls back to ``0 B`` for invalid inputs.
+    """
+    try:
+        size = float(num_bytes)
+    except (TypeError, ValueError):
+        return "0 B"
+
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024
+        idx += 1
+    if units[idx] == "B":
+        return f"{int(size)} {units[idx]}"
+    else:
+        return f"{size:.1f} {units[idx]}"
 
 
 def get_file_timestamps(path: str) -> dict:

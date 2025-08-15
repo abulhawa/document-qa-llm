@@ -15,6 +15,7 @@ from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
     delete_vectors_by_path_checksum,
 )
+from utils.file_utils import format_file_size
 from core.ingestion import ingest
 from config import logger
 
@@ -76,6 +77,7 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
                 "Modified": format_timestamp(f.get("modified_at") or ""),
                 "Created": format_timestamp(f.get("created_at") or ""),
                 "Indexed": format_timestamp(f.get("indexed_at") or ""),
+                "Size": f.get("bytes", 0),
                 "OpenSearch Chunks": f.get("num_chunks", 0),
                 "Qdrant Chunks": f.get("qdrant_count", 0),
                 "first_chunk_id": f.get("first_chunk_id"),
@@ -227,9 +229,10 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         if "select_checksums" in st.session_state:
             selected_set = set(st.session_state["select_checksums"] or [])
             fdf["Select"] = fdf["Checksum"].astype(str).isin(selected_set)
-
+        display_df = fdf.copy()
+        display_df["Size"] = display_df["Size"].apply(format_file_size)
         edited = st.data_editor(
-            fdf,
+            display_df,
             hide_index=True,
             use_container_width=True,
             disabled=[
@@ -240,6 +243,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                 "Modified",
                 "Created",
                 "Indexed",
+                "Size",
                 "OpenSearch Chunks",
                 "Qdrant Chunks",
                 "first_chunk_id",
@@ -263,7 +267,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         return edited
     else:
         st.dataframe(
-            fdf.drop(columns=["first_chunk_id"], errors="ignore"),
+            fdf.drop(columns=["first_chunk_id"], errors="ignore").style.format({"Size": format_file_size}),
             hide_index=True,
             use_container_width=True,
         )
