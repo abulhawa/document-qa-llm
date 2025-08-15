@@ -1,16 +1,6 @@
 name: E2E Tests
 
-on:
-  push:
-    branches: [ master, dev ]
-    paths:
-      - "**.py"
-      - "requirements/**"
-      - "scripts/test.sh"
-      - ".github/workflows/tests.yml"
-      - ".github/workflows/e2e.yml"
-  pull_request:
-    branches: [ master, dev ]
+on: push
 
 concurrency:
   group: e2e-${{ github.ref }}

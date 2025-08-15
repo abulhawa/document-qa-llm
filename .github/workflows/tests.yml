@@ -1,16 +1,7 @@
 # .github/workflows/tests.yml
 name: Unit tests
 
-on:
-  push:
-    branches: [ master, dev ]
-    paths:
-      - "**.py"
-      - "requirements/**"
-      - "scripts/test.sh"
-      - ".github/workflows/tests.yml"
-  pull_request:
-    branches: [ master, dev ]     # PRs targeting these branches
+on: push
 
 permissions:
   contents: read
