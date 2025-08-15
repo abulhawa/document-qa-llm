@@ -10,6 +10,7 @@ def test_duplicate_table_renders(monkeypatch):
         "modified_at": "1",
         "indexed_at": "1",
         "num_chunks": 1,
+        "bytes": 100,
     }
     files = {
         "c1": [
@@ -37,3 +38,4 @@ def test_duplicate_table_renders(monkeypatch):
     df = at.dataframe[0].value
     assert len(df) == 3
     assert df["Checksum"].value_counts().to_dict() == {"c1": 2, "c2": 1}
+    assert "Size" in df.columns

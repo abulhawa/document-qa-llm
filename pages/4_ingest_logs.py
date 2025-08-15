@@ -4,6 +4,7 @@ from datetime import datetime
 
 from core.ingestion import ingest
 from utils.opensearch_utils import search_ingest_logs
+from utils.file_utils import format_file_size
 
 st.set_page_config(page_title="Ingestion Logs", layout="wide")
 st.title("📝 Ingestion Logs")
@@ -35,6 +36,7 @@ if logs:
         [
             {
                 "Path": l.get("path"),
+                "Size": l.get("bytes", 0),
                 "Status": l.get("status"),
                 "Error": l.get("error_type"),
                 "Reason": (l.get("reason") or "")[:100],
@@ -46,7 +48,7 @@ if logs:
         ]
     )
     df_display = df.drop(columns=["log_id"])
-    st.dataframe(df_display, height=400)
+    st.dataframe(df_display.style.format({"Size": format_file_size}), height=400)
 
     # Only failed rows are eligible for reingest
     failed_df = df[df["Status"] == "failed"]

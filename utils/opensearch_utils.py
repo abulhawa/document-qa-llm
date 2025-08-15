@@ -36,6 +36,8 @@ INDEX_SETTINGS = {
             "indexed_at": {"type": "date"},
             "created_at": {"type": "date"},
             "modified_at": {"type": "date"},
+            "bytes": {"type": "long"},
+            "size": {"type": "keyword"},
             "page": {"type": "integer"},
             "location_percent": {"type": "float"},
         }
@@ -60,6 +62,7 @@ INGEST_LOGS_SETTINGS = {
             "attempt_at": {"type": "date"},
             "duration_ms": {"type": "long"},
             "bytes": {"type": "long"},
+            "size": {"type": "keyword"},
             "user": {"type": "keyword"},
             "host": {"type": "keyword"},
             "retry_of": {"type": "keyword"},
@@ -139,6 +142,8 @@ def list_files_from_opensearch(
                                     "modified_at",
                                     "indexed_at",
                                     "filetype",
+                                    "bytes",
+                                    "size",
                                 ],
                                 "sort": [{"indexed_at": "desc"}],
                             }
@@ -166,6 +171,8 @@ def list_files_from_opensearch(
                 "modified_at": top_source.get("modified_at"),
                 "indexed_at": top_source.get("indexed_at"),
                 "filetype": top_source.get("filetype"),
+                "bytes": top_source.get("bytes"),
+                "size": top_source.get("size"),
                 "num_chunks": doc_count,
                 "first_chunk_id": top_chunk_id,
             }
@@ -349,6 +356,8 @@ def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
                 "created_at": src.get("created_at"),
                 "modified_at": src.get("modified_at"),
                 "indexed_at": src.get("indexed_at"),
+                "bytes": src.get("bytes"),
+                "size": src.get("size"),
                 "checksum": checksum,
                 "num_chunks": 0,
             },
