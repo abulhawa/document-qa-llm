@@ -48,8 +48,6 @@ INGEST_LOGS_SETTINGS = {
     "settings": {"index": {"number_of_shards": 1}},
     "mappings": {
         "properties": {
-            "log_id": {"type": "keyword"},
-            "run_id": {"type": "keyword"},
             "op": {"type": "keyword"},
             "source": {"type": "keyword"},
             "path": {"type": "keyword"},
@@ -65,7 +63,6 @@ INGEST_LOGS_SETTINGS = {
             "size": {"type": "keyword"},
             "user": {"type": "keyword"},
             "host": {"type": "keyword"},
-            "retry_of": {"type": "keyword"},
         }
     },
 }

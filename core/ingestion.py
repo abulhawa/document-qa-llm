@@ -65,8 +65,6 @@ def ingest_one(
     total_files: int = 1,
     op: str = "ingest",
     source: str = "ingest_page",
-    run_id: str | None = None,
-    retry_of: str | None = None,
 ) -> Dict[str, Any]:
     """
     Ingest a single file path:
@@ -81,9 +79,7 @@ def ingest_one(
     logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = normalize_path(path)
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
-    log = IngestLogEmitter(path=normalized_path, op=op, source=source, run_id=run_id)
-    if retry_of:
-        log.set(retry_of=retry_of)
+    log = IngestLogEmitter(path=normalized_path, op=op, source=source)
     with log:
         checksum = compute_checksum(normalized_path)
         size_bytes = get_file_size(normalized_path)
@@ -156,9 +152,7 @@ def ingest_one(
 
     # Build per-chunk metadata; UUIDv5 id uses path+chunk index so duplicates across paths get unique ids
     for i, chunk in enumerate(chunks):
-        chunk["id"] = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"{normalized_path}-{i}")
-        )
+        chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{normalized_path}-{i}"))
         chunk["chunk_index"] = i
         chunk["path"] = normalized_path
         chunk["checksum"] = checksum
@@ -271,8 +265,6 @@ def ingest(
     progress_callback: Optional[Callable[[int, int, float], None]] = None,
     op: str = "ingest",
     source: str = "ingest_page",
-    run_id: str | None = None,
-    retry_map: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Ingest one or more file paths and/or directories.
@@ -302,9 +294,6 @@ def ingest(
         logger.warning("⚠️ No valid document files found in provided inputs.")
         return []
 
-    if run_id is None:
-        run_id = str(uuid.uuid4())
-
     start_time = time.time()
     results: List[Dict[str, Any]] = []
     total = len(doc_files)
@@ -322,8 +311,6 @@ def ingest(
                 total_files=total,
                 op=op,
                 source=source,
-                run_id=run_id,
-                retry_of=(retry_map.get(f) if retry_map else None),
             ): f
             for f in doc_files
         }

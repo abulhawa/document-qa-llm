@@ -5,10 +5,10 @@ from streamlit.testing.v1 import AppTest
 def test_status_filter_and_pagination(monkeypatch):
     """Search ingest logs UI shows filtered results and different pages."""
     logs = [
-        {"path": "/a.txt", "status": "Success", "log_id": "1"},
-        {"path": "/b.txt", "status": "Failed", "log_id": "2"},
-        {"path": "/c.txt", "status": "Success", "log_id": "3"},
-        {"path": "/d.txt", "status": "Failed", "log_id": "4"},
+        {"path": "/a.txt", "status": "Success"},
+        {"path": "/b.txt", "status": "Failed"},
+        {"path": "/c.txt", "status": "Success"},
+        {"path": "/d.txt", "status": "Failed"},
     ]
     page = {"value": 0}
     page_size = 2

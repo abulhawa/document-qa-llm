@@ -19,19 +19,14 @@ class IngestLogEmitter:
         index: str = INGEST_LOG_INDEX,
         op: str = "ingest",
         source: str = "ingest_page",
-        run_id: str | None = None,
     ) -> None:
         self._client = None
         self.index = index
-        self.log_id = str(uuid.uuid4())
         self.doc: dict[str, Any] = {
-            "log_id": self.log_id,
             "path": path,
             "op": op,
             "source": source,
         }
-        if run_id:
-            self.doc["run_id"] = run_id
         self._start = 0.0
         self._finished = False
 
@@ -79,7 +74,7 @@ class IngestLogEmitter:
                 logger.warning(f"Failed to init ingest log client: {e}")
                 return
         try:
-            self._client.index(index=self.index, id=self.log_id, body=self.doc)
+            self._client.index(index=self.index, body=self.doc)
         except exceptions.OpenSearchException as e:
             logger.warning(f"Failed to write ingest log: {e}")
         except Exception as e:
