@@ -1,4 +1,5 @@
 # Shared libraries (pinned to consistent minors)
+python-dotenv==1.1.*
 requests==2.32.*
 qdrant-client==1.14.*
 opensearch-py==3.*
