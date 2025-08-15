@@ -1,57 +1,73 @@
 name: E2E Tests
-
 on: push
 
-concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  playwright-e2e:
+  e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+
+    services:
+      opensearch:
+        image: opensearchproject/opensearch:3.1.0
+        env:
+          discovery.type: single-node
+          plugins.security.disabled: "true"
+          OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+        options: >-
+          --health-cmd="curl -fsS http://localhost:9200 >/dev/null || exit 1"
+          --health-interval=5s --health-timeout=5s --health-retries=60
+      qdrant:
+        image: qdrant/qdrant:v1.9.0
+        options: >-
+          --health-cmd="curl -fsS http://localhost:6333/readyz >/dev/null || exit 1"
+          --health-interval=5s --health-timeout=5s --health-retries=60
+
+    env:
+      CI: "true"
+      TEST_MODE: "e2e"
+      NAMESPACE: "ci"
+      OPENSEARCH_URL: "http://opensearch:9200"
+      QDRANT_URL: "http://qdrant:6333"
+      USE_STUB_EMBEDDER: "true"
+      USE_STUB_LLM: "true"
+      LLM_BASE_URL: "http://127.0.0.1:8001"
 
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: pip
+          python-version: "3.10"
+          cache: "pip"
           cache-dependency-path: |
             requirements/shared.txt
             requirements/dev.txt
             requirements/app.txt
             requirements/worker.txt
 
-      - name: 📦 Install app + dev dependencies
+      - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt
+          pip install fastapi uvicorn pydantic python-dotenv
 
-      - name: ♻️ Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/requirements/dev.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
+      - name: Verify services are up
+        run: |
+          curl -f $OPENSEARCH_URL
+          curl -f $QDRANT_URL/readyz
 
-      - name: 🌐 Install Playwright Chromium (with Linux deps)
+      - name: Start stub embedder
+        run: nohup python scripts/stub_embedder.py >/dev/null 2>&1 &
+
+      - name: Start stub LLM
+        run: nohup python scripts/stub_llm.py >/dev/null 2>&1 &
+
+      - name: Seed OS + Qdrant
+        run: python scripts/seed_test_backends.py
+
+      - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
-      - name: 🧪 Run Playwright E2E tests
+      - name: Run E2E tests
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: 0
         run: pytest -q tests/e2e --maxfail=1 --disable-warnings
-
-      - name: 📤 Upload Playwright artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-artifacts
-          path: |
-            test-results/
-            playwright-report/
-            **/*.png
-            **/*.webm
