@@ -32,8 +32,6 @@ sys.modules.setdefault("qdrant_client.http", types.SimpleNamespace(models=qdrant
 sys.modules.setdefault("qdrant_client.http.models", qdrant_models_stub)
 sys.modules.setdefault("requests", types.SimpleNamespace())
 
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from utils import opensearch_utils, qdrant_utils
 
 

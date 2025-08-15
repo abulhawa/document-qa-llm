@@ -2,9 +2,6 @@ import os
 import sys
 import types
 
-# ensure repository root is on path
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 
 # stub opensearchpy before importing module under test
 class DummyOpenSearchException(Exception):
