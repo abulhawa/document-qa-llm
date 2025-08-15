@@ -31,7 +31,7 @@ jobs:
             requirements/app.txt
             requirements/worker.txt
 
-      # Cache the Docker images as tarballs between runs
+      # Cache Docker images between runs
       - name: Cache docker images
         id: img-cache
         uses: actions/cache@v4
@@ -56,15 +56,16 @@ jobs:
           docker save "$OS_IMAGE" -o /tmp/os-image.tar
           docker save "$QD_IMAGE" -o /tmp/qd-image.tar
 
-      # Host kernel setting required by OpenSearch
+      # Host kernel setting required by OpenSearch (no --sysctl in docker run)
       - name: Configure vm.max_map_count
-        run: sudo sysctl -w vm.max_map_count=262144
+        run: |
+          sudo sysctl -w vm.max_map_count=262144
+          sysctl vm.max_map_count
 
       - name: Start OpenSearch & Qdrant
         run: |
           docker run -d --name os -p 9200:9200 \
             --ulimit memlock=-1:-1 --ulimit nofile=65536:65536 \
-            --sysctl vm.max_map_count=262144 \
             -e "discovery.type=single-node" \
             -e "plugins.security.disabled=true" \
             -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
@@ -125,7 +126,6 @@ jobs:
           PYTHONPATH: .
         run: pytest -q -m "e2e"
 
-      # If anything failed, dump container logs for debugging
       - name: Dump container logs (on failure)
         if: failure()
         run: |
