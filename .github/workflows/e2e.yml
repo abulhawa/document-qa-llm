@@ -18,6 +18,9 @@ jobs:
       USE_STUB_LLM: "true"
       LLM_BASE_URL: http://127.0.0.1:8001
 
+      # Playwright browsers cache path (resolved below into an absolute path)
+      PLAYWRIGHT_BROWSERS_PATH: $HOME/.cache/ms-playwright
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +43,7 @@ jobs:
             /tmp/os-image.tar
             /tmp/qd-image.tar
           key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.15.3
+          save-always: true
 
       - name: Load cached images (if hit)
         if: steps.img-cache.outputs.cache-hit == 'true'
@@ -109,6 +113,29 @@ jobs:
           pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt
           pip install pytest pytest-playwright fastapi uvicorn pydantic python-dotenv
 
+      - name: Determine Playwright Python version
+        id: pw
+        run: |
+          PW_VERSION=$(python -c 'import importlib.metadata as m; print(m.version("playwright"))')
+          echo "PW_VERSION=$PW_VERSION" >> "$GITHUB_ENV"
+          echo "Playwright version: $PW_VERSION"
+
+      # Resolve PLAYWRIGHT_BROWSERS_PATH to an absolute path for caching
+      - name: Resolve Playwright cache path
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${HOME}/.cache/ms-playwright" >> "$GITHUB_ENV"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-msplaywright-${{ env.PW_VERSION }}-chromium
+          save-always: true
+
+      - name: Install Playwright Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        run: python -m playwright install --with-deps chromium
+
       - name: Start stub services
         run: |
           nohup python scripts/stub_embedder.py >/dev/null 2>&1 &
@@ -119,12 +146,10 @@ jobs:
           PYTHONPATH: .
         run: python scripts/seed_test_backends.py
 
-      - name: Install Playwright Chromium
-        run: python -m playwright install --with-deps chromium
-
       - name: Run E2E tests
         env:
           PYTHONPATH: .
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
         run: pytest -q -m "e2e"
 
       - name: Dump container logs (on failure)
