@@ -5,7 +5,7 @@ class DummyClient:
     def __init__(self):
         self.docs = []
 
-    def index(self, index: str, id: str, body: dict, **kwargs):
+    def index(self, index: str, body: dict, **kwargs):
         self.docs.append(body)
 
 

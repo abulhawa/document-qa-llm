@@ -16,7 +16,14 @@ with col1:
 with col2:
     status_filter = st.selectbox(
         "Status",
-        ["All", "Failed", "Success", "Already indexed", "Duplicate", "No valid content found"],
+        [
+            "All",
+            "Failed",
+            "Success",
+            "Already indexed",
+            "Duplicate",
+            "No valid content found",
+        ],
         index=0,
     )
 with col3:
@@ -29,7 +36,11 @@ end_str = end_date.isoformat() if end_date else None
 status_param = None if status_filter == "All" else status_filter
 
 logs = search_ingest_logs(
-    status=status_param, path_query=path_filter or None, start=start_str, end=end_str, size=200
+    status=status_param,
+    path_query=path_filter or None,
+    start=start_str,
+    end=end_str,
+    size=200,
 )
 if logs:
     df = pd.DataFrame(
@@ -42,26 +53,10 @@ if logs:
                 "Reason": (l.get("reason") or "")[:100],
                 "Stage": l.get("stage"),
                 "Attempt": l.get("attempt_at"),
-                "log_id": l.get("log_id"),
             }
             for l in logs
         ]
     )
-    df_display = df.drop(columns=["log_id"])
-    st.dataframe(df_display.style.format({"Size": format_file_size}), height=400)
-
-    # Only failed rows are eligible for reingest
-    failed_df = df[df["Status"] == "Failed"]
-    paths = failed_df["Path"].tolist()
-    retry_map = {row.Path: row.log_id for row in failed_df.itertuples()}
-
-    if paths and st.button("Reingest all failed"):
-        ingest(paths, force=True, op="reingest", source="viewer", retry_map=retry_map)
-        st.success(f"Reingested {len(paths)} file(s)")
-
-    for row in failed_df.itertuples():
-        if st.button("Reingest", key=row.log_id):
-            ingest([row.Path], force=True, op="reingest", source="viewer", retry_map={row.Path: row.log_id})
-            st.success(f"Reingested {row.Path}")
+    st.dataframe(df.style.format({"Size": format_file_size}), height=400)
 else:
     st.info("No ingestion logs found")
