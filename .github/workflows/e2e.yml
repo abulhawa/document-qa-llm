@@ -18,7 +18,7 @@ jobs:
       USE_STUB_LLM: "true"
       LLM_BASE_URL: http://127.0.0.1:8001
 
-      # Playwright browsers cache path (resolved below into an absolute path)
+      # Playwright browser cache path
       PLAYWRIGHT_BROWSERS_PATH: $HOME/.cache/ms-playwright
 
     steps:
@@ -59,7 +59,7 @@ jobs:
           docker save "$OS_IMAGE" -o /tmp/os-image.tar
           docker save "$QD_IMAGE" -o /tmp/qd-image.tar
 
-      # Host kernel setting required by OpenSearch (no --sysctl in docker run)
+      # Host kernel setting required by OpenSearch
       - name: Configure vm.max_map_count
         run: |
           sudo sysctl -w vm.max_map_count=262144
@@ -119,17 +119,19 @@ jobs:
           echo "PW_VERSION=$PW_VERSION" >> "$GITHUB_ENV"
           echo "Playwright version: $PW_VERSION"
 
-      # Resolve PLAYWRIGHT_BROWSERS_PATH to an absolute path for caching
       - name: Resolve Playwright cache path
         run: echo "PLAYWRIGHT_BROWSERS_PATH=${HOME}/.cache/ms-playwright" >> "$GITHUB_ENV"
 
       - name: Cache Playwright browsers
+        id: pw-cache
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: ${{ runner.os }}-msplaywright-${{ env.PW_VERSION }}-chromium
 
-      - name: Install Playwright Chromium
+      # Only install Chromium when cache misses; otherwise skip the download+apt work
+      - name: Install Playwright Chromium (on cache miss)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
         run: python -m playwright install --with-deps chromium
