@@ -1,3 +1,13 @@
+import os
+import pytest
+
+# Mark as e2e so unit jobs can exclude it by marker.
+pytestmark = pytest.mark.e2e
+
+# Extra safety: if someone runs unit tests without markers locally, skip gracefully.
+if os.getenv("TEST_MODE", "off") != "e2e":
+    pytest.skip("e2e-only smoke test (requires OpenSearch & Qdrant)", allow_module_level=True)
+    
 from opensearchpy import OpenSearch
 from qdrant_client import QdrantClient
 from config import OPENSEARCH_URL, OPENSEARCH_INDEX, QDRANT_URL, QDRANT_COLLECTION
