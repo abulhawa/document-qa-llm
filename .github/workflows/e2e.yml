@@ -11,11 +11,9 @@ jobs:
       QD_IMAGE: qdrant/qdrant:v1.9.0
 
       # App/test env
-      CI: "true"
-      TEST_MODE: "e2e"
-      NAMESPACE: "ci"
-      OPENSEARCH_URL: "http://localhost:9200"
-      QDRANT_URL: "http://localhost:6333"
+      TEST_MODE: e2e
+      OPENSEARCH_URL: http://localhost:9200
+      QDRANT_URL: http://localhost:6333
       USE_STUB_EMBEDDER: "true"
       USE_STUB_LLM: "true"
       LLM_BASE_URL: http://127.0.0.1:8001
@@ -58,9 +56,15 @@ jobs:
           docker save "$OS_IMAGE" -o /tmp/os-image.tar
           docker save "$QD_IMAGE" -o /tmp/qd-image.tar
 
+      # Host kernel setting required by OpenSearch
+      - name: Configure vm.max_map_count
+        run: sudo sysctl -w vm.max_map_count=262144
+
       - name: Start OpenSearch & Qdrant
         run: |
           docker run -d --name os -p 9200:9200 \
+            --ulimit memlock=-1:-1 --ulimit nofile=65536:65536 \
+            --sysctl vm.max_map_count=262144 \
             -e "discovery.type=single-node" \
             -e "plugins.security.disabled=true" \
             -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
@@ -71,14 +75,37 @@ jobs:
       - name: Wait until services ready
         shell: bash
         run: |
-          for i in {1..60}; do curl -fsS http://localhost:9200 >/dev/null && break; sleep 2; done
-          for i in {1..60}; do curl -fsS http://localhost:6333/readyz >/dev/null && break; sleep 2; done
+          set -e
+          timeout=180
+          start=$(date +%s)
+
+          echo "Waiting for OpenSearch..."
+          until curl -fsS http://localhost:9200 >/dev/null; do
+            if (( $(date +%s) - start > timeout )); then
+              echo "::error::OpenSearch didn't start in time"
+              docker ps -a || true
+              docker logs os || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Waiting for Qdrant..."
+          until curl -fsS http://localhost:6333/readyz >/dev/null; do
+            if (( $(date +%s) - start > timeout )); then
+              echo "::error::Qdrant didn't start in time"
+              docker ps -a || true
+              docker logs qd || true
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Install Python deps
         run: |
           python -m pip install -U pip
           pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt
-          pip install fastapi uvicorn pydantic
+          pip install pytest pytest-playwright fastapi uvicorn pydantic python-dotenv
 
       - name: Start stub services
         run: |
@@ -86,10 +113,25 @@ jobs:
           nohup python scripts/stub_llm.py >/dev/null 2>&1 &
 
       - name: Seed OpenSearch + Qdrant
+        env:
+          PYTHONPATH: .
         run: python scripts/seed_test_backends.py
 
       - name: Install Playwright Chromium
         run: python -m playwright install --with-deps chromium
 
       - name: Run E2E tests
+        env:
+          PYTHONPATH: .
         run: pytest -q -m "e2e"
+
+      # If anything failed, dump container logs for debugging
+      - name: Dump container logs (on failure)
+        if: failure()
+        run: |
+          echo "----- docker ps -----"
+          docker ps -a || true
+          echo "----- os logs -----"
+          docker logs os || true
+          echo "----- qd logs -----"
+          docker logs qd || true
