@@ -67,7 +67,8 @@ jobs:
           docker run -d --name os -p 9200:9200 \
             --ulimit memlock=-1:-1 --ulimit nofile=65536:65536 \
             -e "discovery.type=single-node" \
-            -e "plugins.security.disabled=true" \
+            -e "DISABLE_SECURITY_PLUGIN=true" \
+            -e "DISABLE_INSTALL_DEMO_CONFIG=true" \
             -e "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m" \
             "$OS_IMAGE"
 
