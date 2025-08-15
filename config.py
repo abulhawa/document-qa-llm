@@ -57,12 +57,14 @@ INGEST_LOG_INDEX = "ingest_logs"
 # ───────────────────────────────────────
 # 🧠 LLM API (text-generation-webui)
 # ───────────────────────────────────────
-LLM_GENERATE_ENDPOINT = "http://localhost:5000/api/v1/generate"
-LLM_COMPLETION_ENDPOINT = "http://localhost:5000/v1/completions"
-LLM_CHAT_ENDPOINT = "http://localhost:5000/v1/chat/completions"
-LLM_MODEL_LIST_ENDPOINT = "http://localhost:5000/v1/internal/model/list"
-LLM_MODEL_LOAD_ENDPOINT = "http://localhost:5000/v1/internal/model/load"
-LLM_MODEL_INFO_ENDPOINT = "http://localhost:5000/v1/internal/model/info"
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "localhost:5000").rstrip("/")
+
+LLM_GENERATE_ENDPOINT   = os.getenv("LLM_GENERATE_ENDPOINT",   f"{LLM_BASE_URL}/api/v1/generate")
+LLM_COMPLETION_ENDPOINT = os.getenv("LLM_COMPLETION_ENDPOINT", f"{LLM_BASE_URL}/v1/completions")
+LLM_CHAT_ENDPOINT       = os.getenv("LLM_CHAT_ENDPOINT",       f"{LLM_BASE_URL}/v1/chat/completions")
+LLM_MODEL_LIST_ENDPOINT = os.getenv("LLM_MODEL_LIST_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/list")
+LLM_MODEL_LOAD_ENDPOINT = os.getenv("LLM_MODEL_LOAD_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/load")
+LLM_MODEL_INFO_ENDPOINT = os.getenv("LLM_MODEL_INFO_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/info")
 
 # ───────────────────────────────────────
 # 📋 Logging

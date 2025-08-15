@@ -26,14 +26,11 @@ def test_smoke_e2e(streamlit_app, page):
     page.wait_for_timeout(500)
     page.get_by_role("button", name="Get Answer", exact=True).wait_for(timeout=3_000)
     question_input = page.get_by_label("Your question", exact=True)
-    if question_input.is_enabled():
-        question_input.fill("What is Document QA?")
-        page.get_by_role("button", name="Get Answer", exact=True).click()
-        page.get_by_role("heading", name="📝 Answer", exact=True).wait_for(timeout=3_000)
-        if any("error" in m.lower() for m in page.console_logs):
-            print("Console errors:", page.console_logs)
-    else:
-        print("Skipping chat submission; LLM inactive")
+    question_input.fill("What is Document QA?")
+    page.get_by_role("button", name="Get Answer", exact=True).click()
+    page.get_by_role("heading", name="📝 Answer", exact=True).wait_for(timeout=3_000)
+    if any("error" in m.lower() for m in page.console_logs):
+        print("Console errors:", page.console_logs)
 
     # Index Viewer: navigate and exercise basic controls if data is present
     page.locator("a[href$='/index_viewer']").click()
