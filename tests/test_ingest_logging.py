@@ -26,6 +26,6 @@ def test_logs_emitted_for_up_to_date(monkeypatch, tmp_path):
 
     assert client.docs, "expected a log document to be written"
     doc = client.docs[0]
-    assert doc["status"] == "skipped_up_to_date"
+    assert doc["status"] == "Already indexed"
     assert doc["bytes"] == 5
     assert doc["size"] == "5 B"

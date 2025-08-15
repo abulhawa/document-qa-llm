@@ -16,7 +16,7 @@ with col1:
 with col2:
     status_filter = st.selectbox(
         "Status",
-        ["all", "failed", "success", "skipped_up_to_date", "duplicate"],
+        ["All", "Failed", "Success", "Already indexed", "Duplicate", "No valid content found"],
         index=0,
     )
 with col3:
@@ -26,7 +26,7 @@ with col4:
 
 start_str = start_date.isoformat() if start_date else None
 end_str = end_date.isoformat() if end_date else None
-status_param = None if status_filter == "all" else status_filter
+status_param = None if status_filter == "All" else status_filter
 
 logs = search_ingest_logs(
     status=status_param, path_query=path_filter or None, start=start_str, end=end_str, size=200
@@ -51,7 +51,7 @@ if logs:
     st.dataframe(df_display.style.format({"Size": format_file_size}), height=400)
 
     # Only failed rows are eligible for reingest
-    failed_df = df[df["Status"] == "failed"]
+    failed_df = df[df["Status"] == "Failed"]
     paths = failed_df["Path"].tolist()
     retry_map = {row.Path: row.log_id for row in failed_df.itertuples()}
 
