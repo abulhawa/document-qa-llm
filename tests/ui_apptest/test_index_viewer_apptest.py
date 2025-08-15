@@ -12,7 +12,6 @@ def test_index_viewer_shows_size(monkeypatch):
             "indexed_at": "1",
             "num_chunks": 1,
             "qdrant_count": 0,
-            "first_chunk_id": "1",
             "checksum": "c1",
             "bytes": 1024,
         }

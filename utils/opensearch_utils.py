@@ -160,7 +160,6 @@ def list_files_from_opensearch(
         doc_count = bucket["doc_count"]
         top_hit = bucket["top_chunk"]["hits"]["hits"][0]
         top_source = top_hit["_source"]
-        top_chunk_id = top_hit["_id"]
 
         results.append(
             {
@@ -174,7 +173,6 @@ def list_files_from_opensearch(
                 "bytes": top_source.get("bytes"),
                 "size": top_source.get("size"),
                 "num_chunks": doc_count,
-                "first_chunk_id": top_chunk_id,
             }
         )
 

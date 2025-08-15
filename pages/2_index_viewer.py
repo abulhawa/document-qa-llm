@@ -80,7 +80,6 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
                 "Size": f.get("bytes", 0),
                 "OpenSearch Chunks": f.get("num_chunks", 0),
                 "Qdrant Chunks": f.get("qdrant_count", 0),
-                "first_chunk_id": f.get("first_chunk_id"),
                 "Checksum": f.get("checksum", ""),
             }
         )
@@ -246,7 +245,6 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                 "Size",
                 "OpenSearch Chunks",
                 "Qdrant Chunks",
-                "first_chunk_id",
             ],
             column_config={
                 "Select": st.column_config.CheckboxColumn("Select"),
@@ -267,7 +265,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         return edited
     else:
         st.dataframe(
-            fdf.drop(columns=["first_chunk_id"], errors="ignore").style.format({"Size": format_file_size}),
+            fdf.style.format({"Size": format_file_size}),
             hide_index=True,
             use_container_width=True,
         )

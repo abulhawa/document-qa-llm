@@ -99,7 +99,6 @@ def test_list_files_from_opensearch(monkeypatch):
     assert files[0]["path"] == "dir/file1.txt"
     assert files[0]["num_chunks"] == 2
     assert files[1]["filename"] == "file2.pdf"
-    assert files[1]["first_chunk_id"] == "2"
     assert files[0]["bytes"] == 100
     assert files[1]["size"] == "200 B"
 
