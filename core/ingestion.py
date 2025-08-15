@@ -97,7 +97,7 @@ def ingest_one(
         # Skip if already indexed and unchanged (based on checksum + path)
         if not force and is_file_up_to_date(checksum, normalized_path):
             logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
-            log.done(status="skipped_up_to_date")
+            log.done(status="Already indexed")
             return {
                 "success": False,
                 "status": "Already indexed",
@@ -106,7 +106,7 @@ def ingest_one(
 
         if not force and is_duplicate_checksum(checksum, normalized_path):
             logger.info(f"♻️ Duplicate file detected: {normalized_path}")
-            log.done(status="duplicate")
+            log.done(status="Duplicate")
             return {"success": False, "status": "Duplicate", "path": normalized_path}
 
         timestamps = get_file_timestamps(normalized_path)
@@ -145,7 +145,7 @@ def ingest_one(
 
         if not chunks:
             logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
-            log.done(status="skipped_up_to_date")
+            log.done(status="No valid content found")
             return {
                 "success": False,
                 "status": "No valid content found",
@@ -213,7 +213,7 @@ def ingest_one(
             ids = [c["id"] for c in chunks]
             updated, _errs = set_has_embedding_true_by_ids(ids)
 
-            log.done(status="success")
+            log.done(status="Success")
             return {
                 "success": True,
                 "num_chunks": len(chunks),
@@ -247,7 +247,7 @@ def ingest_one(
                 )
                 batches += 1
 
-            log.done(status="success")
+            log.done(status="Success")
             return {
                 "success": True,
                 "num_chunks": len(chunks),

@@ -64,7 +64,7 @@ class IngestLogEmitter:
         if self._finished:
             return
         self._finished = True
-        self.doc["status"] = "failed"
+        self.doc["status"] = "Failed"
         self.doc["stage"] = stage
         self.doc["error_type"] = error_type
         self.doc["reason"] = reason

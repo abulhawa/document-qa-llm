@@ -5,10 +5,10 @@ from streamlit.testing.v1 import AppTest
 def test_status_filter_and_pagination(monkeypatch):
     """Search ingest logs UI shows filtered results and different pages."""
     logs = [
-        {"path": "/a.txt", "status": "success", "log_id": "1"},
-        {"path": "/b.txt", "status": "failed", "log_id": "2"},
-        {"path": "/c.txt", "status": "success", "log_id": "3"},
-        {"path": "/d.txt", "status": "failed", "log_id": "4"},
+        {"path": "/a.txt", "status": "Success", "log_id": "1"},
+        {"path": "/b.txt", "status": "Failed", "log_id": "2"},
+        {"path": "/c.txt", "status": "Success", "log_id": "3"},
+        {"path": "/d.txt", "status": "Failed", "log_id": "4"},
     ]
     page = {"value": 0}
     page_size = 2
@@ -32,14 +32,14 @@ def test_status_filter_and_pagination(monkeypatch):
     assert df["Path"].tolist() == ["/a.txt", "/b.txt"]
 
     # Filtering by status adjusts row counts
-    at.selectbox[0].select("success").run()
+    at.selectbox[0].select("Success").run()
     assert at.dataframe[0].value["Path"].tolist() == ["/a.txt"]
 
-    at.selectbox[0].select("failed").run()
+    at.selectbox[0].select("Failed").run()
     assert at.dataframe[0].value["Path"].tolist() == ["/b.txt"]
 
     # Reset filter and switch to second page
-    at.selectbox[0].select("all").run()
+    at.selectbox[0].select("All").run()
     page["value"] = 1
     at.run()
     assert at.dataframe[0].value["Path"].tolist() == ["/c.txt", "/d.txt"]
