@@ -176,6 +176,17 @@ def list_files_from_opensearch(
     return results
 
 
+def get_chunks_by_path(path: str) -> List[Dict[str, Any]]:
+    """Return all chunk documents for a given file path."""
+    client = get_client()
+    resp = client.search(
+        index=OPENSEARCH_INDEX,
+        body={"size": 10000, "query": {"term": {"path.keyword": path}}},
+    )
+    hits = resp.get("hits", {}).get("hits", [])
+    return [{"id": h.get("_id"), **h.get("_source", {})} for h in hits]
+
+
 def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     """Delete all OpenSearch docs that match any of the given checksums.
     Uses batched `terms` delete_by_query for speed. Returns total deleted count.

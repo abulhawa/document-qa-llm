@@ -3,6 +3,9 @@ import pandas as pd
 import threading
 import queue
 import time
+import os
+import sys
+import subprocess
 from typing import List, Dict, Any
 
 from utils.time_utils import format_timestamp
@@ -10,14 +13,89 @@ from utils.opensearch_utils import (
     list_files_from_opensearch,
     delete_files_by_path_checksum,
     get_duplicate_checksums,
+    get_chunks_by_path,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
     delete_vectors_by_path_checksum,
+    index_chunks,
 )
 from utils.file_utils import format_file_size
 from core.ingestion import ingest
 from config import logger
+
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+
+
+def _open_file(path: str) -> None:
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception as e:
+        st.error(f"Failed to open file: {e}")
+
+
+def _show_in_folder(path: str) -> None:
+    folder = os.path.dirname(path)
+    try:
+        if sys.platform.startswith("win"):
+            subprocess.run(["explorer", "/select,", path], check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", path], check=False)
+        else:
+            subprocess.run(["xdg-open", folder], check=False)
+    except Exception as e:
+        st.error(f"Failed to open folder: {e}")
+
+
+def _sync_os_to_qdrant(path: str, checksum: str) -> None:
+    chunks = get_chunks_by_path(path)
+    if not chunks:
+        st.warning("No OpenSearch chunks found for path")
+        return
+    delete_vectors_by_path_checksum([(path, checksum)])
+    ok = index_chunks(chunks)
+    if ok:
+        st.toast("Synced embeddings for file.", icon="✅")
+    else:
+        st.error("Failed to sync embeddings.")
+
+
+def _handle_menu_action(action: str, row: Dict[str, Any]) -> None:
+    path = row.get("Path", "")
+    checksum = row.get("Checksum", "")
+    if action == "open":
+        _open_file(path)
+    elif action == "show":
+        _show_in_folder(path)
+    elif action == "reingest":
+        try:
+            ingest([path], force=True, op="reingest", source="viewer")
+            st.toast(f"Reingestion triggered for: {path}", icon="✅")
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Row reingest failed: {e}")
+            st.error(f"Row reingest failed: {e}")
+    elif action == "sync":
+        try:
+            _sync_os_to_qdrant(path, checksum)
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Sync failed: {e}")
+            st.error(f"Sync failed: {e}")
+    elif action == "delete":
+        try:
+            delete_files_by_path_checksum([(path, checksum)])
+            delete_vectors_by_path_checksum([(path, checksum)])
+            st.toast(f"Deleted: {path}", icon="🗑️")
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Row delete failed: {e}")
+            st.error(f"Row delete failed: {e}")
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
@@ -264,11 +342,89 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
             pass
         return edited
     else:
-        st.dataframe(
-            fdf.style.format({"Size": format_file_size}),
-            hide_index=True,
-            use_container_width=True,
+        display_df = fdf.copy()
+        display_df["Size"] = display_df["Size"].apply(format_file_size)
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            st.dataframe(
+                fdf,
+                hide_index=True,
+                use_container_width=True,
+            )
+
+        gb = GridOptionsBuilder.from_dataframe(display_df)
+        gb.configure_default_column(resizable=True, sortable=True, filter=True)
+        gb.configure_grid_options(
+            getContextMenuItems=JsCode(
+                """
+        function(params) {
+            const result = [
+                {
+                    name: 'Open file',
+                    action: function() {
+                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'open', row: params.node.data};
+                        params.api.applyTransaction({});
+                    }
+                },
+                {
+                    name: 'Show in folder',
+                    action: function() {
+                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'show', row: params.node.data};
+                        params.api.applyTransaction({});
+                    }
+                },
+                {
+                    name: 'Copy cell value',
+                    action: function() {
+                        if (params.value) {navigator.clipboard.writeText(params.value.toString());}
+                    }
+                },
+                'separator',
+                {
+                    name: 'Reingest',
+                    action: function() {
+                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'reingest', row: params.node.data};
+                        params.api.applyTransaction({});
+                    }
+                },
+                {
+                    name: 'Sync OpenSearch -> Qdrant',
+                    action: function() {
+                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'sync', row: params.node.data};
+                        params.api.applyTransaction({});
+                    }
+                },
+                {
+                    name: 'Delete from both',
+                    action: function() {
+                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'delete', row: params.node.data};
+                        params.api.applyTransaction({});
+                    }
+                },
+                'separator',
+                'copy',
+                'copyWithHeaders'
+            ];
+            return result;
+        }
+                """
+            ),
+            context={"menu_action": None},
         )
+        grid_options = gb.build()
+        grid_response = AgGrid(
+            display_df,
+            gridOptions=grid_options,
+            allow_unsafe_jscode=True,
+            update_mode=GridUpdateMode.MODEL_CHANGED,
+            fit_columns_on_grid_load=True,
+            height=400,
+        )
+        ctx = grid_response.get("context", {})
+        action = ctx.get("menu_action")
+        row = ctx.get("row")
+        if action and row:
+            _handle_menu_action(action, row)
         return fdf
 
 

@@ -9,3 +9,4 @@ langchain-text-splitters==0.3.*
 pypdf>=5,<6
 docx2txt>=0.9,<1.0
 ftfy
+streamlit-aggrid>=1.1,<2
