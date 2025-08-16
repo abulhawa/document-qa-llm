@@ -3,21 +3,65 @@ import pandas as pd
 import threading
 import queue
 import time
-from typing import List, Dict, Any
+import os
+import sys
+import subprocess
+from typing import List, Dict, Any, Tuple
 
 from utils.time_utils import format_timestamp
 from utils.opensearch_utils import (
     list_files_from_opensearch,
     delete_files_by_path_checksum,
     get_duplicate_checksums,
+    get_chunks_by_path,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
     delete_vectors_by_path_checksum,
+    index_chunks,
 )
 from utils.file_utils import format_file_size
 from core.ingestion import ingest
 from config import logger
+
+def _open_file(path: str) -> None:
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception as e:
+        st.error(f"Failed to open file: {e}")
+
+
+def _show_in_folder(path: str) -> None:
+    folder = os.path.dirname(path)
+    try:
+        if sys.platform.startswith("win"):
+            subprocess.run(["explorer", "/select,", path], check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", path], check=False)
+        else:
+            subprocess.run(["xdg-open", folder], check=False)
+    except Exception as e:
+        st.error(f"Failed to open folder: {e}")
+
+
+def _sync_os_to_qdrant(path: str, checksum: str) -> None:
+    chunks = get_chunks_by_path(path)
+    if not chunks:
+        st.warning("No OpenSearch chunks found for path")
+        return
+    delete_vectors_by_path_checksum([(path, checksum)])
+    ok = index_chunks(chunks)
+    if ok:
+        st.toast("Synced embeddings for file.", icon="✅")
+    else:
+        st.error("Failed to sync embeddings.")
+
+
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
@@ -89,7 +133,7 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
+def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, str]:
     # Filters
     colf1, colf2, colf3, colf4 = st.columns([3, 2, 2, 1])
     with colf1:
@@ -206,6 +250,9 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                     st.session_state["_files_override"] = new_files
                     st.rerun()
 
+    table_key = "file_index_editor" if selection_mode else "file_index_viewer"
+    render_action_buttons(fdf, table_key)
+
     if selection_mode:
         # Selection helpers
         h1, h2, h3 = st.columns([2, 2, 6])
@@ -262,14 +309,89 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
             )
         except Exception:
             pass
-        return edited
+        return edited, table_key
     else:
-        st.dataframe(
-            fdf.style.format({"Size": format_file_size}),
-            hide_index=True,
-            use_container_width=True,
+        display_df = fdf.copy()
+        display_df["Size"] = display_df["Size"].apply(format_file_size)
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            st.dataframe(
+                fdf,
+                hide_index=True,
+                use_container_width=True,
+            )
+        else:
+            st.data_editor(
+                display_df,
+                hide_index=True,
+                use_container_width=True,
+                disabled=[
+                    "Filename",
+                    "Path",
+                    "Checksum",
+                    "Filetype",
+                    "Modified",
+                    "Created",
+                    "Indexed",
+                    "Size",
+                    "OpenSearch Chunks",
+                    "Qdrant Chunks",
+                ],
+                num_rows="fixed",
+                key="file_index_viewer",
+            )
+        return fdf, table_key
+
+
+def render_action_buttons(fdf: pd.DataFrame, key: str) -> None:
+    sel = st.session_state.get(key, {}).get("selection", {})
+    rows = sel.get("rows", []) if isinstance(sel, dict) else []
+    selected = fdf.iloc[rows] if rows else pd.DataFrame()
+    disabled = selected.empty
+
+    b1, b2, b3, b4, b5 = st.columns(5)
+
+    def _pairs() -> List[Tuple[str, str]]:
+        return list(
+            selected[["Path", "Checksum"]]
+            .dropna()
+            .astype(str)
+            .itertuples(index=False, name=None)
         )
-        return fdf
+
+    if b1.button("📄 Open", use_container_width=True, disabled=disabled):
+        _open_file(selected.iloc[0]["Path"])
+
+    if b2.button("📂 Show", use_container_width=True, disabled=disabled):
+        _show_in_folder(selected.iloc[0]["Path"])
+
+    if b3.button("🔁 Sync", use_container_width=True, disabled=disabled):
+        try:
+            for r in selected.itertuples(index=False):
+                _sync_os_to_qdrant(r.Path, r.Checksum)
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Sync failed: {e}")
+            st.error(f"Sync failed: {e}")
+
+    if b4.button("🔄 Reingest", use_container_width=True, disabled=disabled):
+        try:
+            ingest(selected["Path"].astype(str).tolist(), force=True, op="reingest", source="viewer")
+            st.success(f"Queued reingestion for {len(selected)} file(s).")
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Reingest failed: {e}")
+            st.error(f"Reingest failed: {e}")
+
+    if b5.button("🗑️ Delete", use_container_width=True, disabled=disabled):
+        try:
+            pairs = _pairs()
+            delete_files_by_path_checksum(pairs)
+            delete_vectors_by_path_checksum(pairs)
+            st.success(f"Deleted {len(pairs)} file(s).")
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Delete failed: {e}")
+            st.error(f"Delete failed: {e}")
 
 
 def run_batch_actions(fdf: pd.DataFrame) -> None:
@@ -344,51 +466,7 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
         st.error(f"Batch action failed: {e}")
 
 
-def render_row_actions(fdf: pd.DataFrame) -> None:
-    st.subheader("Row actions")
-    name_col = (
-        "Filename"
-        if "Filename" in fdf.columns
-        else ("Path" if "Path" in fdf.columns else None)
-    )
-    if not name_col or fdf.empty:
-        st.info("No rows to act on.")
-        return
-
-    options = fdf[name_col].astype(str).tolist()
-    idx = st.selectbox(
-        "Pick a file",
-        options=list(range(len(options))),
-        format_func=lambda i: options[i],
-        key="row_pick",
-    )
-    row = fdf.iloc[int(idx)]
-    st.markdown(f"**Selected File:** `{row[name_col]}`")
-    c1, c2 = st.columns(2)
-
-    if c1.button("🔄 Reingest File", use_container_width=True):
-        try:
-            ingest([row["Path"]], force=True, op="reingest", source="viewer")
-            st.success(f"Reingestion triggered for: {row[name_col]}")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row reingest failed: {e}")
-            st.error(f"Row reingest failed: {e}")
-
-    if c2.button("🗑️ Delete from Index", use_container_width=True):
-        try:
-            delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
-            delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
-            st.success(f"Deleted: {row[name_col]}")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row delete failed: {e}")
-            st.error(f"Row delete failed: {e}")
-
-
 files = _get_files_fast()
 df = build_table_data(files)
-fdf = render_filtered_table(df)
+fdf, _ = render_filtered_table(df)
 run_batch_actions(fdf)
-st.divider()
-render_row_actions(fdf)
