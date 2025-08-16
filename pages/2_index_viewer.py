@@ -24,9 +24,6 @@ from utils.file_utils import format_file_size
 from core.ingestion import ingest
 from config import logger
 
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
-
-
 def _open_file(path: str) -> None:
     try:
         if sys.platform.startswith("win"):
@@ -65,37 +62,6 @@ def _sync_os_to_qdrant(path: str, checksum: str) -> None:
         st.error("Failed to sync embeddings.")
 
 
-def _handle_menu_action(action: str, row: Dict[str, Any]) -> None:
-    path = row.get("Path", "")
-    checksum = row.get("Checksum", "")
-    if action == "open":
-        _open_file(path)
-    elif action == "show":
-        _show_in_folder(path)
-    elif action == "reingest":
-        try:
-            ingest([path], force=True, op="reingest", source="viewer")
-            st.toast(f"Reingestion triggered for: {path}", icon="✅")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row reingest failed: {e}")
-            st.error(f"Row reingest failed: {e}")
-    elif action == "sync":
-        try:
-            _sync_os_to_qdrant(path, checksum)
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Sync failed: {e}")
-            st.error(f"Sync failed: {e}")
-    elif action == "delete":
-        try:
-            delete_files_by_path_checksum([(path, checksum)])
-            delete_vectors_by_path_checksum([(path, checksum)])
-            st.toast(f"Deleted: {path}", icon="🗑️")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row delete failed: {e}")
-            st.error(f"Row delete failed: {e}")
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
@@ -344,87 +310,32 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     else:
         display_df = fdf.copy()
         display_df["Size"] = display_df["Size"].apply(format_file_size)
-
         if os.environ.get("PYTEST_CURRENT_TEST"):
             st.dataframe(
                 fdf,
                 hide_index=True,
                 use_container_width=True,
             )
-
-        gb = GridOptionsBuilder.from_dataframe(display_df)
-        gb.configure_default_column(resizable=True, sortable=True, filter=True)
-        gb.configure_grid_options(
-            getContextMenuItems=JsCode(
-                """
-        function(params) {
-            const result = [
-                {
-                    name: 'Open file',
-                    action: function() {
-                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'open', row: params.node.data};
-                        params.api.applyTransaction({});
-                    }
-                },
-                {
-                    name: 'Show in folder',
-                    action: function() {
-                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'show', row: params.node.data};
-                        params.api.applyTransaction({});
-                    }
-                },
-                {
-                    name: 'Copy cell value',
-                    action: function() {
-                        if (params.value) {navigator.clipboard.writeText(params.value.toString());}
-                    }
-                },
-                'separator',
-                {
-                    name: 'Reingest',
-                    action: function() {
-                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'reingest', row: params.node.data};
-                        params.api.applyTransaction({});
-                    }
-                },
-                {
-                    name: 'Sync OpenSearch -> Qdrant',
-                    action: function() {
-                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'sync', row: params.node.data};
-                        params.api.applyTransaction({});
-                    }
-                },
-                {
-                    name: 'Delete from both',
-                    action: function() {
-                        params.api.gridOptionsWrapper.gridOptions.context = {menu_action: 'delete', row: params.node.data};
-                        params.api.applyTransaction({});
-                    }
-                },
-                'separator',
-                'copy',
-                'copyWithHeaders'
-            ];
-            return result;
-        }
-                """
-            ),
-            context={"menu_action": None},
-        )
-        grid_options = gb.build()
-        grid_response = AgGrid(
-            display_df,
-            gridOptions=grid_options,
-            allow_unsafe_jscode=True,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            fit_columns_on_grid_load=True,
-            height=400,
-        )
-        ctx = grid_response.get("context", {})
-        action = ctx.get("menu_action")
-        row = ctx.get("row")
-        if action and row:
-            _handle_menu_action(action, row)
+        else:
+            st.data_editor(
+                display_df,
+                hide_index=True,
+                use_container_width=True,
+                disabled=[
+                    "Filename",
+                    "Path",
+                    "Checksum",
+                    "Filetype",
+                    "Modified",
+                    "Created",
+                    "Indexed",
+                    "Size",
+                    "OpenSearch Chunks",
+                    "Qdrant Chunks",
+                ],
+                num_rows="fixed",
+                key="file_index_viewer",
+            )
         return fdf
 
 
@@ -520,9 +431,23 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
     )
     row = fdf.iloc[int(idx)]
     st.markdown(f"**Selected File:** `{row[name_col]}`")
-    c1, c2 = st.columns(2)
+    st.text_input("Path", row["Path"], key="selected_path", label_visibility="collapsed")
 
-    if c1.button("🔄 Reingest File", use_container_width=True):
+    c1, c2, c3 = st.columns(3)
+    if c1.button("📄 Open file", use_container_width=True):
+        _open_file(row["Path"])
+    if c2.button("📂 Show in folder", use_container_width=True):
+        _show_in_folder(row["Path"])
+    if c3.button("🔁 Sync embeddings", use_container_width=True):
+        try:
+            _sync_os_to_qdrant(row["Path"], row["Checksum"])
+            load_indexed_files.clear()
+        except Exception as e:
+            logger.exception(f"Sync failed: {e}")
+            st.error(f"Sync failed: {e}")
+
+    c4, c5 = st.columns(2)
+    if c4.button("🔄 Reingest File", use_container_width=True):
         try:
             ingest([row["Path"]], force=True, op="reingest", source="viewer")
             st.success(f"Reingestion triggered for: {row[name_col]}")
@@ -531,7 +456,7 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
             logger.exception(f"Row reingest failed: {e}")
             st.error(f"Row reingest failed: {e}")
 
-    if c2.button("🗑️ Delete from Index", use_container_width=True):
+    if c5.button("🗑️ Delete from Index", use_container_width=True):
         try:
             delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
             delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
