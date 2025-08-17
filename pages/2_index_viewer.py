@@ -3,6 +3,7 @@ import pandas as pd
 import threading
 import queue
 import time
+import os, sys, subprocess
 from typing import List, Dict, Any
 
 from utils.time_utils import format_timestamp
@@ -21,6 +22,40 @@ from config import logger
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
+
+# Confirm when opening/showing > N files
+MAX_BULK_OPEN = 10
+
+# ---------- OS helpers for row actions (Open / Show in folder) ----------
+def open_file_local(path: str) -> None:
+    """Open a file on the machine running Streamlit."""
+    if not path:
+        return
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception as e:
+        st.warning(f"Could not open file: {e}")
+
+def show_in_folder(path: str) -> None:
+    """Reveal file in its folder (selects the file on Windows/macOS)."""
+    if not path:
+        return
+    try:
+        if sys.platform.startswith("win"):
+            # /select, must be a single token; pass via shell to support commas
+            win_path = path.replace('/', '\\')
+            subprocess.run(["explorer", "/select,", win_path], shell=True, check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", path], check=False)
+        else:
+            subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
+    except Exception as e:
+        st.warning(f"Could not open folder: {e}")
 
 
 # ---------- Data loading ----------
@@ -91,7 +126,7 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
 
 def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     # Filters
-    colf1, colf2, colf3, colf4 = st.columns([3, 2, 2, 1])
+    colf1, colf2, colf3 = st.columns([3, 2, 1], vertical_alignment="bottom")
     with colf1:
         path_filter = st.text_input(
             "Filter by path substring", value=st.session_state.get("path_filter", "")
@@ -104,13 +139,6 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         )
         st.session_state["embed_filter"] = only_missing
     with colf3:
-        selection_mode = st.toggle(
-            "Selection mode",
-            value=st.session_state.get("selection_mode", False),
-            help="Enable to select specific rows for batch actions",
-        )
-        st.session_state["selection_mode"] = selection_mode
-    with colf4:
         if st.button("↻ Refresh", use_container_width=True):
             trigger_refresh()
 
@@ -193,83 +221,123 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
             st.success("New data is ready to apply.", icon="✅")
     with status_col2:
         if st.session_state.get("_prefetched_files") is not None:
-            if not selection_mode:
-                new_files = st.session_state.pop("_prefetched_files")
-                load_indexed_files.clear()
-                st.session_state["_files_override"] = new_files
-                st.toast("Table updated.", icon="✅")
-                st.rerun()
-            else:
-                if st.button("Apply updated data", use_container_width=True):
-                    new_files = st.session_state.pop("_prefetched_files")
-                    load_indexed_files.clear()
-                    st.session_state["_files_override"] = new_files
-                    st.rerun()
-
-    if selection_mode:
-        # Selection helpers
-        h1, h2, h3 = st.columns([2, 2, 6])
-        if h1.button("Select duplicates"):
-            dups = set(get_duplicate_checksums())
-            st.session_state["select_checksums"] = list(dups)
-            st.toast(
-                f"Found {len(dups)} duplicate checksum(s). Preselecting those in the table."
-            )
+            new_files = st.session_state.pop("_prefetched_files")
+            load_indexed_files.clear()
+            st.session_state["_files_override"] = new_files
+            st.toast("Table updated.", icon="✅")
             st.rerun()
-        if h2.button("Clear selection"):
-            st.session_state.pop("select_checksums", None)
-            st.rerun()
-
-        # ensure Select column exists before editor
-        if "Select" not in fdf.columns:
-            fdf.insert(0, "Select", False)
-
-        # Preselect rows if we have stored selections
-        if "select_checksums" in st.session_state:
-            selected_set = set(st.session_state["select_checksums"] or [])
-            fdf["Select"] = fdf["Checksum"].astype(str).isin(selected_set)
-        display_df = fdf.copy()
-        display_df["Size"] = display_df["Size"].apply(format_file_size)
-        edited = st.data_editor(
-            display_df,
-            hide_index=True,
-            use_container_width=True,
-            disabled=[
-                "Filename",
-                "Path",
-                "Checksum",
-                "Filetype",
-                "Modified",
-                "Created",
-                "Indexed",
-                "Size",
-                "OpenSearch Chunks",
-                "Qdrant Chunks",
-            ],
-            column_config={
-                "Select": st.column_config.CheckboxColumn("Select"),
-            },
-            num_rows="fixed",
-            key="file_index_editor",
-        )
-        # Sync current selection into session so it survives auto-apply updates
+    # ---------- Single table with st.dataframe selection (no extra deps) ----------
+    # Sort (best-effort; assumes Modified is ISO-like string)
+    display_df = fdf.copy()
+    if "Modified" in display_df.columns:
         try:
-            st.session_state["select_checksums"] = (
-                edited.loc[edited["Select"] == True, "Checksum"]
-                .astype(str)
-                .unique()
-                .tolist()  # noqa: E712
-            )
+            display_df = display_df.sort_values("Modified", ascending=False, na_position="last")
         except Exception:
             pass
-        return edited
-    else:
-        st.dataframe(
-            fdf.style.format({"Size": format_file_size}),
-            hide_index=True,
-            use_container_width=True,
+
+    # Human-readable size for display (keep numeric in fdf["Size"])
+    if "Size" in display_df.columns:
+        display_df["Size"] = display_df["Size"].apply(format_file_size)
+
+    # --- Compute selection BEFORE rendering buttons (use last known selection) ---
+    # Keep a nonce so we can force-clear selection visually by bumping the widget key
+    nonce = st.session_state.setdefault("file_index_table_nonce", 0)
+
+    # Previously stored selection indices (relative to last display_df shape)
+    prev_idx = st.session_state.get("file_index_selected_rows", [])
+
+    # Map to currently selected rows/paths (safe if shape changed)
+    selected = display_df.iloc[prev_idx] if prev_idx else display_df.iloc[[]]
+    selected_paths = selected.get("Path", pd.Series([], dtype=str)).dropna().astype(str).unique().tolist()
+
+    # Total selected size (from ORIGINAL fdf numeric bytes)
+    sel_size_bytes = 0
+    if selected_paths and "Path" in fdf.columns and "Size" in fdf.columns:
+        sel_size_bytes = (
+            fdf[fdf["Path"].astype(str).isin(selected_paths)]["Size"]
+            .fillna(0)
+            .astype("int64")
+            .sum()
         )
-        return fdf
+    sel_size_hr = format_file_size(int(sel_size_bytes)) if sel_size_bytes else "—"
+
+    # ----------------------- Top action bar (above table) ------------------------
+    b1, b2, c1, c2 = st.columns([1.3, 1.6, 1.3, 2.8])
+    with b1:
+        confirm_bulk = st.checkbox(f"Confirm >{MAX_BULK_OPEN} files", value=False, help="Required for large actions")
+    with b2:
+        st.metric("Selected", f"{len(selected_paths)} file(s)", help=f"Total size: {sel_size_hr}")
+    with c1:
+        if st.button("📂 Open selected", use_container_width=True):
+            if not selected_paths:
+                st.info("Select one or more rows first.")
+            elif len(selected_paths) > MAX_BULK_OPEN and not confirm_bulk:
+                st.warning(f"Too many files selected ({len(selected_paths)}). Tick 'Confirm >{MAX_BULK_OPEN} files' to proceed.")
+            else:
+                for p in selected_paths:
+                    open_file_local(p)
+                st.success(f"Opened {len(selected_paths)} file(s).")
+    with c2:
+        if st.button("📁 Show folders (selected)", use_container_width=True):
+            if not selected_paths:
+                st.info("Select one or more rows first.")
+            elif len(selected_paths) > MAX_BULK_OPEN and not confirm_bulk:
+                st.warning(f"Too many files selected ({len(selected_paths)}). Tick 'Confirm >{MAX_BULK_OPEN} files' to proceed.")
+            else:
+                for p in selected_paths:
+                    show_in_folder(p)
+                st.success("Done.")
+
+    # Convenience bulk actions for ALL currently shown rows (no checkbox needed)
+    with st.expander("Bulk apply to ALL rows currently shown", expanded=False):
+        all_paths = display_df.get("Path", pd.Series([], dtype=str)).dropna().astype(str).unique().tolist()
+        cc1, cc2 = st.columns(2)
+        if cc1.button(f"📂 Open ALL shown ({len(all_paths)})", use_container_width=True):
+            if not all_paths:
+                st.info("No rows shown.")
+            elif len(all_paths) > MAX_BULK_OPEN and not confirm_bulk:
+                st.warning(f"{len(all_paths)} files. Tick 'Confirm >{MAX_BULK_OPEN} files' above to proceed.")
+            else:
+                for p in all_paths:
+                    open_file_local(p)
+                st.success(f"Opened {len(all_paths)} file(s).")
+        if cc2.button(f"📁 Show folders for ALL shown ({len(all_paths)})", use_container_width=True):
+            if not all_paths:
+                st.info("No rows shown.")
+            elif len(all_paths) > MAX_BULK_OPEN and not confirm_bulk:
+                st.warning(f"{len(all_paths)} files. Tick 'Confirm >{MAX_BULK_OPEN} files' above to proceed.")
+            else:
+                for p in all_paths:
+                    show_in_folder(p)
+                st.success("Done.")
+
+    # Clear selection (fixes the “ghost selection” bug and resets checkboxes)
+    cc3, _ = st.columns([1.2, 3])
+    with cc3:
+        if st.button("❌ Clear selection", use_container_width=True):
+            st.session_state["file_index_selected_rows"] = []
+            st.session_state["file_index_table_nonce"] = nonce + 1  # force new widget instance
+            st.rerun()
+
+    st.caption("Tip: Use the checkboxes to select rows; sort/filter first, then select.")
+
+    # ------------------------ Table render (selectable) --------------------------
+    event = st.dataframe(
+        display_df,
+        hide_index=True,
+        use_container_width=True,
+        key=f"file_index_table_{st.session_state['file_index_table_nonce']}",
+        on_select="rerun",          # triggers rerun with selection payload
+        selection_mode="multi-row", # checkbox UI (Streamlit built-in)
+    )
+
+    # Always persist the latest selection, EVEN when empty (fix ghost selection)
+    if event is not None:
+        sel_idx = event.get("selection", {}).get("rows", [])
+        # When user deselects all, this is [] — we must overwrite stored state
+        st.session_state["file_index_selected_rows"] = sel_idx
+
+    return fdf
 
 
 def run_batch_actions(fdf: pd.DataFrame) -> None:
