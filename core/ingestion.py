@@ -151,16 +151,20 @@ def ingest_one(
         logger.info(f"🧩 Split into {len(chunks)} chunks")
 
     # Build per-chunk metadata; UUIDv5 id uses path+chunk index so duplicates across paths get unique ids
+    doc_id = str(uuid.uuid5(uuid.NAMESPACE_URL, normalized_path))
+    filename = os.path.basename(normalized_path)
     for i, chunk in enumerate(chunks):
         chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{normalized_path}-{i}"))
         chunk["chunk_index"] = i
         chunk["path"] = normalized_path
+        chunk["filename"] = filename
+        chunk["doc_id"] = doc_id
         chunk["checksum"] = checksum
         chunk["filetype"] = ext
         chunk["indexed_at"] = indexed_at
         chunk["created_at"] = created
         chunk["modified_at"] = modified
-        chunk["bytes"] = size_bytes
+        chunk["size_bytes"] = size_bytes
         chunk["size"] = format_file_size(size_bytes)
         chunk["page"] = chunk.get("page", None)
         # position approx. (0..100)

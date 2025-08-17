@@ -7,43 +7,35 @@ from core import hybrid_search
 def test_hybrid_fusion_ranking(monkeypatch):
     vector_results = [
         {
-            "id": "v1",
+            "doc_id": "d1",
             "text": "doc1",
             "score": 0.9,
             "path": "p1",
-            "chunk_index": 0,
-            "modified_at": "2024-01-01",
             "checksum": "c1",
         },
         {
-            "id": "v2",
+            "doc_id": "d2",
             "text": "doc2",
             "score": 0.9,
             "path": "p2",
-            "chunk_index": 0,
-            "modified_at": "2024-01-02",
             "checksum": "c2",
         },
     ]
 
     bm25_results = [
         {
-            "_id": "v2",
-            "text": "doc2",
-            "score": 0.4,
+            "doc_id": "d2",
             "path": "p2",
-            "chunk_index": 0,
-            "modified_at": "2024-01-02",
+            "score": 0.4,
             "checksum": "c2",
+            "chunks": [],
         },
         {
-            "_id": "b3",
-            "text": "doc3",
-            "score": 0.7,
+            "doc_id": "d3",
             "path": "p3",
-            "chunk_index": 0,
-            "modified_at": "2024-01-03",
+            "score": 0.5,
             "checksum": "c3",
+            "chunks": [],
         },
     ]
 
@@ -55,7 +47,7 @@ def test_hybrid_fusion_ranking(monkeypatch):
     )
 
     results = hybrid_search.retrieve_hybrid("query", top_k_each=2, final_k=3)
-    # Expected order: doc2 (has both scores), doc1 (semantic only), doc3 (bm25 only)
+    # Expected order: doc2 (both), doc1 (semantic), doc3 (bm25)
     assert [r["path"] for r in results] == ["p2", "p1", "p3"]
     assert len(results) == 3
 
@@ -65,13 +57,11 @@ def test_hybrid_fusion_ranking(monkeypatch):
 def test_hybrid_bm25_only(monkeypatch):
     bm25_results = [
         {
-            "_id": "b1",
-            "text": "bm25",
-            "score": 1.0,
+            "doc_id": "d1",
             "path": "p1",
-            "chunk_index": 0,
-            "modified_at": "2024-01-01",
+            "score": 1.0,
             "checksum": "c1",
+            "chunks": [],
         }
     ]
 
@@ -88,12 +78,10 @@ def test_hybrid_bm25_only(monkeypatch):
 def test_hybrid_vector_only(monkeypatch):
     vector_results = [
         {
-            "id": "v1",
+            "doc_id": "d1",
             "text": "vec",
             "score": 1.0,
             "path": "p1",
-            "chunk_index": 0,
-            "modified_at": "2024-01-01",
             "checksum": "c1",
         }
     ]
@@ -103,7 +91,7 @@ def test_hybrid_vector_only(monkeypatch):
     )
     monkeypatch.setattr(hybrid_search, "keyword_retriever", lambda q, top_k: [])
     results = hybrid_search.retrieve_hybrid("query", top_k_each=1, final_k=5)
-    assert [r["id"] for r in results] == ["v1"]
+    assert [r["doc_id"] for r in results] == ["d1"]
 
 
 # Test 4: Checksum dedup keeps highest score
@@ -111,24 +99,20 @@ def test_hybrid_vector_only(monkeypatch):
 def test_hybrid_checksum_dedup(monkeypatch):
     vector_results = [
         {
-            "id": "v1",
+            "doc_id": "d1",
             "text": "doc",
             "score": 0.9,
             "path": "p1",
-            "chunk_index": 0,
-            "modified_at": "2024-01-01",
             "checksum": "dup",
         }
     ]
     bm25_results = [
         {
-            "_id": "b1",
-            "text": "doc",
-            "score": 0.8,
+            "doc_id": "d1",
             "path": "p1",
-            "chunk_index": 0,
-            "modified_at": "2024-01-01",
+            "score": 0.8,
             "checksum": "dup",
+            "chunks": [],
         }
     ]
     monkeypatch.setattr(
@@ -139,7 +123,7 @@ def test_hybrid_checksum_dedup(monkeypatch):
     )
     results = hybrid_search.retrieve_hybrid("query", top_k_each=1, final_k=5)
     assert len(results) == 1
-    assert results[0]["id"] == "v1"
+    assert results[0]["doc_id"] == "d1"
 
 
 # Test 5: Secondary sort by modified_at when scores tie
@@ -147,20 +131,18 @@ def test_hybrid_checksum_dedup(monkeypatch):
 def test_hybrid_sort_modified_at(monkeypatch):
     vector_results = [
         {
-            "id": "v1",
+            "doc_id": "d1",
             "text": "old",
             "score": 1.0,
             "path": "p1",
-            "chunk_index": 0,
             "modified_at": "2023-01-01",
             "checksum": "c1",
         },
         {
-            "id": "v2",
+            "doc_id": "d2",
             "text": "new",
             "score": 1.0,
             "path": "p2",
-            "chunk_index": 0,
             "modified_at": "2024-01-01",
             "checksum": "c2",
         },
@@ -170,7 +152,7 @@ def test_hybrid_sort_modified_at(monkeypatch):
     )
     monkeypatch.setattr(hybrid_search, "keyword_retriever", lambda q, top_k: [])
     results = hybrid_search.retrieve_hybrid("query", top_k_each=2, final_k=2)
-    assert [r["id"] for r in results] == ["v2", "v1"]
+    assert [r["doc_id"] for r in results] == ["d2", "d1"]
 
 
 # Test 7: Empty or whitespace query returns empty list
@@ -191,8 +173,8 @@ def test_hybrid_empty_query(monkeypatch):
 
     results = hybrid_search.retrieve_hybrid("   ")
     assert results == []
-    # retrieval functions still called but return empty
-    assert calls["vec"] == 1 and calls["bm25"] == 1
+    # guard: empty query short-circuits without calling retrievers
+    assert calls["vec"] == 0 and calls["bm25"] == 0
 
 
 # Test 8: BM25 receives original query tokens
@@ -215,11 +197,10 @@ def test_hybrid_bm25_guardrail(monkeypatch):
 def test_hybrid_final_k_after_dedup(monkeypatch):
     vector_results = [
         {
-            "id": f"v{i}",
+            "doc_id": f"d{i}",
             "text": f"doc{i}",
             "score": 1.0,
             "path": f"p{i}",
-            "chunk_index": 0,
             "modified_at": "2024-01-01",
             "checksum": "dup" if i % 2 == 0 else f"c{i}",
         }

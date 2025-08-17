@@ -25,19 +25,21 @@ INDEX_SETTINGS = {
     },
     "mappings": {
         "properties": {
-            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "relation": {"type": "join", "relations": {"doc": "chunk"}},
+            "doc_id": {"type": "keyword"},
+            "filename": {"type": "keyword"},
             "path": {
-                "type": "text",
-                "fields": {"keyword": {"type": "keyword", "ignore_above": 2048}},
+                "type": "keyword",
             },
-            "chunk_index": {"type": "integer"},
-            "checksum": {"type": "keyword"},
             "filetype": {"type": "keyword"},
-            "indexed_at": {"type": "date"},
+            "lang": {"type": "keyword"},
+            "size_bytes": {"type": "long"},
             "created_at": {"type": "date"},
             "modified_at": {"type": "date"},
-            "bytes": {"type": "long"},
-            "size": {"type": "keyword"},
+            "checksum": {"type": "keyword"},
+            "flags": {"type": "keyword"},
+            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "chunk_index": {"type": "integer"},
             "page": {"type": "integer"},
             "location_percent": {"type": "float"},
         }
@@ -88,23 +90,61 @@ def ensure_ingest_log_index_exists():
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> None:
-    """Index a list of chunks into OpenSearch."""
+    """Index a parent document and its chunks using join relation."""
+
+    if not chunks:
+        return
 
     client = get_client()
     ensure_index_exists()
+    doc_id = chunks[0]["doc_id"]
+
+    parent_fields = {
+        k: chunks[0].get(k)
+        for k in (
+            "doc_id",
+            "filename",
+            "path",
+            "filetype",
+            "lang",
+            "size_bytes",
+            "created_at",
+            "modified_at",
+            "checksum",
+            "flags",
+        )
+        if chunks[0].get(k) is not None
+    }
+    parent_fields["relation"] = "doc"
+
     actions = [
         {
             "_index": OPENSEARCH_INDEX,
-            "_id": chunk["id"],
-            "_source": {k: v for k, v in chunk.items() if k != "id"},
+            "_id": doc_id,
+            "_routing": doc_id,
+            "_source": parent_fields,
         }
-        for chunk in chunks
     ]
-    success_count, errors = helpers.bulk(client, actions)
+
+    for chunk in chunks:
+        source = {k: v for k, v in chunk.items() if k != "id"}
+        source["relation"] = {"name": "chunk", "parent": doc_id}
+        actions.append(
+            {
+                "_index": OPENSEARCH_INDEX,
+                "_id": chunk["id"],
+                "_routing": doc_id,
+                "_source": source,
+            }
+        )
+
+    success_count, errors = helpers.bulk(client, actions, refresh=True)
     if errors:
-        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks and parent")
     else:
-        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
+        logger.info(
+            f"✅ OpenSearch successfully indexed parent and {len(chunks)} chunks"
+        )
 
 
 def list_files_from_opensearch(

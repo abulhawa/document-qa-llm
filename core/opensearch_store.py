@@ -1,6 +1,11 @@
 from typing import List, Dict, Any
 from core.opensearch_client import get_client
-from config import logger, OPENSEARCH_INDEX
+from config import (
+    logger,
+    OPENSEARCH_INDEX,
+    OS_MIN_CHILDREN,
+    OS_INNER_HITS,
+)
 from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 
 
@@ -11,19 +16,32 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         span.set_attribute("top_k", top_k)
 
         client = get_client()
-        response = client.search(
-            index=OPENSEARCH_INDEX,
-            body={
-                "size": top_k * 3,  # fetch extra for dedup
-                "query": {"match": {"text": {"query": query, "operator": "or"}}},
-                "sort": [
-                    {"_score": {"order": "desc"}},
-                    {"modified_at": {"order": "desc"}},
-                ],
+        body = {
+            "size": top_k * 3,
+            "query": {
+                "has_child": {
+                    "type": "chunk",
+                    "score_mode": "sum",
+                    "min_children": OS_MIN_CHILDREN,
+                    "query": {
+                        "simple_query_string": {
+                            "query": query,
+                            "default_operator": "and",
+                        }
+                    },
+                    "inner_hits": {
+                        "size": OS_INNER_HITS,
+                        "sort": [{"_score": {"order": "desc"}}],
+                        "highlight": {
+                            "fields": {"text": {"pre_tags": ["<mark>"], "post_tags": ["</mark>"]}}
+                        },
+                    },
+                }
             },
-        )
+        }
+        response = client.search(index=OPENSEARCH_INDEX, body=body)
         hits = response.get("hits", {}).get("hits", [])
-        logger.info(f"OpenSearch returned {len(hits)} hits before deduplication.")
+        logger.info(f"OpenSearch returned {len(hits)} parent hits before deduplication.")
         span.set_attribute("raw_hits", len(hits))
 
         results = []
@@ -34,22 +52,34 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
             if checksum in seen_checksums:
                 continue
             seen_checksums.add(checksum)
-            results.append({**src, "score": hit.get("_score"), "_id": hit.get("_id")})
+
+            inner = (
+                hit.get("inner_hits", {})
+                .get("chunk", {})
+                .get("hits", {})
+                .get("hits", [])
+            )
+            snippets = []
+            for c in inner:
+                csrc = c.get("_source", {})
+                snippets.append(
+                    {
+                        "text": csrc.get("text", ""),
+                        "page": csrc.get("page"),
+                        "chunk_index": csrc.get("chunk_index"),
+                        "highlight": c.get("highlight", {}).get("text", [csrc.get("text", "")])[0],
+                        "score": c.get("_score"),
+                    }
+                )
+
+            results.append({**src, "score": hit.get("_score"), "chunks": snippets, "doc_id": src.get("doc_id")})
             if len(results) >= top_k:
                 break
 
-        logger.info(f"Returning {len(results)} results after deduplication.")
+        logger.info(f"Returning {len(results)} parent results after deduplication.")
 
         for i, doc in enumerate(results):
-            span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
+            span.set_attribute(f"retrieval.documents.{i}.document.id", doc.get("path"))
             span.set_attribute(f"retrieval.documents.{i}.document.score", doc["score"])
-            span.set_attribute(f"retrieval.documents.{i}.document.content", doc["text"])
-            span.set_attribute(
-                f"retrieval.documents.{i}.document.metadata",
-                [
-                    f"Chunk index: {doc['chunk_index']}",
-                    f"Date modified: {doc['modified_at']}",
-                ],
-            )
         span.set_status(STATUS_OK)
         return results

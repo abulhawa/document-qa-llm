@@ -56,7 +56,8 @@ def test_ensure_index_exists_creates_mapping(monkeypatch):
     monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
     osu.ensure_index_exists()
     assert created["index"] == osu.OPENSEARCH_INDEX
-    assert "mappings" in created["body"]
+    props = created["body"]["mappings"]["properties"]
+    assert "relation" in props and props["relation"]["type"] == "join"
 
 
 
@@ -66,7 +67,7 @@ def test_index_documents_bulk(monkeypatch):
     class FakeClient:
         pass
 
-    def fake_bulk(client, actions):
+    def fake_bulk(client, actions, **kw):
         recorded["actions"] = actions
         return (len(actions), [])
 
@@ -74,9 +75,14 @@ def test_index_documents_bulk(monkeypatch):
     monkeypatch.setattr(osu, "helpers", types.SimpleNamespace(bulk=fake_bulk))
     monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
 
-    chunks = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}]
+    chunks = [
+        {"id": "1", "text": "a", "doc_id": "d", "filename": "f", "path": "p"},
+        {"id": "2", "text": "b", "doc_id": "d", "filename": "f", "path": "p"},
+    ]
     osu.index_documents(chunks)
-    assert len(recorded["actions"]) == 2
+    # one parent + two children
+    assert len(recorded["actions"]) == 3
+    assert recorded["actions"][0]["_id"] == "d"
 
 
 

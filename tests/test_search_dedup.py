@@ -10,9 +10,48 @@ def test_search_deduplicates_by_checksum(monkeypatch):
             return {
                 "hits": {
                     "hits": [
-                        {"_id": "1", "_score": 1.0, "_source": {"path": "a", "text": "t1", "chunk_index": 0, "modified_at": "", "checksum": "abc"}},
-                        {"_id": "2", "_score": 0.9, "_source": {"path": "b", "text": "t1", "chunk_index": 0, "modified_at": "", "checksum": "abc"}},
-                        {"_id": "3", "_score": 0.8, "_source": {"path": "c", "text": "t2", "chunk_index": 0, "modified_at": "", "checksum": "def"}},
+                        {
+                            "_id": "p1",
+                            "_score": 1.0,
+                            "_source": {"path": "a", "doc_id": "d1", "checksum": "abc"},
+                            "inner_hits": {
+                                "chunk": {
+                                    "hits": {
+                                        "hits": [
+                                            {"_source": {"text": "t1", "chunk_index": 0}}
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                        {
+                            "_id": "p2",
+                            "_score": 0.9,
+                            "_source": {"path": "b", "doc_id": "d2", "checksum": "abc"},
+                            "inner_hits": {
+                                "chunk": {
+                                    "hits": {
+                                        "hits": [
+                                            {"_source": {"text": "t1", "chunk_index": 0}}
+                                        ]
+                                    }
+                                }
+                            },
+                        },
+                        {
+                            "_id": "p3",
+                            "_score": 0.8,
+                            "_source": {"path": "c", "doc_id": "d3", "checksum": "def"},
+                            "inner_hits": {
+                                "chunk": {
+                                    "hits": {
+                                        "hits": [
+                                            {"_source": {"text": "t2", "chunk_index": 0}}
+                                        ]
+                                    }
+                                }
+                            },
+                        },
                     ]
                 }
             }

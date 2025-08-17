@@ -68,6 +68,12 @@ INGEST_LOG_INDEX_BASE  = _env_str("INGEST_LOG_INDEX_BASE", "ingest_logs")
 OPENSEARCH_INDEX       = _namespaced(OPENSEARCH_INDEX_BASE)
 INGEST_LOG_INDEX       = _namespaced(INGEST_LOG_INDEX_BASE)
 
+# ── Parent/child retrieval tuning
+OS_MIN_CHILDREN = _env_int("OS_MIN_CHILDREN", 1)
+OS_INNER_HITS = _env_int("OS_INNER_HITS", 3)
+HYBRID_W_OS = float(_env_str("HYBRID_W_OS", "0.6"))
+HYBRID_W_VEC = float(_env_str("HYBRID_W_VEC", "0.4"))
+
 # ── LLM API (text-generation-webui compatible)
 LLM_BASE_URL            = _env_str("LLM_BASE_URL", "http://localhost:5000").rstrip("/")
 LLM_GENERATE_ENDPOINT   = _env_str("LLM_GENERATE_ENDPOINT",   f"{LLM_BASE_URL}/api/v1/generate")

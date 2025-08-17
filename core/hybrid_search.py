@@ -1,63 +1,80 @@
 from typing import List, Dict, Any
+
 from core.vector_store import retrieve_top_k as semantic_retriever
 from core.opensearch_store import search as keyword_retriever
-from config import logger
+from config import logger, HYBRID_W_OS, HYBRID_W_VEC
 from tracing import start_span, STATUS_OK, RETRIEVER, INPUT_VALUE
 
 
 def retrieve_hybrid(
     query: str, top_k_each: int = 20, final_k: int = 5
 ) -> List[Dict[str, Any]]:
+    """Hybrid search combining OpenSearch (BM25) and Qdrant (semantic).
+
+    Returns document-level results with fused scores and evidence snippets.
     """
-    Hybrid search combining BM25 (OpenSearch) and vector (Qdrant) results.
-    Deduplicates by id and reranks by normalized score.
-    """
+
+    if not query or not query.strip():
+        return []
+
     logger.info(f"🔍 Running hybrid search: '{query}'")
 
     with start_span("Hybrid retrieval", kind=RETRIEVER) as span:
         span.set_attribute(INPUT_VALUE, query)
+
         vector_results = semantic_retriever(query, top_k=top_k_each)
         bm25_results = keyword_retriever(query, top_k=top_k_each)
 
+        # Group semantic chunks by doc_id and keep highest scoring snippet
+        semantic_by_doc: Dict[str, Dict[str, Any]] = {}
+        for r in vector_results:
+            doc_id = r.get("doc_id") or r.get("path")
+            prev = semantic_by_doc.get(doc_id)
+            if not prev or r["score"] > prev["score"]:
+                semantic_by_doc[doc_id] = r
+
         combined: Dict[str, Dict[str, Any]] = {}
 
-        def normalize(scores):
-            if not scores:
-                return []
-            max_score = max(scores)
-            return [s / max_score if max_score > 0 else 0 for s in scores]
-
-        vector_scores = normalize([r["score"] for r in vector_results])
-        bm25_scores = normalize([r["score"] for r in bm25_results])
-
-        for r, score in zip(vector_results, vector_scores):
-            key = r["id"]
-            combined[key] = {
+        for r in bm25_results:
+            doc_id = r.get("doc_id") or r.get("path")
+            combined[doc_id] = {
                 **r,
-                "score_vector": score,
-                "score_bm25": 0.0,
-                "source": "semantic",
+                "bm25": r.get("score", 0.0),
+                "vec": 0.0,
+                "semantic_snippet": None,
             }
 
-        for r, score in zip(bm25_results, bm25_scores):
-            key = r["_id"]
-            if key in combined:
-                combined[key]["score_bm25"] = score
-                combined[key]["source"] = "semantic/keyword"
+        for doc_id, r in semantic_by_doc.items():
+            if doc_id in combined:
+                combined[doc_id]["vec"] = r.get("score", 0.0)
+                combined[doc_id]["semantic_snippet"] = r.get("text")
             else:
-                combined[key] = {
+                combined[doc_id] = {
                     **r,
-                    "score_vector": 0.0,
-                    "score_bm25": score,
-                    "source": "keyword",
+                    "bm25": 0.0,
+                    "vec": r.get("score", 0.0),
+                    "chunks": [],
+                    "semantic_snippet": r.get("text"),
                 }
 
         for doc in combined.values():
-            doc["hybrid_score"] = 0.7 * doc["score_vector"] + 0.3 * doc["score_bm25"]
+            doc["final_score"] = HYBRID_W_OS * doc.get("bm25", 0.0) + HYBRID_W_VEC * doc.get(
+                "vec", 0.0
+            )
+            evidence = list(doc.get("chunks", []))
+            if doc.get("semantic_snippet"):
+                evidence.append(
+                    {
+                        "text": doc["semantic_snippet"],
+                        "score": doc.get("vec", 0.0),
+                        "source": "semantic",
+                    }
+                )
+            doc["evidence"] = evidence
 
         sorted_docs = sorted(
             combined.values(),
-            key=lambda x: (x["hybrid_score"], x.get("modified_at", "")),
+            key=lambda x: (x["final_score"], x.get("modified_at", "")),
             reverse=True,
         )
 
@@ -65,28 +82,23 @@ def retrieve_hybrid(
         seen_checksums = set()
         for doc in sorted_docs:
             cs = doc.get("checksum")
-            if cs in seen_checksums:
+            if cs and cs in seen_checksums:
                 continue
-            seen_checksums.add(cs)
+            if cs:
+                seen_checksums.add(cs)
             unique_docs.append(doc)
 
         for i, doc in enumerate(unique_docs):
-            span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
+            span.set_attribute(f"retrieval.documents.{i}.document.id", doc.get("path"))
             span.set_attribute(
-                f"retrieval.documents.{i}.document.score", doc["hybrid_score"]
+                f"retrieval.documents.{i}.document.score", doc["final_score"]
             )
-            span.set_attribute(f"retrieval.documents.{i}.document.content", doc["text"])
-            span.set_attribute(
-                f"retrieval.documents.{i}.document.metadata",
-                [
-                    f"Chunk index: {doc['chunk_index']}",
-                    f"Chunk source: {doc['source']}",
-                    f"Date modified: {doc['modified_at']}",
-                ],
-            )
+
         span.set_status(STATUS_OK)
 
         logger.info(
             f"✅ Hybrid search returned {len(unique_docs)} results after checksum dedup"
         )
+
     return unique_docs[:final_k]
+
