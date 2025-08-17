@@ -1,5 +1,6 @@
 import os
 import hashlib
+from typing import Any
 from datetime import datetime
 
 __all__ = [
@@ -41,7 +42,7 @@ def get_file_size(path: str) -> int:
         return 0
 
 
-def format_file_size(num_bytes: int) -> str:
+def format_file_size(num_bytes: Any) -> str:
     """Return a human-friendly string for a byte size.
 
     Uses binary multiples (KB, MB, GB, ...) and keeps one decimal place for
