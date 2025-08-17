@@ -90,7 +90,7 @@ def ingest_one(
             size=format_file_size(size_bytes),
         )
 
-        # Skip if already indexed and unchanged (based on checksum + path)
+        # Skip only if same path and checksum; allow duplicates across paths
         if not force and is_file_up_to_date(checksum, normalized_path):
             logger.info(f"✅ File already indexed and unchanged: {normalized_path}")
             log.done(status="Already indexed")
@@ -100,10 +100,10 @@ def ingest_one(
                 "path": normalized_path,
             }
 
+        is_dup = False
         if not force and is_duplicate_checksum(checksum, normalized_path):
             logger.info(f"♻️ Duplicate file detected: {normalized_path}")
-            log.done(status="Duplicate")
-            return {"success": False, "status": "Duplicate", "path": normalized_path}
+            is_dup = True
 
         timestamps = get_file_timestamps(normalized_path)
         created = timestamps.get("created")
@@ -207,12 +207,13 @@ def ingest_one(
             ids = [c["id"] for c in chunks]
             updated, _errs = set_has_embedding_true_by_ids(ids)
 
-            log.done(status="Success")
+            final_status = "Duplicate & Indexed" if is_dup else "Success"
+            log.done(status=final_status)
             return {
                 "success": True,
                 "num_chunks": len(chunks),
                 "path": normalized_path,
-                "status": "Successfully indexed",
+                "status": "Duplicate & Indexed" if is_dup else "Successfully indexed",
             }
         except Exception as e:
             logger.error(f"❌ Local pipeline failed: {e}")
@@ -238,12 +239,17 @@ def ingest_one(
                     args=[batch],
                 )
 
-            log.done(status="Success")
+            final_status = "Duplicate & Indexed" if is_dup else "Success"
+            log.done(status=final_status)
             return {
                 "success": True,
                 "num_chunks": len(chunks),
                 "path": normalized_path,
-                "status": "Partially indexed — background worker will finish",
+                "status": (
+                    "Duplicate & Indexed"
+                    if is_dup
+                    else "Partially indexed — background worker will finish"
+                ),
             }
         except Exception as e:
             logger.error(f"❌ Failed to enqueue background tasks: {e}")
