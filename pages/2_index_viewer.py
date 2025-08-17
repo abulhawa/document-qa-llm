@@ -245,15 +245,13 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
 
     # Default sort (best-effort) before showing
     display_df = fdf.copy()
-    if "Modified" in display_df.columns:
-        try:
-            display_df = display_df.sort_values("Modified", ascending=False, na_position="last")
-        except Exception:
-            pass
 
-    # Format size for display only
-    if "Size" in display_df.columns:
-        display_df["Size"] = display_df["Size"].apply(format_file_size)
+    # Keep 'Size' numeric for tests; only format for display via Styler
+    use_styler = "Size" in display_df.columns
+    if use_styler:
+        styled_df = display_df.style.format({"Size": format_file_size})
+    else:
+        styled_df = display_df
 
     # A nonce lets us hard-reset the widget when you click "Clear selection"
     nonce = st.session_state.setdefault("file_index_table_nonce", 0)
@@ -263,7 +261,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
 
     # ---- Render the table and capture the *current* selection ----
     event = st.dataframe(
-        display_df,
+        styled_df,
         hide_index=True,
         use_container_width=True,
         key=f"file_index_table_{nonce}",
