@@ -154,6 +154,21 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         value=False,
         help="Compute counts only for visible rows",
     )
+    # Track if any non-table control changed this run (used to preserve selection)
+    controls_changed = False
+    for key, val in [
+        ("path_filter", path_filter),
+        ("embed_filter", only_missing),
+        ("show_qdrant_counts", show_qdrant_counts),
+    ]:
+        prev = st.session_state.get(f"_prev_{key}", None)
+        if prev is not None and prev != val:
+            controls_changed = True
+        st.session_state[f"_prev_{key}"] = val
+
+    # one-shot suppression flag (if True, we won't overwrite saved selection with an empty one)
+    st.session_state["_suppress_next_selection_overwrite"] = controls_changed
+    
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
@@ -226,8 +241,9 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
             st.session_state["_files_override"] = new_files
             st.toast("Table updated.", icon="✅")
             st.rerun()
-    # ---------- Single table with st.dataframe selection (no extra deps) ----------
-    # Sort (best-effort; assumes Modified is ISO-like string)
+    # ---------- Single table (st.dataframe) with persistent selection ----------
+
+    # Default sort (best-effort) before showing
     display_df = fdf.copy()
     if "Modified" in display_df.columns:
         try:
@@ -235,108 +251,146 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
 
-    # Human-readable size for display (keep numeric in fdf["Size"])
+    # Format size for display only
     if "Size" in display_df.columns:
         display_df["Size"] = display_df["Size"].apply(format_file_size)
 
-    # --- Compute selection BEFORE rendering buttons (use last known selection) ---
-    # Keep a nonce so we can force-clear selection visually by bumping the widget key
+    # A nonce lets us hard-reset the widget when you click "Clear selection"
     nonce = st.session_state.setdefault("file_index_table_nonce", 0)
 
-    # Previously stored selection indices (relative to last display_df shape)
-    prev_idx = st.session_state.get("file_index_selected_rows", [])
+    # Placeholder for the action bar (will appear *above* the table)
+    action_bar = st.container()
 
-    # Map to currently selected rows/paths (safe if shape changed)
-    selected = display_df.iloc[prev_idx] if prev_idx else display_df.iloc[[]]
-    selected_paths = selected.get("Path", pd.Series([], dtype=str)).dropna().astype(str).unique().tolist()
-
-    # Total selected size (from ORIGINAL fdf numeric bytes)
-    sel_size_bytes = 0
-    if selected_paths and "Path" in fdf.columns and "Size" in fdf.columns:
-        sel_size_bytes = (
-            fdf[fdf["Path"].astype(str).isin(selected_paths)]["Size"]
-            .fillna(0)
-            .astype("int64")
-            .sum()
-        )
-    sel_size_hr = format_file_size(int(sel_size_bytes)) if sel_size_bytes else "—"
-
-    # ----------------------- Top action bar (above table) ------------------------
-    b1, b2, c1, c2 = st.columns([1.3, 1.6, 1.3, 2.8])
-    with b1:
-        confirm_bulk = st.checkbox(f"Confirm >{MAX_BULK_OPEN} files", value=False, help="Required for large actions")
-    with b2:
-        st.metric("Selected", f"{len(selected_paths)} file(s)", help=f"Total size: {sel_size_hr}")
-    with c1:
-        if st.button("📂 Open selected", use_container_width=True):
-            if not selected_paths:
-                st.info("Select one or more rows first.")
-            elif len(selected_paths) > MAX_BULK_OPEN and not confirm_bulk:
-                st.warning(f"Too many files selected ({len(selected_paths)}). Tick 'Confirm >{MAX_BULK_OPEN} files' to proceed.")
-            else:
-                for p in selected_paths:
-                    open_file_local(p)
-                st.success(f"Opened {len(selected_paths)} file(s).")
-    with c2:
-        if st.button("📁 Show folders (selected)", use_container_width=True):
-            if not selected_paths:
-                st.info("Select one or more rows first.")
-            elif len(selected_paths) > MAX_BULK_OPEN and not confirm_bulk:
-                st.warning(f"Too many files selected ({len(selected_paths)}). Tick 'Confirm >{MAX_BULK_OPEN} files' to proceed.")
-            else:
-                for p in selected_paths:
-                    show_in_folder(p)
-                st.success("Done.")
-
-    # Convenience bulk actions for ALL currently shown rows (no checkbox needed)
-    with st.expander("Bulk apply to ALL rows currently shown", expanded=False):
-        all_paths = display_df.get("Path", pd.Series([], dtype=str)).dropna().astype(str).unique().tolist()
-        cc1, cc2 = st.columns(2)
-        if cc1.button(f"📂 Open ALL shown ({len(all_paths)})", use_container_width=True):
-            if not all_paths:
-                st.info("No rows shown.")
-            elif len(all_paths) > MAX_BULK_OPEN and not confirm_bulk:
-                st.warning(f"{len(all_paths)} files. Tick 'Confirm >{MAX_BULK_OPEN} files' above to proceed.")
-            else:
-                for p in all_paths:
-                    open_file_local(p)
-                st.success(f"Opened {len(all_paths)} file(s).")
-        if cc2.button(f"📁 Show folders for ALL shown ({len(all_paths)})", use_container_width=True):
-            if not all_paths:
-                st.info("No rows shown.")
-            elif len(all_paths) > MAX_BULK_OPEN and not confirm_bulk:
-                st.warning(f"{len(all_paths)} files. Tick 'Confirm >{MAX_BULK_OPEN} files' above to proceed.")
-            else:
-                for p in all_paths:
-                    show_in_folder(p)
-                st.success("Done.")
-
-    # Clear selection (fixes the “ghost selection” bug and resets checkboxes)
-    cc3, _ = st.columns([1.2, 3])
-    with cc3:
-        if st.button("❌ Clear selection", use_container_width=True):
-            st.session_state["file_index_selected_rows"] = []
-            st.session_state["file_index_table_nonce"] = nonce + 1  # force new widget instance
-            st.rerun()
-
-    st.caption("Tip: Use the checkboxes to select rows; sort/filter first, then select.")
-
-    # ------------------------ Table render (selectable) --------------------------
+    # ---- Render the table and capture the *current* selection ----
     event = st.dataframe(
         display_df,
         hide_index=True,
         use_container_width=True,
-        key=f"file_index_table_{st.session_state['file_index_table_nonce']}",
-        on_select="rerun",          # triggers rerun with selection payload
-        selection_mode="multi-row", # checkbox UI (Streamlit built-in)
+        key=f"file_index_table_{nonce}",
+        on_select="rerun",          # fire rerun on selection change
+        selection_mode="multi-row", # checkbox UI
     )
 
-    # Always persist the latest selection, EVEN when empty (fix ghost selection)
-    if event is not None:
-        sel_idx = event.get("selection", {}).get("rows", [])
-        # When user deselects all, this is [] — we must overwrite stored state
-        st.session_state["file_index_selected_rows"] = sel_idx
+    # Derive the set of selected paths from the event (indices -> Path)
+    event_sel_idx = (event or {}).get("selection", {}).get("rows", [])
+    current_paths = []
+    if event_sel_idx:
+        try:
+            current_paths = (
+                display_df.iloc[event_sel_idx]["Path"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+        except Exception:
+            current_paths = []
 
+    # Previously saved selection (by Path); we always store Paths, not indices
+    saved_paths = set(st.session_state.get("selected_paths", []))
+    current_set  = set(current_paths)
+
+    # Decide whether to overwrite saved selection this run
+    suppress = bool(st.session_state.get("_suppress_next_selection_overwrite", False))
+
+    # If the event reports *some* selection, always update to it.
+    # If the event reports *empty* selection:
+    #   - if suppression is on (e.g., you toggled a filter), keep prior selection
+    #   - else (user likely deselected in the table), commit empty
+    if current_set or not suppress:
+        st.session_state["selected_paths"] = list(current_set)
+    # else: keep saved_paths as-is
+
+    # After deciding, use the *effective* selection for UI/actions
+    effective_paths = set(st.session_state.get("selected_paths", []))
+
+    # One-shot flag consumed
+    if "_suppress_next_selection_overwrite" in st.session_state:
+        st.session_state["_suppress_next_selection_overwrite"] = False
+
+    # -------------------- Action bar (now filled above the table) --------------------
+    with action_bar:
+        # live count; we’ll skip total size per your note, but easy to add back later
+        st.caption(f"Selected {len(effective_paths)} file(s)")
+
+        c1, c2, c3 = st.columns([1.4, 1.6, 1.2])
+
+        with c1:
+            if st.button("📂 Open selected", use_container_width=True):
+                if not effective_paths:
+                    st.info("Select one or more rows first.")
+                else:
+                    for p in sorted(effective_paths):
+                        open_file_local(p)
+                    st.success(f"Opened {len(effective_paths)} file(s).")
+
+        with c2:
+            if st.button("📁 Show folders (selected)", use_container_width=True):
+                if not effective_paths:
+                    st.info("Select one or more rows first.")
+                else:
+                    for p in sorted(effective_paths):
+                        show_in_folder(p)
+                    st.success("Done.")
+
+        with c3:
+            if st.button("❌ Clear selection", use_container_width=True):
+                st.session_state["selected_paths"] = []
+                st.session_state["file_index_table_nonce"] = nonce + 1  # force new widget instance → checkboxes visually clear
+                st.rerun()
+
+    # ---- Bulk apply to ALL rows currently shown (no checkboxes needed) ----
+    with st.expander(f"Bulk apply to ALL rows currently shown ({len(display_df)})", expanded=False):
+        # All visible rows in the table right now
+        all_paths = (
+            display_df.get("Path", pd.Series([], dtype=str))
+            .dropna().astype(str).unique().tolist()
+        )
+        n_all = len(all_paths)
+
+        # Safety confirm: only required when over threshold
+        need_confirm = n_all > MAX_BULK_OPEN
+        if need_confirm:
+            bulk_confirm = st.checkbox(
+                f"Confirm bulk action on {n_all} files (> {MAX_BULK_OPEN})",
+                value=False,
+                key=f"bulk_confirm_{nonce}",
+                help="Prevents accidental mass actions",
+            )
+        else:
+            bulk_confirm = True  # not required for small batches
+
+        bc1, bc2 = st.columns(2)
+
+        if bc1.button(
+            f"📂 Open ALL shown ({n_all})",
+            use_container_width=True,
+            key=f"open_all_{nonce}",
+        ):
+            if not all_paths:
+                st.info("No rows shown.")
+            elif not bulk_confirm:
+                st.warning("Tick the confirm checkbox to proceed.")
+            else:
+                for p in all_paths:
+                    open_file_local(p)
+                st.success(f"Opened {n_all} file(s).")
+
+        if bc2.button(
+            f"📁 Show folders for ALL shown ({n_all})",
+            use_container_width=True,
+            key=f"show_all_{nonce}",
+        ):
+            if not all_paths:
+                st.info("No rows shown.")
+            elif not bulk_confirm:
+                st.warning("Tick the confirm checkbox to proceed.")
+            else:
+                for p in all_paths:
+                    show_in_folder(p)
+                st.success("Done.")
+    # Helpful hint
+    st.caption("Tip: sort/filter first, then use the checkboxes to select rows. Selection is preserved across filter toggles.")
     return fdf
 
 
