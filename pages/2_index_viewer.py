@@ -334,8 +334,8 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                 # Bump the table key to visually uncheck all boxes
                 st.session_state["file_index_table_nonce"] = nonce + 1
                 st.rerun()
-
-
+    # Helpful hint
+    st.caption("Tip: sort/filter first, then use the checkboxes to select rows.")
     # ---- Bulk apply to ALL rows currently shown (no checkboxes needed) ----
     with st.expander(f"Bulk apply to ALL rows currently shown ({len(display_df)})", expanded=False):
         # All visible rows in the table right now
@@ -386,8 +386,6 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                 for p in all_paths:
                     show_in_folder(p)
                 st.success("Done.")
-    # Helpful hint
-    st.caption("Tip: sort/filter first, then use the checkboxes to select rows. Selection is preserved across filter toggles.")
     return fdf
 
 
