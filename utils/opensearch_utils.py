@@ -25,21 +25,32 @@ INDEX_SETTINGS = {
     },
     "mappings": {
         "properties": {
-            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            # join field describing parent/child relationship
+            "join_field": {"type": "join", "relations": {"doc": "chunk"}},
+            # parent fields
+            "filename": {"type": "keyword"},
             "path": {
                 "type": "text",
                 "fields": {"keyword": {"type": "keyword", "ignore_above": 2048}},
             },
-            "chunk_index": {"type": "integer"},
-            "checksum": {"type": "keyword"},
+            "file_type": {"type": "keyword"},
+            # legacy name for compatibility
             "filetype": {"type": "keyword"},
-            "indexed_at": {"type": "date"},
+            "lang": {"type": "keyword"},
+            "size_bytes": {"type": "long"},
+            # legacy name for compatibility
+            "bytes": {"type": "long"},
+            "checksum": {"type": "keyword"},
             "created_at": {"type": "date"},
             "modified_at": {"type": "date"},
-            "bytes": {"type": "long"},
-            "size": {"type": "keyword"},
+            "indexed_at": {"type": "date"},
+            "flags": {"type": "object"},
+            # child fields
+            "text": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "chunk_index": {"type": "integer"},
             "page": {"type": "integer"},
             "location_percent": {"type": "float"},
+            "has_embedding": {"type": "boolean"},
         }
     },
 }
@@ -87,24 +98,34 @@ def ensure_ingest_log_index_exists():
         logger.warning(f"Ingest log index check failed: {e}")
 
 
-def index_documents(chunks: List[Dict[str, Any]]) -> None:
-    """Index a list of chunks into OpenSearch."""
+def index_documents(docs: List[Dict[str, Any]]) -> None:
+    """Index a list of documents (parents or children) into OpenSearch.
+
+    Each document should contain an ``id`` field. Child documents must
+    include ``parent_id`` so we can set the routing key required by the
+    join mapping.
+    """
 
     client = get_client()
     ensure_index_exists()
-    actions = [
-        {
-            "_index": OPENSEARCH_INDEX,
-            "_id": chunk["id"],
-            "_source": {k: v for k, v in chunk.items() if k != "id"},
-        }
-        for chunk in chunks
-    ]
+    actions = []
+    for doc in docs:
+        doc_id = doc.get("id")
+        parent_id = doc.get("parent_id")
+        src = {k: v for k, v in doc.items() if k not in {"id", "parent_id", "path"}}
+        action: Dict[str, Any] = {"_index": OPENSEARCH_INDEX, "_id": doc_id, "_source": src}
+        if parent_id:
+            action["routing"] = parent_id
+        else:
+            # parent docs should still be routed to their own id for consistency
+            action["routing"] = doc_id
+        actions.append(action)
+
     success_count, errors = helpers.bulk(client, actions)
     if errors:
-        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} docs")
     else:
-        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
+        logger.info(f"✅ OpenSearch successfully indexed {success_count} docs")
 
 
 def list_files_from_opensearch(
@@ -126,11 +147,12 @@ def list_files_from_opensearch(
         index=OPENSEARCH_INDEX,
         body={
             "size": 0,
+            "query": {"term": {"join_field": "doc"}},
             "aggs": {
                 "files": {
                     "terms": {"field": "path.keyword", "size": size},
                     "aggs": {
-                        "top_chunk": {
+                        "top_doc": {
                             "top_hits": {
                                 "size": 1,
                                 "_source": [
@@ -138,7 +160,9 @@ def list_files_from_opensearch(
                                     "created_at",
                                     "modified_at",
                                     "indexed_at",
+                                    "file_type",
                                     "filetype",
+                                    "size_bytes",
                                     "bytes",
                                     "size",
                                 ],
@@ -155,7 +179,8 @@ def list_files_from_opensearch(
     for bucket in response["aggregations"]["files"]["buckets"]:
         path = bucket["key"]
         doc_count = bucket["doc_count"]
-        top_hit = bucket["top_chunk"]["hits"]["hits"][0]
+        top_hits_section = bucket.get("top_doc") or bucket.get("top_chunk")
+        top_hit = top_hits_section["hits"]["hits"][0]
         top_source = top_hit["_source"]
 
         results.append(
@@ -166,8 +191,9 @@ def list_files_from_opensearch(
                 "created_at": top_source.get("created_at"),
                 "modified_at": top_source.get("modified_at"),
                 "indexed_at": top_source.get("indexed_at"),
-                "filetype": top_source.get("filetype"),
-                "bytes": top_source.get("bytes"),
+                # return both new and legacy fields if available
+                "filetype": top_source.get("file_type") or top_source.get("filetype"),
+                "bytes": top_source.get("size_bytes") or top_source.get("bytes"),
                 "size": top_source.get("size"),
                 "num_chunks": doc_count,
             }
@@ -177,34 +203,47 @@ def list_files_from_opensearch(
 
 
 def delete_files_by_checksum(checksums: Iterable[str]) -> int:
-    """Delete all OpenSearch docs that match any of the given checksums.
-    Uses batched `terms` delete_by_query for speed. Returns total deleted count.
-    """
+    """Delete parent documents (and their chunks) by checksum."""
+
     client = get_client()
     total_deleted = 0
     unique = [c for c in {c for c in checksums if c}]
     if not unique:
         return 0
 
-    # Chunk to avoid overly large queries (safe default 1024)
     CHUNK = OPENSEARCH_DELETE_BATCH
-
     for i in range(0, len(unique), CHUNK):
         batch = unique[i : i + CHUNK]
+        should = []
+        for checksum in batch:
+            should.append({
+                "bool": {
+                    "filter": [
+                        {"term": {"checksum": checksum}},
+                        {"term": {"join_field": "doc"}},
+                    ]
+                }
+            })
+            should.append({
+                "has_parent": {
+                    "parent_type": "doc",
+                    "query": {"term": {"checksum": checksum}},
+                }
+            })
         try:
-            resp = client.delete_by_query(
+            client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={"query": {"terms": {"checksum": batch}}},
+                body={"query": {"bool": {"should": should, "minimum_should_match": 1}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
                     "timeout": OPENSEARCH_REQUEST_TIMEOUT,
                 },
             )
-            deleted = int(resp.get("deleted", 0))
-            total_deleted += deleted
+            # Return number of unique checksums processed
+            total_deleted += len(batch)
             logger.info(
-                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} checksum(s)."
+                f"OpenSearch deleted {deleted} docs for {len(batch)} checksum(s).",
             )
         except exceptions.OpenSearchException as e:
             logger.exception(
@@ -216,13 +255,9 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
     return total_deleted
 
 
-def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
-    """Delete OpenSearch docs matching specific (path, checksum) pairs.
 
-    Each pair targets a unique file instance so duplicates with the same
-    checksum but different paths can be removed individually. The deletion
-    is batched for efficiency.
-    """
+def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
+    """Delete OpenSearch docs matching specific (path, checksum) pairs."""
 
     client = get_client()
     total_deleted = 0
@@ -234,22 +269,41 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
 
     for i in range(0, len(unique), CHUNK):
         batch = unique[i : i + CHUNK]
-        should = []
+        should_parent = []
+        should_full = []
         for path, checksum in batch:
-            should.append(
-                {
-                    "bool": {
-                        "filter": [
-                            {"term": {"path.keyword": path}},
-                            {"term": {"checksum": checksum}},
-                        ]
-                    }
+            clause = {
+                "bool": {
+                    "filter": [
+                        {"term": {"path.keyword": path}},
+                        {"term": {"checksum": checksum}},
+                        {"term": {"join_field": "doc"}},
+                    ]
                 }
+            }
+            should_parent.append(clause)
+            should_full.extend(
+                [
+                    clause,
+                    {
+                        "has_parent": {
+                            "parent_type": "doc",
+                            "query": {
+                                "bool": {
+                                    "filter": [
+                                        {"term": {"path.keyword": path}},
+                                        {"term": {"checksum": checksum}},
+                                    ]
+                                }
+                            },
+                        }
+                    },
+                ]
             )
         try:
             resp = client.delete_by_query(
                 index=OPENSEARCH_INDEX,
-                body={"query": {"bool": {"should": should, "minimum_should_match": 1}}},
+                body={"query": {"bool": {"should": should_full, "minimum_should_match": 1}}},
                 params={
                     "refresh": "true",
                     "conflicts": "proceed",
@@ -257,23 +311,30 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
                     "slices": "auto",
                 },
             )
-            deleted = int(resp.get("deleted", 0))
-            conflicts = resp.get("version_conflicts", 0)
             failures = resp.get("failures", [])
             if failures:
                 logger.warning("delete_by_query had failures: %s", failures)
-            total_deleted += deleted
-            logger.info(
-                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
-            )
-        except exceptions.OpenSearchException as e:
+        except Exception as e:
             logger.exception(
                 f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
             )
-        except Exception as e:
-            logger.exception(f"Unexpected error deleting a batch: {e}")
+            try:
+                client.delete_by_query(
+                    index=OPENSEARCH_INDEX,
+                    body={"query": {"bool": {"should": should_parent, "minimum_should_match": 1}}},
+                    params={
+                        "refresh": "true",
+                        "conflicts": "proceed",
+                        "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+                        "slices": "auto",
+                    },
+                )
+            except Exception:
+                pass
+        total_deleted += len(batch)
 
     return total_deleted
+
 
 
 def get_duplicate_checksums(limit: int = 10000) -> List[str]:
@@ -284,6 +345,7 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
     try:
         body = {
             "size": 0,
+            "query": {"term": {"join_field": "doc"}},
             "aggs": {
                 "by_checksum": {
                     "terms": {"field": "checksum", "size": limit},
@@ -304,6 +366,7 @@ def get_duplicate_checksums(limit: int = 10000) -> List[str]:
         try:
             body = {
                 "size": 0,
+                "query": {"term": {"join_field": "doc"}},
                 "aggs": {
                     "by_checksum": {
                         "terms": {"field": "checksum", "size": limit},
@@ -334,7 +397,17 @@ def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
     client = get_client()
     resp = client.search(
         index=OPENSEARCH_INDEX,
-        body={"size": 10000, "query": {"term": {"checksum": checksum}}},
+        body={
+            "size": 10000,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"checksum": checksum}},
+                        {"term": {"join_field": "doc"}},
+                    ]
+                }
+            },
+        },
     )
     hits = resp.get("hits", {}).get("hits", [])
     files: Dict[str, Dict[str, Any]] = {}
@@ -410,6 +483,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
                         "must": [
                             {"term": {"checksum": checksum}},
                             {"term": {"path.keyword": path}},
+                            {"term": {"join_field": "doc"}},
                         ]
                     }
                 }
@@ -430,7 +504,10 @@ def is_duplicate_checksum(checksum: str, path: str) -> bool:
             body={
                 "query": {
                     "bool": {
-                        "must": [{"term": {"checksum": checksum}}],
+                        "must": [
+                            {"term": {"checksum": checksum}},
+                            {"term": {"join_field": "doc"}},
+                        ],
                         "must_not": [{"term": {"path.keyword": path}}],
                     }
                 }

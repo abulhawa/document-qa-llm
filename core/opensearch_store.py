@@ -15,7 +15,14 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
             index=OPENSEARCH_INDEX,
             body={
                 "size": top_k * 3,  # fetch extra for dedup
-                "query": {"match": {"text": {"query": query, "operator": "or"}}},
+                "query": {
+                    "has_child": {
+                        "type": "chunk",
+                        "query": {"match": {"text": {"query": query, "operator": "or"}}},
+                        "score_mode": "max",
+                        "inner_hits": {"size": 1},
+                    }
+                },
                 "sort": [
                     {"_score": {"order": "desc"}},
                     {"modified_at": {"order": "desc"}},
@@ -29,12 +36,31 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         results = []
         seen_checksums = set()
         for hit in hits:
-            src = hit.get("_source", {})
-            checksum = src.get("checksum")
-            if checksum in seen_checksums:
-                continue
-            seen_checksums.add(checksum)
-            results.append({**src, "score": hit.get("_score"), "_id": hit.get("_id")})
+            if "inner_hits" in hit:
+                parent_src = hit.get("_source", {})
+                checksum = parent_src.get("checksum")
+                if checksum in seen_checksums:
+                    continue
+                child_hits = (
+                    hit.get("inner_hits", {})
+                    .get("chunk", {})
+                    .get("hits", {})
+                    .get("hits", [])
+                )
+                if not child_hits:
+                    continue
+                child = child_hits[0]
+                child_src = child.get("_source", {})
+                seen_checksums.add(checksum)
+                merged = {**parent_src, **child_src, "score": child.get("_score"), "_id": child.get("_id")}
+                results.append(merged)
+            else:
+                src = hit.get("_source", {})
+                checksum = src.get("checksum")
+                if checksum in seen_checksums:
+                    continue
+                seen_checksums.add(checksum)
+                results.append({**src, "score": hit.get("_score"), "_id": hit.get("_id")})
             if len(results) >= top_k:
                 break
 

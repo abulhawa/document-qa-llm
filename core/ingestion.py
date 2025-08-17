@@ -168,6 +168,29 @@ def ingest_one(
         # Celery will flip this after embedding
         chunk["has_embedding"] = False
 
+    # Build parent document for OpenSearch join
+    doc_id = str(uuid.uuid5(uuid.NAMESPACE_URL, normalized_path))
+    parent_doc = {
+        "id": doc_id,
+        "parent_id": None,
+        "join_field": "doc",
+        "filename": os.path.basename(normalized_path),
+        "path": normalized_path,
+        "file_type": ext,
+        "filetype": ext,  # legacy
+        "lang": None,
+        "size_bytes": size_bytes,
+        "bytes": size_bytes,  # legacy
+        "created_at": created,
+        "modified_at": modified,
+        "indexed_at": indexed_at,
+        "checksum": checksum,
+        "flags": {"is_duplicate": is_dup},
+    }
+
+    for chunk in chunks:
+        chunk["parent_id"] = doc_id
+
     # Optional: on force+replace, purge existing entries
     if force and replace:
         try:
@@ -197,7 +220,21 @@ def ingest_one(
         # SMALL file → do EVERYTHING locally
         try:
             logger.info(f"Indexing {len(chunks)} chunks to OpenSearch (small file).")
-            index_documents(chunks)
+            os_chunks = [
+                {
+                    "id": c["id"],
+                    "parent_id": c["parent_id"],
+                    "join_field": {"name": "chunk", "parent": c["parent_id"]},
+                    "text": c["text"],
+                    "page": c.get("page"),
+                    "chunk_index": c["chunk_index"],
+                    "location_percent": c.get("location_percent"),
+                    "has_embedding": c.get("has_embedding", False),
+                    "path": c.get("path"),
+                }
+                for c in chunks
+            ]
+            index_documents([parent_doc] + os_chunks)
 
             logger.info(f"Embedding + upserting {len(chunks)} chunks locally.")
             ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
@@ -232,6 +269,7 @@ def ingest_one(
                 f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
                 f"in batches of {EMBEDDING_BATCH_SIZE}."
             )
+            index_documents([parent_doc])
             for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
                 batch = chunks[i : i + EMBEDDING_BATCH_SIZE]
                 celery_app.send_task(

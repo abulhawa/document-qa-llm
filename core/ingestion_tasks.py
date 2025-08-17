@@ -35,8 +35,22 @@ def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]
 
     total = len(chunks)
     try:
-        # 1) Index to OpenSearch
-        index_documents(chunks)
+        # 1) Index to OpenSearch (chunks only)
+        os_chunks = [
+            {
+                "id": c["id"],
+                "parent_id": c["parent_id"],
+                "join_field": {"name": "chunk", "parent": c["parent_id"]},
+                "text": c["text"],
+                "page": c.get("page"),
+                "chunk_index": c["chunk_index"],
+                "location_percent": c.get("location_percent"),
+                "has_embedding": c.get("has_embedding", False),
+                "path": c.get("path"),
+            }
+            for c in chunks
+        ]
+        index_documents(os_chunks)
         self.update_state(
             state="PROGRESS",
             meta={
