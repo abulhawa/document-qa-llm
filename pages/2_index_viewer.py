@@ -128,10 +128,33 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     # Filters
     colf1, colf2, colf3 = st.columns([3, 2, 1], vertical_alignment="bottom")
     with colf1:
-        path_filter = st.text_input(
-            "Filter by path substring", value=st.session_state.get("path_filter", "")
-        )
-        st.session_state["path_filter"] = path_filter
+        c_l, c_r = st.columns([5, 1], vertical_alignment="bottom")
+
+        # A nonce forces a brand-new text_input instance on reset
+        pf_nonce = st.session_state.setdefault("path_filter_nonce", 0)
+
+        with c_r:
+            if st.button("Reset", use_container_width=True, help="Clear filter and reset table"):
+                # Clear app-level filter value and recreate the widget next run
+                st.session_state["path_filter"] = ""
+                st.session_state["path_filter_nonce"] = pf_nonce + 1  # new widget key
+                # Preserve selection on this rerun
+                st.session_state["_suppress_next_selection_overwrite"] = True
+                st.rerun()
+
+        with c_l:
+            # Use a widget key that changes with the nonce so its visual value resets
+            path_filter_input = st.text_input(
+                "Filter by path substring",
+                value=st.session_state.get("path_filter", ""),
+                key=f"path_filter_widget_{st.session_state['path_filter_nonce']}",
+            )
+
+        # Store the current value under a stable app-level key (NOT the widget key)
+        st.session_state["path_filter"] = path_filter_input
+
+    # Use the current filter value everywhere below
+    path_filter = st.session_state.get("path_filter", "")    
     with colf2:
         only_missing = st.checkbox(
             "Only missing embeddings (Qdrant=0)",
@@ -156,15 +179,18 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     )
     # Track if any non-table control changed this run (used to preserve selection)
     controls_changed = False
-    for key, val in [
-        ("path_filter", path_filter),
-        ("embed_filter", only_missing),
-        ("show_qdrant_counts", show_qdrant_counts),
-    ]:
-        prev = st.session_state.get(f"_prev_{key}", None)
-        if prev is not None and prev != val:
-            controls_changed = True
-        st.session_state[f"_prev_{key}"] = val
+
+    def _changed(k, v):
+        prev = st.session_state.get(f"_prev_{k}", "__MISSING__")
+        st.session_state[f"_prev_{k}"] = v
+        return prev != "__MISSING__" and prev != v
+
+    if _changed("path_filter", path_filter):
+        controls_changed = True
+    if _changed("embed_filter", only_missing):
+        controls_changed = True
+    if _changed("show_qdrant_counts", show_qdrant_counts):
+        controls_changed = True
 
     # one-shot suppression flag (if True, we won't overwrite saved selection with an empty one)
     st.session_state["_suppress_next_selection_overwrite"] = controls_changed
@@ -259,83 +285,56 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     # Placeholder for the action bar (will appear *above* the table)
     action_bar = st.container()
 
-    # ---- Render the table and capture the *current* selection ----
+    # ---- Render the table and read selection (UI is the source of truth) ----
     event = st.dataframe(
-        styled_df,
+        display_df if not use_styler else styled_df,
         hide_index=True,
         use_container_width=True,
         key=f"file_index_table_{nonce}",
-        on_select="rerun",          # fire rerun on selection change
+        on_select="rerun",          # rerun on checkbox change
         selection_mode="multi-row", # checkbox UI
     )
 
-    # Derive the set of selected paths from the event (indices -> Path)
-    event_sel_idx = (event or {}).get("selection", {}).get("rows", [])
-    current_paths = []
-    if event_sel_idx:
-        try:
-            current_paths = (
-                display_df.iloc[event_sel_idx]["Path"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-        except Exception:
-            current_paths = []
+    # Current selection = rows checked in the widget (relative to display_df)
+    sel_idx = (event or {}).get("selection", {}).get("rows", [])
+    try:
+        selected_paths = (
+            display_df.iloc[sel_idx]["Path"]
+            .dropna().astype(str).unique().tolist()
+        ) if sel_idx else []
+    except Exception:
+        selected_paths = []
 
-    # Previously saved selection (by Path); we always store Paths, not indices
-    saved_paths = set(st.session_state.get("selected_paths", []))
-    current_set  = set(current_paths)
-
-    # Decide whether to overwrite saved selection this run
-    suppress = bool(st.session_state.get("_suppress_next_selection_overwrite", False))
-
-    # If the event reports *some* selection, always update to it.
-    # If the event reports *empty* selection:
-    #   - if suppression is on (e.g., you toggled a filter), keep prior selection
-    #   - else (user likely deselected in the table), commit empty
-    if current_set or not suppress:
-        st.session_state["selected_paths"] = list(current_set)
-    # else: keep saved_paths as-is
-
-    # After deciding, use the *effective* selection for UI/actions
-    effective_paths = set(st.session_state.get("selected_paths", []))
-
-    # One-shot flag consumed
-    if "_suppress_next_selection_overwrite" in st.session_state:
-        st.session_state["_suppress_next_selection_overwrite"] = False
-
-    # -------------------- Action bar (now filled above the table) --------------------
+    # -------------------- Action bar (above the table) --------------------
     with action_bar:
-        # live count; we’ll skip total size per your note, but easy to add back later
-        st.caption(f"Selected {len(effective_paths)} file(s)")
+        st.caption(f"Selected {len(selected_paths)} file(s)")
 
         c1, c2, c3 = st.columns([1.4, 1.6, 1.2])
 
         with c1:
             if st.button("📂 Open selected", use_container_width=True):
-                if not effective_paths:
+                if not selected_paths:
                     st.info("Select one or more rows first.")
                 else:
-                    for p in sorted(effective_paths):
+                    for p in sorted(selected_paths):
                         open_file_local(p)
-                    st.success(f"Opened {len(effective_paths)} file(s).")
+                    st.success(f"Opened {len(selected_paths)} file(s).")
 
         with c2:
             if st.button("📁 Show folders (selected)", use_container_width=True):
-                if not effective_paths:
+                if not selected_paths:
                     st.info("Select one or more rows first.")
                 else:
-                    for p in sorted(effective_paths):
+                    for p in sorted(selected_paths):
                         show_in_folder(p)
                     st.success("Done.")
 
         with c3:
             if st.button("❌ Clear selection", use_container_width=True):
-                st.session_state["selected_paths"] = []
-                st.session_state["file_index_table_nonce"] = nonce + 1  # force new widget instance → checkboxes visually clear
+                # Bump the table key to visually uncheck all boxes
+                st.session_state["file_index_table_nonce"] = nonce + 1
                 st.rerun()
+
 
     # ---- Bulk apply to ALL rows currently shown (no checkboxes needed) ----
     with st.expander(f"Bulk apply to ALL rows currently shown ({len(display_df)})", expanded=False):
