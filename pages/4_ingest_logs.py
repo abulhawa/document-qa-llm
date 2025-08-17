@@ -21,7 +21,7 @@ with col2:
             "Failed",
             "Success",
             "Already indexed",
-            "Duplicate",
+            "Duplicate & Indexed",
             "No valid content found",
         ],
         index=0,
