@@ -146,12 +146,11 @@ def index_fulltext_document(doc: Dict[str, Any]) -> None:
 
     client = get_client()
     ensure_fulltext_index_exists()
-    action = {
-        "_index": OPENSEARCH_FULLTEXT_INDEX,
-        "_id": doc["id"],
-        "_source": {k: v for k, v in doc.items() if k != "id"},
-    }
-    helpers.bulk(client, [action])
+    client.index(
+        index=OPENSEARCH_FULLTEXT_INDEX,
+        id=doc["id"],
+        body={k: v for k, v in doc.items() if k != "id"},
+    )
 
 
 def list_files_from_opensearch(
