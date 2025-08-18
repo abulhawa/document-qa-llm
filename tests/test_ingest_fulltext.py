@@ -1,4 +1,5 @@
 import pytest
+import os
 from langchain_core.documents import Document
 
 from core.ingestion import ingest_one
@@ -64,6 +65,6 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
 
     assert "doc" in called
     assert called["doc"]["text_full"] == "full"
-    assert called["doc"]["path"] == str(f)
+    assert os.path.normpath(called["doc"]["path"]) == os.path.normpath(str(f))
     assert called["doc"]["checksum"] == "abc"
 
