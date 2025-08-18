@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from core.opensearch_client import get_client
 from config import OPENSEARCH_FULLTEXT_INDEX, logger
+import html
 
 
 DEFAULT_FRAGMENT_SIZE = 200
@@ -28,37 +29,74 @@ def build_query(
 ) -> Dict[str, Any]:
     """Build an OpenSearch query for full-document search."""
 
+    base_bool = {
+        "must": [
+            {
+                "simple_query_string": {
+                    "query": q,
+                    "fields": [
+                        "text_full^3",
+                        "filename^5",          # text field
+                        "filename.keyword^8"   # exact filename boost
+                    ],
+                    "default_operator": "or",
+                }
+            }
+        ],
+        "filter": [],
+    }
+    
+    # Keep a handle to the bool filter list so downstream code can append ranges, etc.
+    filters = base_bool["filter"]
+
+    # Path stays in the main query (aggs should reflect current path scope)
+    if path_prefix:
+        filters.append({"prefix": {"path": path_prefix}})
+
     query: Dict[str, Any] = {
         "from": from_,
         "size": size,
+        "track_total_hits": True,
+        # soft recency boost without breaking relevance
         "query": {
-            "bool": {
-                "must": [
+            "function_score": {
+                "query": {"bool": base_bool},
+                "boost_mode": "sum",
+                "score_mode": "sum",
+                "functions": [
                     {
-                        "simple_query_string": {
-                            "query": q,
-                            "fields": ["text_full^3", "filename"],
-                            "default_operator": "or",
-                        }
+                        "gauss": {
+                            "modified_at": {"origin": "now", "scale": "90d", "decay": 0.5}
+                        },
+                        "weight": 0.5,
                     }
                 ],
-                "filter": [],
             }
         },
         "highlight": {
+            "pre_tags": ["<mark>"],
+            "post_tags": ["</mark>"],
             "fields": {
                 "text_full": {
                     "fragment_size": fragment_size,
                     "number_of_fragments": num_fragments,
+                    "no_match_size": fragment_size
                 }
             }
         },
+        "aggs": {
+            "filetypes": {"terms": {"field": "filetype", "size": 20}},
+            "top_paths": {"terms": {"field": "path", "size": 10}}
+        },
     }
 
-    filters = query["query"]["bool"]["filter"]
-
-    if filetypes:
-        filters.append({"terms": {"filetype": filetypes}})
+    # IMPORTANT: put file_types in post_filter so aggs remain stable (unaffected by file_type selection)
+    selected_types = filetypes if filetypes is not None else filetypes
+    post_filters: list[dict[str, Any]] = []
+    if selected_types:
+        post_filters.append({"terms": {"filetype": selected_types}})
+    if post_filters:
+        query["post_filter"] = {"bool": {"filter": post_filters}}
 
     if modified_from or modified_to:
         range_body: Dict[str, Any] = {}
@@ -76,8 +114,6 @@ def build_query(
             range_body["lte"] = created_to
         filters.append({"range": {"created_at": range_body}})
 
-    if path_prefix:
-        filters.append({"prefix": {"path": path_prefix}})
 
     if size_gte is not None or size_lte is not None:
         range_body = {}
@@ -141,11 +177,18 @@ def search_documents(
     results: List[Dict[str, Any]] = []
     for hit in hits.get("hits", []):
         src = hit.get("_source", {})
+        # Escape everything, then re-enable our <mark> tags only
+        raw_frags = hit.get("highlight", {}).get("text_full", [])
+        safe_frags = []
+        for f in raw_frags:
+            e = html.escape(f)
+            e = e.replace("&lt;mark&gt;", "<mark>").replace("&lt;/mark&gt;", "</mark>")
+            safe_frags.append(e)
         results.append(
             {
                 **src,
                 "score": hit.get("_score"),
-                "highlights": hit.get("highlight", {}).get("text_full", []),
+                "highlights": safe_frags,
                 "_id": hit.get("_id"),
             }
         )
@@ -154,4 +197,5 @@ def search_documents(
         "hits": results,
         "total": hits.get("total", {}).get("value", 0),
         "took": resp.get("took", 0),
+        "aggs": resp.get("aggregations", {}),
     }
