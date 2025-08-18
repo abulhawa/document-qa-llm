@@ -47,6 +47,7 @@ INDEX_SETTINGS = {
 
 FULLTEXT_INDEX_SETTINGS = {
     "settings": {
+        "index": {"highlight": {"max_analyzed_offset": 5000000}},
         "analysis": {
             "analyzer": {
                 "custom_text_analyzer": {
@@ -55,13 +56,17 @@ FULLTEXT_INDEX_SETTINGS = {
                     "filter": ["lowercase", "stop", "asciifolding"],
                 }
             }
-        }
+        },
     },
     "mappings": {
         "properties": {
             "text_full": {"type": "text", "analyzer": "custom_text_analyzer"},
             "path": {"type": "keyword"},
-            "filename": {"type": "keyword"},
+            "filename": {
+                "type": "text",
+                "analyzer": "custom_text_analyzer",
+                "fields": {"keyword": {"type": "keyword"}},
+            },
             "filetype": {"type": "keyword"},
             "modified_at": {"type": "date"},
             "created_at": {"type": "date"},
@@ -106,7 +111,9 @@ def ensure_fulltext_index_exists():
     client = get_client()
     if not client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
         logger.info(f"Creating OpenSearch index: {OPENSEARCH_FULLTEXT_INDEX}")
-        client.indices.create(index=OPENSEARCH_FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS)
+        client.indices.create(
+            index=OPENSEARCH_FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS
+        )
 
 
 def ensure_ingest_log_index_exists():
