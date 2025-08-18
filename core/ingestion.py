@@ -31,6 +31,7 @@ from utils.opensearch_utils import (
     is_duplicate_checksum,
     index_documents,
     set_has_embedding_true_by_ids,
+    index_fulltext_document,
 )
 from utils.ingest_logging import IngestLogEmitter
 
@@ -130,6 +131,24 @@ def ingest_one(
         except Exception as e:
             logger.warning(f"Preprocess step skipped due to error: {e}")
             docs_list = docs
+
+        try:
+            logger.info("📝 Indexing full document text")
+            full_text = "\n\n".join(getattr(d, "page_content", "") for d in docs_list)
+            full_doc = {
+                "id": hash_path(normalized_path),
+                "path": normalized_path,
+                "filename": os.path.basename(normalized_path),
+                "filetype": ext,
+                "modified_at": modified,
+                "created_at": created,
+                "size_bytes": size_bytes,
+                "checksum": checksum,
+                "text_full": full_text,
+            }
+            index_fulltext_document(full_doc)
+        except Exception as e:
+            logger.warning(f"Full-text indexing failed: {e}")
 
         logger.info("✂️ Splitting document into chunks")
         try:
