@@ -13,9 +13,9 @@ from utils.fulltext_search import search_documents
 
 def setup_module(module):
     client = OpenSearch(hosts=[OPENSEARCH_URL])
-    if client.indices.exists(OPENSEARCH_FULLTEXT_INDEX):
-        client.indices.delete(OPENSEARCH_FULLTEXT_INDEX)
-    client.indices.create(OPENSEARCH_FULLTEXT_INDEX)
+    if client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
+        client.indices.delete(index=OPENSEARCH_FULLTEXT_INDEX)
+    client.indices.create(index=OPENSEARCH_FULLTEXT_INDEX)
     docs = [
         {
             "_index": OPENSEARCH_FULLTEXT_INDEX,
@@ -32,7 +32,7 @@ def setup_module(module):
         }
     ]
     helpers.bulk(client, docs)
-    client.indices.refresh(OPENSEARCH_FULLTEXT_INDEX)
+    client.indices.refresh(index=OPENSEARCH_FULLTEXT_INDEX)
 
 
 def test_search_documents_smoke():
