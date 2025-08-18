@@ -22,6 +22,11 @@ pages = [
         title="Ingestion Logs",
         icon="📝",
     ),
+    st.Page(
+        "pages/5_search.py",
+        title="Search",
+        icon="🔎",
+    ),
 ]
 
 pg = st.navigation(pages, position="top")

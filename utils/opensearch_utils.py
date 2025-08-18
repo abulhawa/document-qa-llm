@@ -4,6 +4,7 @@ from opensearchpy import helpers, exceptions
 
 from config import (
     OPENSEARCH_INDEX,
+    OPENSEARCH_FULLTEXT_INDEX,
     OPENSEARCH_DELETE_BATCH,
     OPENSEARCH_REQUEST_TIMEOUT,
     INGEST_LOG_INDEX,
@@ -44,6 +45,32 @@ INDEX_SETTINGS = {
     },
 }
 
+FULLTEXT_INDEX_SETTINGS = {
+    "settings": {
+        "analysis": {
+            "analyzer": {
+                "custom_text_analyzer": {
+                    "type": "custom",
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "stop", "asciifolding"],
+                }
+            }
+        }
+    },
+    "mappings": {
+        "properties": {
+            "text_full": {"type": "text", "analyzer": "custom_text_analyzer"},
+            "path": {"type": "keyword"},
+            "filename": {"type": "keyword"},
+            "filetype": {"type": "keyword"},
+            "modified_at": {"type": "date"},
+            "created_at": {"type": "date"},
+            "size_bytes": {"type": "long"},
+            "checksum": {"type": "keyword"},
+        }
+    },
+}
+
 INGEST_LOGS_SETTINGS = {
     "settings": {"index": {"number_of_shards": 1}},
     "mappings": {
@@ -73,6 +100,13 @@ def ensure_index_exists():
     if not client.indices.exists(index=OPENSEARCH_INDEX):
         logger.info(f"Creating OpenSearch index: {OPENSEARCH_INDEX}")
         client.indices.create(index=OPENSEARCH_INDEX, body=INDEX_SETTINGS)
+
+
+def ensure_fulltext_index_exists():
+    client = get_client()
+    if not client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
+        logger.info(f"Creating OpenSearch index: {OPENSEARCH_FULLTEXT_INDEX}")
+        client.indices.create(index=OPENSEARCH_FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS)
 
 
 def ensure_ingest_log_index_exists():
@@ -105,6 +139,19 @@ def index_documents(chunks: List[Dict[str, Any]]) -> None:
         logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
     else:
         logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
+
+
+def index_fulltext_document(doc: Dict[str, Any]) -> None:
+    """Index a single full-text document into OpenSearch."""
+
+    client = get_client()
+    ensure_fulltext_index_exists()
+    action = {
+        "_index": OPENSEARCH_FULLTEXT_INDEX,
+        "_id": doc["id"],
+        "_source": {k: v for k, v in doc.items() if k != "id"},
+    }
+    helpers.bulk(client, [action])
 
 
 def list_files_from_opensearch(
