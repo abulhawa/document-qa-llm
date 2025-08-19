@@ -49,17 +49,11 @@ def current_params() -> dict | None:
         "sort": st.session_state.sort,
         "path_contains": (st.session_state.path_contains or None),
         "filetypes": tuple(st.session_state.filetypes) or None,
+        "modified_from": _iso_start(st.session_state.get("modified_from")),
+        "modified_to": _iso_end(st.session_state.get("modified_to")),
+        "created_from": _iso_start(st.session_state.get("created_from")),
+        "created_to": _iso_end(st.session_state.get("created_to")),
     }
-
-    # Only add date filters when the corresponding checkbox is enabled
-    if st.session_state.get("enable_modified"):
-        params["modified_from"] = _iso_start(st.session_state.get("modified_from"))
-        params["modified_to"] = _iso_end(st.session_state.get("modified_to"))
-
-    if st.session_state.get("enable_created"):
-        params["created_from"] = _iso_start(st.session_state.get("created_from"))
-        params["created_to"] = _iso_end(st.session_state.get("created_to"))
-
     return params
 
 
@@ -101,54 +95,42 @@ with filters_col2:
     st.multiselect(
         "File type", options=options, key="filetypes", on_change=_reset_and_search
     )
-# Modified range filter
-st.checkbox(
-    "Filter by modified date",
-    key="enable_modified",
-    value=False,
-)
-mod_from, mod_to = st.columns(2)
-with mod_from:
-    st.date_input(
-        "From:",
-        key="modified_from",
-        value=None,
-        format="DD/MM/YYYY",
-        disabled=not st.session_state.enable_modified,
-    )
-with mod_to:
-    st.date_input(
-        "To:",
-        key="modified_to",
-        value=None,
-        format="DD/MM/YYYY",
-        min_value=st.session_state.modified_from,
-        disabled=not st.session_state.enable_modified,
-    )
-# Created range filter
-st.checkbox(
-    "Filter by created date",
-    key="enable_created",
-    value=False,
-)
-created_from, created_to = st.columns(2)
-with created_from:
-    st.date_input(
-        "From:",
-        key="created_from",
-        value=None,
-        format="DD/MM/YYYY",
-        disabled=not st.session_state.enable_created,
-    )
-with created_to:
-    st.date_input(
-        "To:",
-        key="created_to",
-        value=None,
-        format="DD/MM/YYYY",
-        min_value=st.session_state.created_from,
-        disabled=not st.session_state.enable_created,
-    )
+
+d1, d2 = st.columns(2)
+with d1:
+    mod_from, mod_to = st.columns(2)
+    with mod_from:
+        st.date_input(
+            "From:",
+            key="modified_from",
+            value=None,
+            format="DD/MM/YYYY",
+        )
+    with mod_to:
+        st.date_input(
+            "To:",
+            key="modified_to",
+            value=None,
+            format="DD/MM/YYYY",
+            min_value=st.session_state.modified_from,
+        )
+with d2:
+    created_from, created_to = st.columns(2)
+    with created_from:
+        st.date_input(
+            "From:",
+            key="created_from",
+            value=None,
+            format="DD/MM/YYYY",
+        )
+    with created_to:
+        st.date_input(
+            "To:",
+            key="created_to",
+            value=None,
+            format="DD/MM/YYYY",
+            min_value=st.session_state.created_from,
+        )
 
 if res:
             date_str = format_date(hit.get("modified_at"))
