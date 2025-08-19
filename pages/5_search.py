@@ -136,7 +136,7 @@ if st.session_state.results:
 else:
     st.info("Enter a query to search your documents")
 
-left, right = st.columns(2)
+left, right = st.columns(2, vertical_alignment="bottom")
 with left:
     st.number_input("Page size", 1, 100, key="page_size", on_change=_reset_and_search)
 with right:
