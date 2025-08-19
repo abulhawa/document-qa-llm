@@ -1,7 +1,8 @@
-import os
+import os, sys, subprocess
 import hashlib
 from typing import Any
 from datetime import datetime
+from config import logger
 
 __all__ = [
     "compute_checksum",
@@ -77,3 +78,35 @@ def get_file_timestamps(path: str) -> dict:
     except Exception as e:
         # Still return keys with fallback values
         return {"created": "", "modified": ""}
+
+
+def open_file_local(path: str) -> None:
+    """Open a file on the machine running Streamlit."""
+    if not path:
+        return
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception as e:
+        (f"Could not open file: {e}")
+
+
+def show_in_folder(path: str) -> None:
+    """Reveal file in its folder (selects the file on Windows/macOS)."""
+    if not path:
+        return
+    try:
+        if sys.platform.startswith("win"):
+            # /select, must be a single token; pass via shell to support commas
+            win_path = path.replace("/", "\\")
+            subprocess.run(["explorer", "/select,", win_path], shell=True, check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", path], check=False)
+        else:
+            subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
+    except Exception as e:
+        logger.warning(f"Could not open folder: {e}")
