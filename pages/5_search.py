@@ -1,5 +1,5 @@
 import streamlit as st
-from datetime import date, timedelta
+from datetime import date, time, datetime, timezone
 from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp
 from utils.fulltext_search import search_documents
@@ -30,37 +30,37 @@ for k, v in _defaults.items():
     st.session_state.setdefault(k, v)
 
 
-def run_search() -> None:
+def _iso_start(d: date | None) -> str | None:
+    return datetime.combine(d, time.min, tzinfo=timezone.utc).isoformat() if d else None
+
+
+def _iso_end(d: date | None) -> str | None:
+    return datetime.combine(d, time.max, tzinfo=timezone.utc).isoformat() if d else None
+
+
+def current_params() -> dict | None:
     q = (st.session_state.get("q") or "").strip()
     if not q:
-        st.session_state.results = None
-        return
-
+        return None
     params = {
         "q": q,
         "from_": st.session_state.page * st.session_state.page_size,
         "size": st.session_state.page_size,
         "sort": st.session_state.sort,
         "path_prefix": st.session_state.path_prefix or None,
-        "filetypes": st.session_state.filetypes or None,  # keep None for “no filter”
+        "filetypes": tuple(st.session_state.filetypes) or None,
     }
 
     # Only add date filters when the corresponding checkbox is enabled
     if st.session_state.get("enable_modified"):
-        start, end = st.session_state.modified_range
-        params["modified_from"] = start.isoformat()
-        params["modified_to"] = end.isoformat()
+        params["modified_from"] = _iso_start(st.session_state.get("modified_from"))
+        params["modified_to"] = _iso_end(st.session_state.get("modified_to"))
 
     if st.session_state.get("enable_created"):
-        start, end = st.session_state.created_range
-        params["created_from"] = start.isoformat()
-        params["created_to"] = end.isoformat()
+        params["created_from"] = _iso_start(st.session_state.get("created_from"))
+        params["created_to"] = _iso_end(st.session_state.get("created_to"))
 
-    try:
-        st.session_state.results = search_documents(**params)
-    except Exception as e:
-        st.session_state.results = None
-        st.error(f"Search failed: {e}")
+    return params
 
 
 def _reset_and_search() -> None:
@@ -101,24 +101,55 @@ with filters_col2:
     st.multiselect(
         "File type", options=options, key="filetypes", on_change=_reset_and_search
     )
-# Modified range (optional)
+# Modified range filter
 st.checkbox(
     "Filter by modified date",
     key="enable_modified",
     value=False,
 )
-st.date_input(
-    "Modified range",
-    key="modified_range",
-    value=(date.today() - timedelta(days=90), date.today()),
-    disabled=not st.session_state.enable_modified,
-)
-
-# Created range (optional)
+mod_from, mod_to = st.columns(2)
+with mod_from:
+    st.date_input(
+        "From:",
+        key="modified_from",
+        value=None,
+        format="DD/MM/YYYY",
+        disabled=not st.session_state.enable_modified,
+    )
+with mod_to:
+    st.date_input(
+        "To:",
+        key="modified_to",
+        value=None,
+        format="DD/MM/YYYY",
+        min_value=st.session_state.modified_from,
+        disabled=not st.session_state.enable_modified,
+    )
+# Created range filter
 st.checkbox(
     "Filter by created date",
     key="enable_created",
     value=False,
+)
+created_from, created_to = st.columns(2)
+with created_from:
+    st.date_input(
+        "From:",
+        key="created_from",
+        value=None,
+        format="DD/MM/YYYY",
+        disabled=not st.session_state.enable_created,
+    )
+with created_to:
+    st.date_input(
+        "To:",
+        key="created_to",
+        value=None,
+        format="DD/MM/YYYY",
+        min_value=st.session_state.created_from,
+        disabled=not st.session_state.enable_created,
+    )
+
 if res:
     st.markdown(f"Found {res.get('total', 0)} results • {res.get('took', 0)} ms")
     for hit in res.get("hits", []):
