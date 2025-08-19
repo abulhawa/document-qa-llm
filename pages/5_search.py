@@ -15,14 +15,10 @@ if "sort" not in st.session_state:
     st.session_state.sort = "relevance"
 if "results" not in st.session_state:
     st.session_state.results = None
-if "q" not in st.session_state:
-    st.session_state.q = ""
 if "filetypes" not in st.session_state:
     st.session_state.filetypes = []
 if "path_prefix" not in st.session_state:
     st.session_state.path_prefix = ""
-if "modified_range" not in st.session_state:
-    st.session_state.modified_range = (None, None)
 
 
 def run_search() -> None:
