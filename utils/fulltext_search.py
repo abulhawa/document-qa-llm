@@ -21,7 +21,7 @@ def build_query(
     modified_to: Optional[str] = None,
     created_from: Optional[str] = None,
     created_to: Optional[str] = None,
-    path_prefix: Optional[str] = None,
+    path_contains: Optional[str] = None,
     size_gte: Optional[int] = None,
     size_lte: Optional[int] = None,
     fragment_size: int = DEFAULT_FRAGMENT_SIZE,
@@ -36,8 +36,8 @@ def build_query(
                     "query": q,
                     "fields": [
                         "text_full^3",
-                        "filename^5",          # text field
-                        "filename.keyword^8"   # exact filename boost
+                        "filename^5",  # text field
+                        "filename.keyword^8",  # exact filename boost
                     ],
                     "default_operator": "or",
                 }
@@ -45,13 +45,12 @@ def build_query(
         ],
         "filter": [],
     }
-    
+
+    # Add path substring
+    add_path_contains(base_bool, path_contains)
+
     # Keep a handle to the bool filter list so downstream code can append ranges, etc.
     filters = base_bool["filter"]
-
-    # Path stays in the main query (aggs should reflect current path scope)
-    if path_prefix:
-        filters.append({"prefix": {"path": path_prefix}})
 
     query: Dict[str, Any] = {
         "from": from_,
@@ -66,7 +65,11 @@ def build_query(
                 "functions": [
                     {
                         "gauss": {
-                            "modified_at": {"origin": "now", "scale": "90d", "decay": 0.5}
+                            "modified_at": {
+                                "origin": "now",
+                                "scale": "90d",
+                                "decay": 0.5,
+                            }
                         },
                         "weight": 0.5,
                     }
@@ -80,13 +83,13 @@ def build_query(
                 "text_full": {
                     "fragment_size": fragment_size,
                     "number_of_fragments": num_fragments,
-                    "no_match_size": fragment_size
+                    "no_match_size": fragment_size,
                 }
-            }
+            },
         },
         "aggs": {
             "filetypes": {"terms": {"field": "filetype", "size": 20}},
-            "top_paths": {"terms": {"field": "path", "size": 10}}
+            "top_paths": {"terms": {"field": "path", "size": 10}},
         },
     }
 
@@ -113,7 +116,6 @@ def build_query(
         if created_to:
             range_body["lte"] = created_to
         filters.append({"range": {"created_at": range_body}})
-
 
     if size_gte is not None or size_lte is not None:
         range_body = {}
@@ -145,7 +147,7 @@ def search_documents(
     modified_to: Optional[str] = None,
     created_from: Optional[str] = None,
     created_to: Optional[str] = None,
-    path_prefix: Optional[str] = None,
+    path_contains: Optional[str] = None,
     size_gte: Optional[int] = None,
     size_lte: Optional[int] = None,
     fragment_size: int = DEFAULT_FRAGMENT_SIZE,
@@ -164,14 +166,14 @@ def search_documents(
         modified_to=modified_to,
         created_from=created_from,
         created_to=created_to,
-        path_prefix=path_prefix,
+        path_contains=path_contains,
         size_gte=size_gte,
         size_lte=size_lte,
         fragment_size=fragment_size,
         num_fragments=num_fragments,
     )
 
-    logger.info("Searching full-text index with body: %s", body)
+    logger.info("Searching full-text index with query: %s", q)
     resp = client.search(index=OPENSEARCH_FULLTEXT_INDEX, body=body)
     hits = resp.get("hits", {})
     results: List[Dict[str, Any]] = []
@@ -199,3 +201,15 @@ def search_documents(
         "took": resp.get("took", 0),
         "aggs": resp.get("aggregations", {}),
     }
+
+
+def add_path_contains(base_bool: dict, path_contains: str | None) -> None:
+    if not path_contains:
+        return
+    s = path_contains.strip()
+    if len(s) < 3:
+        # guard very short substrings (ngram min_gram=3)
+        return
+    base_bool["filter"].append(
+        {"match": {"path.ngram": {"query": s, "operator": "and"}}}
+    )

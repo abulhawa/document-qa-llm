@@ -47,21 +47,46 @@ INDEX_SETTINGS = {
 
 FULLTEXT_INDEX_SETTINGS = {
     "settings": {
-        "index": {"highlight": {"max_analyzed_offset": 5000000}},
+        "index": {"max_ngram_diff": 15, "highlight.max_analyzed_offset": 5000000},
         "analysis": {
+            "char_filter": {
+                "alnum_only": {
+                    "type": "pattern_replace",
+                    "pattern": "[^\\p{L}\\p{Nd}]+",
+                    "replacement": "",
+                }
+            },
+            "tokenizer": {
+                "ngram_tokenizer": {
+                    "type": "ngram",
+                    "min_gram": 3,
+                    "max_gram": 15,
+                    "token_chars": ["letter", "digit"],
+                }
+            },
             "analyzer": {
                 "custom_text_analyzer": {
                     "type": "custom",
                     "tokenizer": "standard",
                     "filter": ["lowercase", "stop", "asciifolding"],
-                }
-            }
+                },
+                "path_ngram": {
+                    "type": "custom",
+                    "char_filter": ["alnum_only"],
+                    "tokenizer": "ngram_tokenizer",
+                    "filter": ["lowercase"],
+                },
+            },
         },
     },
     "mappings": {
         "properties": {
             "text_full": {"type": "text", "analyzer": "custom_text_analyzer"},
-            "path": {"type": "keyword"},
+            "path": {
+                "type": "keyword",
+                "ignore_above": 2048,
+                "fields": {"ngram": {"type": "text", "analyzer": "path_ngram"}},
+            },
             "filename": {
                 "type": "text",
                 "analyzer": "custom_text_analyzer",

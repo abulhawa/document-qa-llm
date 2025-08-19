@@ -23,7 +23,7 @@ def test_build_query_with_filters_and_sort():
         modified_from="2020-01-01",
         modified_to="2021-01-01",
         created_from="2019-01-01",
-        path_prefix="/docs",
+        path_contains="docs",
         size_gte=100,
         size_lte=2000,
         fragment_size=300,
@@ -40,7 +40,7 @@ def test_build_query_with_filters_and_sort():
     assert {"terms": {"filetype": ["pdf", "txt"]}} in post_filters
 
     # path prefix & ranges remain in the main bool filter
-    assert {"prefix": {"path": "/docs"}} in bool_filters
+    assert any("path.ngram" in f.get("match", {}) for f in bool_filters)
     assert any("modified_at" in f.get("range", {}) for f in bool_filters)
     assert any("created_at" in f.get("range", {}) for f in bool_filters)
     assert any("size_bytes" in f.get("range", {}) for f in bool_filters)
