@@ -94,8 +94,7 @@ with st.container():
     # ───────────────────────────────────────
     # 🔹 Chat History
     # ───────────────────────────────────────
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    st.session_state.setdefault("chat_history", [])
 
     if mode == "chat":
         st.markdown("### 💬 Conversation Mode")

@@ -7,18 +7,18 @@ from utils.fulltext_search import search_documents
 st.set_page_config(page_title="Search", layout="wide")
 st.title("🔎 Search")
 
-if "page" not in st.session_state:
-    st.session_state.page = 0
-if "page_size" not in st.session_state:
-    st.session_state.page_size = 10
-if "sort" not in st.session_state:
-    st.session_state.sort = "relevance"
-if "results" not in st.session_state:
-    st.session_state.results = None
-if "filetypes" not in st.session_state:
-    st.session_state.filetypes = []
-if "path_prefix" not in st.session_state:
-    st.session_state.path_prefix = ""
+_defaults = {
+    "page": 0,
+    "page_size": 10,
+    "sort": "relevance",
+    "results": None,
+    "q": "",
+    "filetypes": [],
+    "path_prefix": "",
+}
+
+for k, v in _defaults.items():
+    st.session_state.setdefault(k, v)
 
 
 def run_search() -> None:
