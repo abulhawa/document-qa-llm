@@ -116,10 +116,8 @@ st.date_input(
     "Created range",
     key="created_range",
     value=(date.today() - timedelta(days=365), date.today()),
-    on_change=_reset_and_search,
     disabled=not st.session_state.enable_created,
 )
-run_search()
 # Apply filters explicitly so date popover isn't interrupted mid-selection
 if st.button("Apply filters"):
     _reset_and_search()
