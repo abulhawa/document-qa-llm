@@ -64,6 +64,7 @@ with search_col:
     st.text_input(
         "Search",
         key="q",
+        value="",
         on_change=_reset_and_search,
         placeholder="Type to search",
     )
