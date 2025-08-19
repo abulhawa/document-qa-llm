@@ -3,7 +3,7 @@ import pandas as pd
 import threading
 import queue
 import time
-import os, sys, subprocess
+from utils.file_utils import open_file_local, show_in_folder
 from typing import List, Dict, Any
 
 from utils.time_utils import format_timestamp
@@ -24,39 +24,6 @@ st.title("📂 File Index Viewer")
 
 # Confirm when opening/showing > N files
 MAX_BULK_OPEN = 10
-
-
-# ---------- OS helpers for row actions (Open / Show in folder) ----------
-def open_file_local(path: str) -> None:
-    """Open a file on the machine running Streamlit."""
-    if not path:
-        return
-    try:
-        if sys.platform.startswith("win"):
-            os.startfile(path)  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.run(["open", path], check=False)
-        else:
-            subprocess.run(["xdg-open", path], check=False)
-    except Exception as e:
-        st.warning(f"Could not open file: {e}")
-
-
-def show_in_folder(path: str) -> None:
-    """Reveal file in its folder (selects the file on Windows/macOS)."""
-    if not path:
-        return
-    try:
-        if sys.platform.startswith("win"):
-            # /select, must be a single token; pass via shell to support commas
-            win_path = path.replace("/", "\\")
-            subprocess.run(["explorer", "/select,", win_path], shell=True, check=False)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", "-R", path], check=False)
-        else:
-            subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
-    except Exception as e:
-        st.warning(f"Could not open folder: {e}")
 
 
 # ---------- Data loading ----------
