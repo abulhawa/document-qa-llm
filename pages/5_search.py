@@ -23,7 +23,7 @@ _defaults = {
     "sort": "relevance",
     "q": "",
     "filetypes": [],
-    "path_prefix": "",
+    "path_contains": "",
 }
 
 for k, v in _defaults.items():
@@ -47,7 +47,7 @@ def current_params() -> dict | None:
         "from_": st.session_state.page * st.session_state.page_size,
         "size": st.session_state.page_size,
         "sort": st.session_state.sort,
-        "path_prefix": st.session_state.path_prefix or None,
+        "path_contains": (st.session_state.path_contains or None),
         "filetypes": tuple(st.session_state.filetypes) or None,
     }
 
@@ -90,7 +90,7 @@ with sort_col:
 
 filters_col1, filters_col2 = st.columns(2, vertical_alignment="bottom")
 with filters_col1:
-    st.text_input("Path prefix", key="path_prefix", on_change=_reset_and_search)
+    st.text_input("Path contains", key="path_contains", on_change=_reset_and_search)
 with filters_col2:
     # populate options from last search aggs (if any)
     options = []
