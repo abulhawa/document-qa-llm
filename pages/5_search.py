@@ -4,6 +4,16 @@ from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp
 from utils.fulltext_search import search_documents
 
+
+@st.cache_data(ttl=180, show_spinner=False)
+def cached_search_documents(**params):
+    # cache keys must be hashable; you already pass filetypes as tuple in current_params()
+    p = dict(params)
+    if isinstance(p.get("filetypes"), tuple):
+        p["filetypes"] = list(p["filetypes"])  # your utils expect list/None
+    return search_documents(**p)
+
+
 st.set_page_config(page_title="Search", layout="wide")
 st.title("🔎 Search")
 
@@ -11,7 +21,6 @@ _defaults = {
     "page": 0,
     "page_size": 10,
     "sort": "relevance",
-    "results": None,
     "q": "",
     "filetypes": [],
     "path_prefix": "",
@@ -56,7 +65,10 @@ def run_search() -> None:
 
 def _reset_and_search() -> None:
     st.session_state.page = 0
-    run_search()
+
+
+params = current_params()
+res = cached_search_documents(**params) if params else None
 
 
 search_col, sort_col = st.columns([4, 1], vertical_alignment="bottom")
@@ -82,12 +94,9 @@ with filters_col1:
 with filters_col2:
     # populate options from last search aggs (if any)
     options = []
-    if st.session_state.results and st.session_state.results.get("aggs"):
+    if res and res.get("aggs"):
         options = [
-            b["key"]
-            for b in st.session_state.results["aggs"]
-            .get("filetypes", {})
-            .get("buckets", [])
+            b["key"] for b in res["aggs"].get("filetypes", {}).get("buckets", [])
         ]
     st.multiselect(
         "File type", options=options, key="filetypes", on_change=_reset_and_search
@@ -110,21 +119,9 @@ st.checkbox(
     "Filter by created date",
     key="enable_created",
     value=False,
-    on_change=_reset_and_search,
-)
-st.date_input(
-    "Created range",
-    key="created_range",
-    value=(date.today() - timedelta(days=365), date.today()),
-    disabled=not st.session_state.enable_created,
-)
-# Apply filters explicitly so date popover isn't interrupted mid-selection
-if st.button("Apply filters"):
-    _reset_and_search()
-if st.session_state.results:
-    meta = st.session_state.results
-    st.markdown(f"Found {meta.get('total', 0)} results • {meta.get('took', 0)} ms")
-    for hit in meta.get("hits", []):
+if res:
+    st.markdown(f"Found {res.get('total', 0)} results • {res.get('took', 0)} ms")
+    for hit in res.get("hits", []):
         st.markdown(
             f"**{hit.get('filename', '')}** - {format_file_size(hit.get('size_bytes', 0))}"
         )
@@ -142,15 +139,13 @@ with left:
 with right:
     col_prev, col_next = st.columns(2)
     with col_prev:
-        if st.button("Prev") and st.session_state.page > 0:
+        if st.button("◀ Prev", disabled=st.session_state.page <= 0):
             st.session_state.page -= 1
-            run_search()
     with col_next:
         # disable "Next" when no more hits
-        can_next = bool(st.session_state.results) and (
+        can_next = bool(res) and (
             (st.session_state.page + 1) * st.session_state.page_size
-            < st.session_state.results.get("total", 0)
+            < res.get("total", 0)
         )
         if st.button("Next", disabled=not can_next):
             st.session_state.page += 1
-            run_search()
