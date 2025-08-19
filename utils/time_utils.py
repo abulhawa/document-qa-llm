@@ -12,7 +12,7 @@ def format_timestamp(ts: str, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
         return "N/A"
 
 
-def format_date(ts: str, fmt: str = "%d-%m-%Y") -> str:
+def format_date(ts: str, fmt: str = "%d %B %Y") -> str:
     """Return DD-MM-YYYY from common timestamp forms (ISO string, date/datetime, or epoch)."""
     if not ts:
         return ""

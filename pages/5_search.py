@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date, time, datetime, timezone
 from utils.file_utils import format_file_size
-from utils.time_utils import format_timestamp
+from utils.time_utils import format_timestamp, format_date
 from utils.fulltext_search import search_documents
 
 
@@ -151,16 +151,9 @@ with created_to:
     )
 
 if res:
-    st.markdown(f"Found {res.get('total', 0)} results • {res.get('took', 0)} ms")
-    for hit in res.get("hits", []):
-        st.markdown(
-            f"**{hit.get('filename', '')}** - {format_file_size(hit.get('size_bytes', 0))}"
-        )
-        st.caption(
-            f"{hit.get('path', '')} • {format_timestamp(hit.get('modified_at'))}"
-        )
-        for frag in hit.get("highlights", [])[:3]:
-            st.markdown(f"…{frag}…", unsafe_allow_html=True)
+            date_str = format_date(hit.get("modified_at"))
+            st.markdown(f"**{filename}** • {date_str}")
+
 else:
     st.info("Enter a query to search your documents")
 
