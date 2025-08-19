@@ -10,7 +10,6 @@ from utils.time_utils import format_timestamp
 from utils.opensearch_utils import (
     list_files_from_opensearch,
     delete_files_by_path_checksum,
-    get_duplicate_checksums,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
@@ -25,6 +24,7 @@ st.title("📂 File Index Viewer")
 
 # Confirm when opening/showing > N files
 MAX_BULK_OPEN = 10
+
 
 # ---------- OS helpers for row actions (Open / Show in folder) ----------
 def open_file_local(path: str) -> None:
@@ -41,6 +41,7 @@ def open_file_local(path: str) -> None:
     except Exception as e:
         st.warning(f"Could not open file: {e}")
 
+
 def show_in_folder(path: str) -> None:
     """Reveal file in its folder (selects the file on Windows/macOS)."""
     if not path:
@@ -48,7 +49,7 @@ def show_in_folder(path: str) -> None:
     try:
         if sys.platform.startswith("win"):
             # /select, must be a single token; pass via shell to support commas
-            win_path = path.replace('/', '\\')
+            win_path = path.replace("/", "\\")
             subprocess.run(["explorer", "/select,", win_path], shell=True, check=False)
         elif sys.platform == "darwin":
             subprocess.run(["open", "-R", path], check=False)
@@ -134,7 +135,9 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         pf_nonce = st.session_state.setdefault("path_filter_nonce", 0)
 
         with c_r:
-            if st.button("Reset", use_container_width=True, help="Clear filter and reset table"):
+            if st.button(
+                "Reset", use_container_width=True, help="Clear filter and reset table"
+            ):
                 # Clear app-level filter value and recreate the widget next run
                 st.session_state["path_filter"] = ""
                 st.session_state["path_filter_nonce"] = pf_nonce + 1  # new widget key
@@ -154,7 +157,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state["path_filter"] = path_filter_input
 
     # Use the current filter value everywhere below
-    path_filter = st.session_state.get("path_filter", "")    
+    path_filter = st.session_state.get("path_filter", "")
     with colf2:
         only_missing = st.checkbox(
             "Only missing embeddings (Qdrant=0)",
@@ -194,7 +197,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
 
     # one-shot suppression flag (if True, we won't overwrite saved selection with an empty one)
     st.session_state["_suppress_next_selection_overwrite"] = controls_changed
-    
+
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
@@ -291,17 +294,18 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
         hide_index=True,
         use_container_width=True,
         key=f"file_index_table_{nonce}",
-        on_select="rerun",          # rerun on checkbox change
-        selection_mode="multi-row", # checkbox UI
+        on_select="rerun",  # rerun on checkbox change
+        selection_mode="multi-row",  # checkbox UI
     )
 
     # Current selection = rows checked in the widget (relative to display_df)
     sel_idx = (event or {}).get("selection", {}).get("rows", [])
     try:
         selected_paths = (
-            display_df.iloc[sel_idx]["Path"]
-            .dropna().astype(str).unique().tolist()
-        ) if sel_idx else []
+            (display_df.iloc[sel_idx]["Path"].dropna().astype(str).unique().tolist())
+            if sel_idx
+            else []
+        )
     except Exception:
         selected_paths = []
 
@@ -337,11 +341,16 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     # Helpful hint
     st.caption("Tip: sort/filter first, then use the checkboxes to select rows.")
     # ---- Bulk apply to ALL rows currently shown (no checkboxes needed) ----
-    with st.expander(f"Bulk apply to ALL rows currently shown ({len(display_df)})", expanded=False):
+    with st.expander(
+        f"Bulk apply to ALL rows currently shown ({len(display_df)})", expanded=False
+    ):
         # All visible rows in the table right now
         all_paths = (
             display_df.get("Path", pd.Series([], dtype=str))
-            .dropna().astype(str).unique().tolist()
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
         )
         n_all = len(all_paths)
 
@@ -403,9 +412,7 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
 
         confirm = ""
         if action == "Delete":
-            confirm = st.text_input(
-                "Type to confirm (e.g., DELETE 3 paths)", value=""
-            )
+            confirm = st.text_input("Type to confirm (e.g., DELETE 3 paths)", value="")
 
         submitted = st.form_submit_button("Run")
 
@@ -450,7 +457,6 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             )
             with st.spinner(
                 f"Deleting vectors in Qdrant for {len(pairs)} path(s)…",
-
             ):
                 delete_vectors_by_path_checksum(pairs)
             st.success("Qdrant deletion requested.")
