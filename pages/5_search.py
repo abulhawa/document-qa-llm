@@ -1,6 +1,7 @@
 import streamlit as st
+import math
 from datetime import date, time, datetime, timezone
-from utils.file_utils import format_file_size
+from utils.file_utils import format_file_size, open_file_local
 from utils.time_utils import format_timestamp, format_date
 from utils.fulltext_search import search_documents
 
@@ -17,9 +18,11 @@ def cached_search_documents(**params):
 st.set_page_config(page_title="Search", layout="wide")
 st.title("🔎 Search")
 
+PAGE_SIZE = 10
+
 _defaults = {
     "page": 0,
-    "page_size": 10,
+    "page_size": PAGE_SIZE,
     "sort": "relevance",
     "q": "",
     "filetypes": [],
@@ -132,26 +135,81 @@ with d2:
             min_value=st.session_state.created_from,
         )
 
+total_results = res.get("total", 0) if res else 0
 if res:
+    st.markdown(f"Found {total_results} results • {res.get('took', 0)} ms")
+    with st.container(height=500):
+        if total_results == 0:
+            st.markdown(f'No results were found for "{st.session_state.q}"!')
+        for i, hit in enumerate(res.get("hits", [])):
+            path = hit.get("path", "") or ""
+            filename = hit.get("filename")
             date_str = format_date(hit.get("modified_at"))
             st.markdown(f"**{filename}** • {date_str}")
 
+            # first highlight inline, rest in expander
+            frags = hit.get("highlights", [])
+            if frags:
+                frags = [f.replace("\n\n", "  \n") for f in frags]
+                st.markdown(f"…{frags[0]}…", unsafe_allow_html=True)
+                if len(frags) > 1:
+                    with st.expander(f"Show {min(len(frags)-1, 4)} more highlight(s)…"):
+                        for frag in frags[1:]:
+                            st.markdown(f"…{frag}…", unsafe_allow_html=True)
+
+            # actions row (buttons are optional)
+            c1, c2, _ = st.columns(3, vertical_alignment="bottom")
+            with c1:
+                if st.button("Open", key=f"open_{i}"):
+                    open_file_local(path)
+            with c2:
+                # easy "copy path"
+                st.code(path, language="")
+
+            st.divider()
 else:
     st.info("Enter a query to search your documents")
 
+page_size = st.session_state.page_size
+# Clamp page into valid bounds [0, total_pages-1]
+total_pages = max(1, math.ceil(total_results / page_size))  # at least 1 virtual page
+st.session_state.page = min(max(st.session_state.page, 0), total_pages - 1)
+
+can_prev = st.session_state.page > 0
+can_next = (st.session_state.page + 1) < total_pages
+
 left, right = st.columns(2, vertical_alignment="bottom")
 with left:
-    st.number_input("Page size", 1, 100, key="page_size", on_change=_reset_and_search)
+    st.number_input(
+        "Number of results",
+        1,
+        100,
+        key="page_size",
+        value=PAGE_SIZE,
+        on_change=_reset_and_search,
+    )
+
 with right:
-    col_prev, col_next = st.columns(2)
+    col_prev, info_col, col_next = st.columns(
+        [1, 1, 1], gap="small", vertical_alignment="center"
+    )
     with col_prev:
-        if st.button("◀ Prev", disabled=st.session_state.page <= 0):
-            st.session_state.page -= 1
-    with col_next:
-        # disable "Next" when no more hits
-        can_next = bool(res) and (
-            (st.session_state.page + 1) * st.session_state.page_size
-            < res.get("total", 0)
+        st.button(
+            "◀ Prev",
+            key="pager_prev",
+            disabled=not can_prev,
+            on_click=lambda: st.session_state.__setitem__(
+                "page", max(0, st.session_state.page - 1)
+            ),
         )
-        if st.button("Next", disabled=not can_next):
-            st.session_state.page += 1
+    with info_col:
+        st.markdown(f"**Page {st.session_state.page + 1} of {total_pages}**")
+    with col_next:
+        st.button(
+            "Next ▶",
+            key="pager_next",
+            disabled=not can_next,
+            on_click=lambda: st.session_state.__setitem__(
+                "page", min(total_pages - 1, st.session_state.page + 1)
+            ),
+        )
