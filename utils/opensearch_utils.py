@@ -129,7 +129,11 @@ def ensure_index_exists():
     client = get_client()
     if not client.indices.exists(index=OPENSEARCH_INDEX):
         logger.info(f"Creating OpenSearch index: {OPENSEARCH_INDEX}")
-        client.indices.create(index=OPENSEARCH_INDEX, body=INDEX_SETTINGS)
+        client.indices.create(
+            index=OPENSEARCH_INDEX,
+            body=INDEX_SETTINGS,
+            params={"wait_for_active_shards": "1"},
+        )
 
 
 def ensure_fulltext_index_exists():
@@ -137,20 +141,21 @@ def ensure_fulltext_index_exists():
     if not client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
         logger.info(f"Creating OpenSearch index: {OPENSEARCH_FULLTEXT_INDEX}")
         client.indices.create(
-            index=OPENSEARCH_FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS
+            index=OPENSEARCH_FULLTEXT_INDEX,
+            body=FULLTEXT_INDEX_SETTINGS,
+            params={"wait_for_active_shards": "1"},
         )
 
 
 def ensure_ingest_log_index_exists():
-    try:
-        client = get_client()
-        if not hasattr(client, "indices"):
-            return
-        if not client.indices.exists(index=INGEST_LOG_INDEX):
-            logger.info(f"Creating OpenSearch index: {INGEST_LOG_INDEX}")
-            client.indices.create(index=INGEST_LOG_INDEX, body=INGEST_LOGS_SETTINGS)
-    except Exception as e:
-        logger.warning(f"Ingest log index check failed: {e}")
+    client = get_client()
+    if not client.indices.exists(index=INGEST_LOG_INDEX):
+        logger.info(f"Creating OpenSearch index: {INGEST_LOG_INDEX}")
+        client.indices.create(
+            index=INGEST_LOG_INDEX,
+            body=INGEST_LOGS_SETTINGS,
+            params={"wait_for_active_shards": "1"},
+        )
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> None:
