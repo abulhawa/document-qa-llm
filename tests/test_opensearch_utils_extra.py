@@ -8,7 +8,7 @@ class FakeIndices:
         self.created = []
     def exists(self, index):
         return self.exists_flag
-    def create(self, index, body):
+    def create(self, index, body, params=None):
         self.created.append((index, body))
 
 class FakeClient:

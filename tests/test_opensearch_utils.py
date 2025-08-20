@@ -46,7 +46,7 @@ def test_ensure_index_exists_creates_mapping(monkeypatch):
         def exists(self, index):
             return False
 
-        def create(self, index, body):
+        def create(self, index, body, params=None):
             created["index"] = index
             created["body"] = body
 

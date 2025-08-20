@@ -28,7 +28,7 @@ def test_ensure_ingest_log_index_exists(monkeypatch):
             self.exists_called_with = index
             return False
 
-        def create(self, index, body):
+        def create(self, index, body, params=None):
             self.create_called_with.append((index, body))
 
     class FakeClient:

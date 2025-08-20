@@ -1,3 +1,16 @@
+import sys
+import types
+
+# provide a minimal opensearchpy stub so streamlit pages can be imported
+opensearchpy_stub = types.ModuleType("opensearchpy")
+opensearchpy_stub.exceptions = types.ModuleType("exceptions")
+opensearchpy_stub.exceptions.NotFoundError = Exception
+opensearchpy_stub.exceptions.TransportError = Exception
+opensearchpy_stub.OpenSearch = object
+opensearchpy_stub.helpers = types.SimpleNamespace()
+sys.modules.setdefault("opensearchpy", opensearchpy_stub)
+sys.modules.setdefault("opensearchpy.exceptions", opensearchpy_stub.exceptions)
+
 from streamlit.testing.v1 import AppTest
 
 
