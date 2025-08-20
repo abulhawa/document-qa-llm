@@ -4,6 +4,7 @@ import threading
 import queue
 import time
 from utils.file_utils import open_file_local, show_in_folder
+from opensearchpy.exceptions import NotFoundError, TransportError
 from typing import List, Dict, Any
 
 from utils.time_utils import format_timestamp
@@ -476,7 +477,24 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
             st.error(f"Row delete failed: {e}")
 
 
-files = _get_files_fast()
+try:
+    files = _get_files_fast()  # ← the only line that touches OpenSearch
+except NotFoundError as e:
+    # Try to extract the missing index from the exception payload; fall back to 'documents'
+    st.warning("📭 No data to display", icon="⚠️")
+    st.error(
+        f"Reason: The OpenSearch index does not exist "
+        "(likely deleted or not created yet)."
+    )
+    st.page_link("pages/1_ingest.py", label="Open Ingest Documents", icon="📥")
+    st.stop()
+except TransportError as e:
+    st.error("OpenSearch is unavailable right now.", icon="🚫")
+    st.stop()
+except Exception as e:
+    st.error(f"Unexpected error: {type(e).__name__}: {e}")
+    st.stop()
+
 df = build_table_data(files)
 fdf = render_filtered_table(df)
 run_batch_actions(fdf)
