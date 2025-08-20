@@ -16,6 +16,8 @@ from config import (
     INGEST_MAX_WORKERS,
     INGEST_IO_CONCURRENCY,
     INGEST_MAX_FAILURES,
+    CHUNK_EMBEDDING_THRESHOLD,
+    MAX_FILES_FOR_FULL_EMBEDDING,
 )
 from utils.file_utils import (
     compute_checksum,
@@ -40,10 +42,6 @@ from utils.ingest_logging import IngestLogEmitter
 MAX_WORKERS: int = INGEST_MAX_WORKERS
 IO_CONCURRENCY: int = INGEST_IO_CONCURRENCY
 MAX_FAILURES: int = INGEST_MAX_FAILURES
-
-# Size heuristics (unchanged behavior)
-MAX_FILES_FOR_FULL_EMBEDDING = 15
-CHUNK_EMBEDDING_THRESHOLD = 60
 
 # IO semaphore to limit simultaneous file reads (helps avoid too many open files)
 _io_semaphore = threading.Semaphore(IO_CONCURRENCY)
@@ -71,8 +69,8 @@ def ingest_one(
     Ingest a single file path:
       1) load + split locally
       2) build chunk metadata (UUIDv5 ids)
-      3) SMALL files  -> do ALL locally (OS + embed + Qdrant + flag flip)
-         LARGE files  -> queue ALL to Celery (OS + embed + Qdrant + flag flip)
+      3) SMALL workloads  -> do ALL locally (OS + embed + Qdrant + flag flip)
+         LARGE workloads -> queue ALL to Celery (OS + embed + Qdrant + flag flip)
 
     Returns:
       dict with keys: success, status, path, and optionally num_chunks
@@ -207,13 +205,14 @@ def ingest_one(
         except Exception as e:
             logger.warning(f"Pre-delete imports failed: {e}")
 
-    # Decide small vs large (same thresholds as before)
-    skip_embedding = len(chunks) > CHUNK_EMBEDDING_THRESHOLD or (
-        total_files > MAX_FILES_FOR_FULL_EMBEDDING and len(chunks) > 30
+    # Decide between immediate vs background indexing
+    queue_background = (
+        len(chunks) > CHUNK_EMBEDDING_THRESHOLD
+        or total_files > MAX_FILES_FOR_FULL_EMBEDDING
     )
 
-    if not skip_embedding:
-        # SMALL file → do EVERYTHING locally
+    if not queue_background:
+        # SMALL workload → do EVERYTHING locally
         try:
             logger.info(f"Indexing {len(chunks)} chunks to OpenSearch (small file).")
             index_documents(chunks)
@@ -245,10 +244,10 @@ def ingest_one(
                 "num_chunks": len(chunks),
             }
 
-    else:  # LARGE file → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
+    else:  # LARGE workload  → queue EVERYTHING to Celery (OS + embed + Qdrant + flip)
         try:
             logger.info(
-                f"📦 Large file — queuing full pipeline for {len(chunks)} chunks "
+                f"📦 Large workload - queuing full pipeline for {len(chunks)} chunks "
                 f"in batches of {EMBEDDING_BATCH_SIZE}."
             )
             for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
@@ -267,7 +266,7 @@ def ingest_one(
                 "status": (
                     "Duplicate & Indexed"
                     if is_dup
-                    else "Partially indexed — background worker will finish"
+                    else "Partially indexed - background worker will finish"
                 ),
             }
         except Exception as e:

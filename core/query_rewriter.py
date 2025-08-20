@@ -11,7 +11,7 @@ def rewrite_query(original_query: str, temperature: float = 0.2) -> dict:
     The user query may be lowercase, lack punctuation, contain typos, or have formatting errors.  
     It may also contain typos or spelling errors.  
     Do not treat these formatting issues as vagueness, instead, try to fix these errors.  
-    Evaluate the meaning of the query — not how it's typed.
+    Evaluate the meaning of the query - not how it's typed.
 
     Instructions:
     1. If the user intent is clear, complete and specific, return:

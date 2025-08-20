@@ -581,7 +581,7 @@ def _final_whitespace_cleanup(text: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Tiny test harness (optional) — call from your unit tests
+# Tiny test harness (optional) - call from your unit tests
 # ──────────────────────────────────────────────────────────────────────────────
 def _run_smoke_tests() -> None:  # pragma: no cover
     cfg = PreprocessConfig()

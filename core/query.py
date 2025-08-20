@@ -49,7 +49,7 @@ def answer_question(
     logger.info(f"Rewritten query: {rewritten_query}")
 
     if "clarify" in rewritten_query:
-        # Early exit — clarification needed
+        # Early exit - clarification needed
         return (
             f'**Clarify**:  \n   -  {rewritten_query["clarify"]}.  \n\nTry again!',
             [],
