@@ -119,3 +119,43 @@ def test_ingest_one_batching(tmp_path, monkeypatch):
 
     result = ingest_one(str(f))
     assert len(calls) == 3
+
+
+# Test 25: many files trigger background indexing even if chunks are small
+def test_ingest_one_background_many_files(tmp_path, monkeypatch):
+    f = tmp_path / "doc.txt"
+    f.write_text("hello")
+
+    monkeypatch.setattr("core.ingestion.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
+
+    monkeypatch.setattr("core.ingestion.load_documents", lambda p: ["doc"])  # one doc
+    monkeypatch.setattr(
+        "core.ingestion.preprocess_to_documents",
+        lambda docs_like, source_path, cfg, doc_type: docs_like,
+    )
+    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
+
+    # Ensure thresholds trigger on total_files
+    monkeypatch.setattr("core.ingestion.CHUNK_EMBEDDING_THRESHOLD", 100)
+    monkeypatch.setattr("core.ingestion.MAX_FILES_FOR_FULL_EMBEDDING", 1)
+
+    # Prevent local indexing
+    def boom(chunks):
+        raise AssertionError("should not index locally")
+
+    monkeypatch.setattr("core.ingestion.index_documents", boom)
+
+    calls = []
+
+    class DummyApp:
+        def send_task(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
+
+    result = ingest_one(str(f), total_files=2)
+    assert len(calls) == 1
+

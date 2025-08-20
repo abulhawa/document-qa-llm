@@ -13,7 +13,7 @@ st.markdown(
     Upload and index your documents using the sidebar.
     Then ask natural-language questions powered by a **local, private LLM**.
 
-    **No cloud, no leaks — just answers.**
+    **No cloud, no leaks - just answers.**
     """
 )
 st.markdown("---")

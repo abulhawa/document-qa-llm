@@ -1,8 +1,8 @@
 # 🧠 Local Document Q&A System
 
-This project is a **fully local, privacy-first document Q&A system**, designed to help you search, explore, and interact with your own documents — securely and efficiently. It supports real-time ingestion of PDF, DOCX, and TXT files, applies semantic chunking and vector embedding, and uses a locally hosted LLM for natural-language answers in both single-turn and multi-turn formats.
+This project is a **fully local, privacy-first document Q&A system**, designed to help you search, explore, and interact with your own documents - securely and efficiently. It supports real-time ingestion of PDF, DOCX, and TXT files, applies semantic chunking and vector embedding, and uses a locally hosted LLM for natural-language answers in both single-turn and multi-turn formats.
 
-The system prioritizes **modularity, observability, and full offline support**, making it suitable for personal knowledge bases, secure enterprise settings, or research workflows — all without sending data to the cloud.
+The system prioritizes **modularity, observability, and full offline support**, making it suitable for personal knowledge bases, secure enterprise settings, or research workflows - all without sending data to the cloud.
 
 ![App Screenshot](assets/screenshot_ui.png)
 

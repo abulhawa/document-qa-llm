@@ -31,7 +31,7 @@ def _load_txt_with_fallbacks(path: str) -> List[Document]:
         except Exception as e:
             last_err = e
 
-    # Last resort: don't crash — salvage text
+    # Last resort: don't crash - salvage text
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             text = f.read()
