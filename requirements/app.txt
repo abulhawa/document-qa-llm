@@ -1,12 +1,12 @@
 -r shared.txt
 
 # App-only
-streamlit>=1.46,<2
-arize-phoenix-otel
+streamlit==1.48.*
+arize-phoenix-otel==0.13.*
 langchain-core==0.3.*
 langchain-community==0.3.*
 langchain-text-splitters==0.3.*
-pypdf>=5,<6
-docx2txt>=0.9,<1.0
-ftfy
-fastapi==0.110.*
+pypdf==6.0.*
+docx2txt==0.9.*
+ftfy==6.3.*
+fastapi==0.116.*

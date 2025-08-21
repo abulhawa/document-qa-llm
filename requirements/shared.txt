@@ -1,9 +1,9 @@
 # Shared libraries (pinned to consistent minors)
 python-dotenv==1.1.*
 requests==2.32.*
-qdrant-client==1.14.*
+qdrant-client==1.15.*
 opensearch-py==3.*
 
 # Both app and worker use Celery client & Redis driver
-celery>=5.5,<6
-redis>=6,<7
+celery==5.5.*
+redis==6.4.*
