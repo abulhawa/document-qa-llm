@@ -185,7 +185,6 @@ with left:
         1,
         100,
         key="page_size",
-        value=PAGE_SIZE,
         on_change=_reset_and_search,
     )
 
