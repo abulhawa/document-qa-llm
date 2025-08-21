@@ -53,6 +53,7 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
     )
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
 
     called = {}
 
