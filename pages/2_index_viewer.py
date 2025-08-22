@@ -477,6 +477,19 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
             st.error(f"Row delete failed: {e}")
 
 
+def render_empty_state_for_files() -> None:
+    st.warning("📭 No files indexed yet.")
+    st.caption("Use the Ingest page to add documents, then refresh.")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.page_link("pages/1_ingest.py", label="Open Ingest Documents", icon="📥")
+    with col2:
+        if st.button("🔄 Refresh"):
+            load_indexed_files.clear()
+            trigger_refresh()
+            st.rerun()
+    st.stop()
+
 try:
     files = _get_files_fast()  # ← the only line that touches OpenSearch
 except NotFoundError as e:
@@ -495,6 +508,8 @@ except Exception as e:
     st.error(f"Unexpected error: {type(e).__name__}: {e}")
     st.stop()
 
+if not files:  # None or []
+    render_empty_state_for_files()
 df = build_table_data(files)
 fdf = render_filtered_table(df)
 run_batch_actions(fdf)

@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 from core.ingestion import ingest
 from utils.opensearch_utils import search_ingest_logs
 from utils.file_utils import format_file_size
+from utils.time_utils import format_timestamp
 
 st.set_page_config(page_title="Ingestion Logs", layout="wide")
 st.title("📝 Ingestion Logs")
@@ -27,9 +27,9 @@ with col2:
         index=0,
     )
 with col3:
-    start_date = st.date_input("Start date", value=None)
+    start_date = st.date_input("Start date", value=None, format="DD/MM/YYYY")
 with col4:
-    end_date = st.date_input("End date", value=None)
+    end_date = st.date_input("End date", value=None, format="DD/MM/YYYY")
 
 start_str = start_date.isoformat() if start_date else None
 end_str = end_date.isoformat() if end_date else None
@@ -57,6 +57,7 @@ if logs:
             for l in logs
         ]
     )
+    df["Attempt"] = df["Attempt"].apply(lambda x: format_timestamp(x) if x else "")
     st.dataframe(df.style.format({"Size": format_file_size}), height=400)
 else:
     st.info("No ingestion logs found")

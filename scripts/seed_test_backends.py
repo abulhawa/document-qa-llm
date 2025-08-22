@@ -27,13 +27,13 @@ os_client.indices.create(
 )
 
 docs = [
-    {"_index": OPENSEARCH_INDEX, "_id": "1",
+    {"_index": OPENSEARCH_INDEX, "_id": "1", "_op_type": "create",
      "_source": {"text":"Sample sentence about a PhD.",
                  "path":"C:/docs/doc1.txt",
                  "modified_at":"2024-01-01T00:00:00Z",
                  "indexed_at":"2024-01-01T00:00:00Z",
                  "checksum":"chk-1","chunk_index":0}},
-    {"_index": OPENSEARCH_INDEX, "_id": "2",
+    {"_index": OPENSEARCH_INDEX, "_id": "2", "_op_type": "create",
      "_source": {"text":"Another sentence mentioning a city.",
                  "path":"C:/docs/doc2.txt",
                  "modified_at": datetime.now(timezone.utc).isoformat(),

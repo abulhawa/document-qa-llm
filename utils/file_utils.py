@@ -85,6 +85,23 @@ def get_file_timestamps(path: str) -> dict:
     except Exception:
         # Still return keys with fallback values
         return {"created": "", "modified": ""}
+    # Created: macOS has st_birthtime. Windows uses st_ctime as creation time.
+    created_ts = getattr(st, "st_birthtime", None)
+    if created_ts is None and os.name == "nt":
+        created_ts = st.st_ctime  # Windows creation time
+    # Linux usually has no birth time. Keep None.
+
+    # Modified: always available. Prefer nanosecond precision if present.
+    if hasattr(st, "st_mtime_ns"):
+        modified_dt = datetime.fromtimestamp(st.st_mtime_ns / 1e9, tz=timezone.utc)
+    else:
+        modified_dt = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
+
+    created_dt = (
+        datetime.fromtimestamp(created_ts, tz=timezone.utc) if created_ts is not None else None
+    )
+
+    return {"created": created_dt, "modified": modified_dt}
 
 
 def open_file_local(path: str) -> None:
