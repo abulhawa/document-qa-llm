@@ -190,6 +190,24 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     if controls_changed:
         st.session_state["index_page"] = 0
 
+    pending_sort = st.session_state.pop("_pending_sort_by", None)
+    if pending_sort is not None:
+        if len(pending_sort) == 0:
+            st.session_state.pop("index_sort_by", None)
+        else:
+            spec = pending_sort[0]
+            sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
+            asc = spec.get("ascending")
+            if asc is None:
+                direction = spec.get("direction")
+                if direction is not None:
+                    asc = str(direction).lower() in ("asc", "ascending", "true", "1")
+            if asc is None:
+                asc = not spec.get("descending", False)
+            if sort_col:
+                st.session_state["index_sort_by"] = (sort_col, asc)
+        _reset_page()
+
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
@@ -354,28 +372,11 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         selection_mode="multi-row",  # checkbox UI
     )
 
-    # If the user sorted a column, apply the sort to the full filtered dataset.
+    # Capture sort events and handle them on the next run.
     sort_ev = (event or {}).get("sort_by")
     if sort_ev is not None:
-        if len(sort_ev) == 0:
-            if st.session_state.get("index_sort_by") is not None:
-                st.session_state.pop("index_sort_by", None)
-                _reset_page()
-                st.rerun()
-        else:
-            spec = sort_ev[0]
-            sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
-            asc = spec.get("ascending")
-            if asc is None:
-                direction = spec.get("direction")
-                if direction is not None:
-                    asc = str(direction).lower() in ("asc", "ascending", "true", "1")
-            if asc is None:
-                asc = not spec.get("descending", False)
-            if sort_col and st.session_state.get("index_sort_by") != (sort_col, asc):
-                st.session_state["index_sort_by"] = (sort_col, asc)
-                _reset_page()
-                st.rerun()
+        st.session_state["_pending_sort_by"] = sort_ev
+        st.rerun()
 
     # Current selection = rows checked in the widget (relative to display_df)
     sel_idx = (event or {}).get("selection", {}).get("rows", [])
