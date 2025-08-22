@@ -95,7 +95,15 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
             }
         )
     df = pd.DataFrame(rows)
-    if "Modified" in df.columns:
+    sort_state = st.session_state.get("index_sort_by")
+    if sort_state:
+        sort_col, sort_asc = sort_state
+        if sort_col in df.columns:
+            try:
+                df = df.sort_values(sort_col, ascending=sort_asc, kind="mergesort")
+            except Exception:
+                pass
+    elif "Modified" in df.columns:
         df = df.sort_values("Modified", ascending=False, na_position="last")
     return df.reset_index(drop=True)
 
