@@ -1,6 +1,5 @@
 import time
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from config import logger, INGEST_LOG_INDEX
@@ -32,7 +31,8 @@ class IngestLogEmitter:
 
     def __enter__(self) -> "IngestLogEmitter":
         self._start = time.time()
-        self.doc["attempt_at"] = datetime.now(timezone.utc).isoformat()
+        # Record attempt time in the local timezone
+        self.doc["attempt_at"] = datetime.now().astimezone().isoformat()
         try:
             ensure_ingest_log_index_exists()
         except Exception as e:  # best effort

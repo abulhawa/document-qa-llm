@@ -1,6 +1,6 @@
 import streamlit as st
 import math
-from datetime import date, time, datetime, timezone
+from datetime import date, time, datetime, tzinfo
 from utils.file_utils import format_file_size, open_file_local
 from utils.time_utils import format_timestamp, format_date
 from utils.fulltext_search import search_documents
@@ -33,12 +33,20 @@ for k, v in _defaults.items():
     st.session_state.setdefault(k, v)
 
 
+def _local_tz() -> tzinfo:
+    return datetime.now().astimezone().tzinfo  # type: ignore[return-value]
+
+
 def _iso_start(d: date | None) -> str | None:
-    return datetime.combine(d, time.min, tzinfo=timezone.utc).isoformat() if d else None
+    return (
+        datetime.combine(d, time.min, tzinfo=_local_tz()).isoformat() if d else None
+    )
 
 
 def _iso_end(d: date | None) -> str | None:
-    return datetime.combine(d, time.max, tzinfo=timezone.utc).isoformat() if d else None
+    return (
+        datetime.combine(d, time.max, tzinfo=_local_tz()).isoformat() if d else None
+    )
 
 
 def current_params() -> dict | None:
