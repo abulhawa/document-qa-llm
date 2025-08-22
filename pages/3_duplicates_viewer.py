@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 from utils.opensearch_utils import get_duplicate_checksums, get_files_by_checksum
 from utils.file_utils import format_file_size
+from utils.time_utils import format_timestamp, format_timestamp_ampm
 
 st.set_page_config(page_title="Duplicate Files", page_icon="🗂️")
 
@@ -20,9 +21,9 @@ else:
                     "Checksum": checksum,
                     "Path": f.get("path"),
                     "Filetype": f.get("filetype"),
-                    "Created": f.get("created_at"),
-                    "Modified": f.get("modified_at"),
-                    "Indexed": f.get("indexed_at"),
+                    "Created": format_timestamp_ampm(f.get("created_at") or ""),
+                    "Modified": format_timestamp_ampm(f.get("modified_at") or ""),
+                    "Indexed": format_timestamp(f.get("indexed_at") or ""),
                     "Chunks": f.get("num_chunks"),
                     "Size": f.get("bytes", 0),
                 }

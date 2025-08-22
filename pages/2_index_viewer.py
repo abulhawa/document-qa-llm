@@ -7,7 +7,7 @@ from utils.file_utils import open_file_local, show_in_folder
 from opensearchpy.exceptions import NotFoundError, TransportError
 from typing import List, Dict, Any
 
-from utils.time_utils import format_timestamp
+from utils.time_utils import format_timestamp, format_timestamp_ampm
 from utils.opensearch_utils import (
     list_files_from_opensearch,
     delete_files_by_path_checksum,
@@ -78,8 +78,8 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
                 "Filename": f.get("filename", ""),
                 "Path": f.get("path", ""),
                 "Filetype": f.get("filetype", ""),
-                "Modified": format_timestamp(f.get("modified_at") or ""),
-                "Created": format_timestamp(f.get("created_at") or ""),
+                "Modified": format_timestamp_ampm(f.get("modified_at") or ""),
+                "Created": format_timestamp_ampm(f.get("created_at") or ""),
                 "Indexed": format_timestamp(f.get("indexed_at") or ""),
                 "Size": f.get("bytes", 0),
                 "OpenSearch Chunks": f.get("num_chunks", 0),
