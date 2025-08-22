@@ -3,6 +3,7 @@ import pandas as pd
 import threading
 import queue
 import time
+import math
 from utils.file_utils import open_file_local, show_in_folder
 from opensearchpy.exceptions import NotFoundError, TransportError
 from typing import List, Dict, Any, Tuple
@@ -26,6 +27,9 @@ st.title("📂 File Index Viewer")
 
 # Confirm when opening/showing > N files
 MAX_BULK_OPEN = 10
+
+PAGE_SIZE_OPTIONS = [5, 25, 50, 100]
+DEFAULT_PAGE_SIZE = 25
 
 
 # ---------- Data loading ----------
@@ -97,6 +101,12 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
 
 
 def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def _reset_page() -> None:
+        st.session_state["index_page"] = 0
+        st.session_state["file_index_table_nonce"] = st.session_state.get(
+            "file_index_table_nonce", 0
+        ) + 1
+
     # Filters
     colf1, colf2, colf3 = st.columns([3, 2, 1], vertical_alignment="bottom")
     with colf1:
@@ -169,6 +179,9 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     # one-shot suppression flag (if True, we won't overwrite saved selection with an empty one)
     st.session_state["_suppress_next_selection_overwrite"] = controls_changed
 
+    if controls_changed:
+        st.session_state["index_page"] = 0
+
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
@@ -202,6 +215,55 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         ]
 
     st.caption(f"{len(fdf)} file(s) match current filters.")
+
+    # Pagination controls
+    page_size = st.session_state.setdefault("index_page_size", DEFAULT_PAGE_SIZE)
+    page = st.session_state.setdefault("index_page", 0)
+    total_rows = len(fdf)
+    total_pages = max(1, math.ceil(total_rows / page_size))
+    st.session_state.index_page = min(max(page, 0), total_pages - 1)
+    start = st.session_state.index_page * page_size
+    end = start + page_size
+    can_prev = st.session_state.index_page > 0
+    can_next = (st.session_state.index_page + 1) < total_pages
+
+    left, right = st.columns(2, vertical_alignment="bottom")
+    with left:
+        st.selectbox(
+            "Results per page",
+            PAGE_SIZE_OPTIONS,
+            key="index_page_size",
+            on_change=_reset_page,
+        )
+    with right:
+        col_prev, info_col, col_next = st.columns(
+            [1, 1, 1], gap="small", vertical_alignment="center"
+        )
+        with col_prev:
+            st.button(
+                "◀ Prev",
+                key="index_pager_prev",
+                disabled=not can_prev,
+                on_click=lambda: st.session_state.__setitem__(
+                    "index_page", max(0, st.session_state.index_page - 1)
+                ),
+            )
+        with info_col:
+            st.markdown(
+                f"**Page {st.session_state.index_page + 1} of {total_pages}**"
+            )
+        with col_next:
+            st.button(
+                "Next ▶",
+                key="index_pager_next",
+                disabled=not can_next,
+                on_click=lambda: st.session_state.__setitem__(
+                    "index_page",
+                    min(total_pages - 1, st.session_state.index_page + 1),
+                ),
+            )
+
+    fdf_page = fdf.iloc[start:end]
 
     # Poll background queue (non-blocking) to capture results
     _q = st.session_state.get("_prefetch_queue")
@@ -247,7 +309,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     # ---------- Single table (st.dataframe) with persistent selection ----------
 
     # Default sort (best-effort) before showing
-    display_df = fdf.copy()
+    display_df = fdf_page.copy()
 
     # Keep 'Size' numeric for tests; only format for display via Styler
     use_styler = "Size" in display_df.columns
@@ -267,7 +329,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         display_df if not use_styler else styled_df,
         hide_index=True,
         use_container_width=True,
-        key=f"file_index_table_{nonce}",
+        key=f"file_index_table_{nonce}_{st.session_state.index_page}",
         on_select="rerun",  # rerun on checkbox change
         selection_mode="multi-row",  # checkbox UI
     )
