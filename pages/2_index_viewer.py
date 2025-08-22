@@ -51,6 +51,8 @@ def trigger_refresh() -> None:
         st.session_state["_prefetch_started_at"] = time.time()
         st.session_state.pop("_prefetched_files", None)
         st.session_state.pop("_prefetch_error", None)
+        # also clear any cached Qdrant counts so they get recomputed
+        st.session_state.pop("_qdrant_count_memo", None)
         q: "queue.Queue" = st.session_state.setdefault(
             "_prefetch_queue", queue.Queue(maxsize=1)
         )
@@ -129,8 +131,9 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     path_filter = st.session_state.get("path_filter", "")
     with colf2:
         only_missing = st.checkbox(
-            "Only missing embeddings (Qdrant=0)",
+            "Only embedding discrepancies",
             key="embed_filter",
+            help="Show rows where Qdrant count differs from OpenSearch",
         )
     with colf3:
         if st.button("↻ Refresh", use_container_width=True):
@@ -191,9 +194,12 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             fdf["Path"].astype(str).map(memo).fillna(fdf.get("Qdrant Chunks", 0))
         )
 
-    # Now that counts exist (if needed), apply the 'missing embeddings' filter
+    # Now that counts exist (if needed), apply the discrepancy filter
     if only_missing:
-        fdf = fdf[(fdf["Qdrant Chunks"].fillna(0) == 0)]
+        fdf = fdf[
+            fdf["OpenSearch Chunks"].fillna(0)
+            != fdf["Qdrant Chunks"].fillna(0)
+        ]
 
     st.caption(f"{len(fdf)} file(s) match current filters.")
 
