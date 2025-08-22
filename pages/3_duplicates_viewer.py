@@ -30,5 +30,3 @@ else:
             )
     df = pd.DataFrame(rows)
     st.dataframe(df.style.format({"Size": format_file_size}), use_container_width=True)
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("Download CSV", csv, "duplicate_files.csv", "text/csv")
