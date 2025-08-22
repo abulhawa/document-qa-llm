@@ -98,9 +98,19 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
     sort_state = st.session_state.get("index_sort_by")
     if sort_state:
         sort_col, sort_asc = sort_state
-        if sort_col in df.columns:
+        # Map the stored column identifier to an actual column name.
+        sort_key = None
+        if isinstance(sort_col, int):
+            if 0 <= sort_col < len(df.columns):
+                sort_key = df.columns[sort_col]
+        else:
+            sort_key = next(
+                (c for c in df.columns if c.lower() == str(sort_col).lower()),
+                None,
+            )
+        if sort_key:
             try:
-                df = df.sort_values(sort_col, ascending=sort_asc, kind="mergesort")
+                df = df.sort_values(sort_key, ascending=sort_asc, kind="mergesort")
             except Exception:
                 pass
     elif "Modified" in df.columns:
