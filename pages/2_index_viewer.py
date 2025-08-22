@@ -190,24 +190,6 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     if controls_changed:
         st.session_state["index_page"] = 0
 
-    pending_sort = st.session_state.pop("_pending_sort_by", None)
-    if pending_sort is not None:
-        if len(pending_sort) == 0:
-            st.session_state.pop("index_sort_by", None)
-        else:
-            spec = pending_sort[0]
-            sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
-            asc = spec.get("ascending")
-            if asc is None:
-                direction = spec.get("direction")
-                if direction is not None:
-                    asc = str(direction).lower() in ("asc", "ascending", "true", "1")
-            if asc is None:
-                asc = not spec.get("descending", False)
-            if sort_col:
-                st.session_state["index_sort_by"] = (sort_col, asc)
-        _reset_page()
-
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
@@ -239,18 +221,6 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             fdf["OpenSearch Chunks"].fillna(0)
             != fdf["Qdrant Chunks"].fillna(0)
         ]
-
-    # Apply column sorting across the entire filtered DataFrame.
-    sort_state = st.session_state.get("index_sort_by")
-    if sort_state:
-        sort_col, sort_asc = sort_state
-        if sort_col in fdf.columns:
-            try:
-                fdf = fdf.sort_values(
-                    sort_col, ascending=sort_asc, kind="mergesort"
-                )
-            except Exception:
-                pass
 
     st.caption(f"{len(fdf)} file(s) match current filters.")
 
@@ -692,6 +662,29 @@ except Exception as e:
 
 if not files:  # None or []
     render_empty_state_for_files()
+# Handle pending sort events before constructing the DataFrame so that
+# sorting applies across all rows.
+pending_sort = st.session_state.pop("_pending_sort_by", None)
+if pending_sort is not None:
+    if len(pending_sort) == 0:
+        st.session_state.pop("index_sort_by", None)
+    else:
+        spec = pending_sort[0]
+        sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
+        asc = spec.get("ascending")
+        if asc is None:
+            direction = spec.get("direction")
+            if direction is not None:
+                asc = str(direction).lower() in ("asc", "ascending", "true", "1")
+        if asc is None:
+            asc = not spec.get("descending", False)
+        if sort_col:
+            st.session_state["index_sort_by"] = (sort_col, asc)
+    st.session_state["index_page"] = 0
+    st.session_state["file_index_table_nonce"] = st.session_state.get(
+        "file_index_table_nonce", 0
+    ) + 1
+
 df = build_table_data(files)
 fdf, selected_df = render_filtered_table(df)
 run_batch_actions(fdf, selected_df)
