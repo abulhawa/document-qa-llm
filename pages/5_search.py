@@ -18,11 +18,12 @@ def cached_search_documents(**params):
 st.set_page_config(page_title="Search", layout="wide")
 st.title("🔎 Search")
 
-PAGE_SIZE = 10
+PAGE_SIZE_OPTIONS = [5, 25, 50, 100]
+DEFAULT_PAGE_SIZE = 25
 
 _defaults = {
     "page": 0,
-    "page_size": PAGE_SIZE,
+    "page_size": DEFAULT_PAGE_SIZE,
     "sort": "relevance",
     "q": "",
     "filetypes": [],
@@ -188,10 +189,9 @@ can_next = (st.session_state.page + 1) < total_pages
 
 left, right = st.columns(2, vertical_alignment="bottom")
 with left:
-    st.number_input(
-        "Number of results",
-        1,
-        100,
+    st.selectbox(
+        "Results per page",
+        PAGE_SIZE_OPTIONS,
         key="page_size",
         on_change=_reset_and_search,
     )
