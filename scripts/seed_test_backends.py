@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from opensearchpy import OpenSearch, helpers
 from qdrant_client import QdrantClient, models
 from config import (
@@ -36,8 +36,8 @@ docs = [
     {"_index": OPENSEARCH_INDEX, "_id": "2", "_op_type": "create",
      "_source": {"text":"Another sentence mentioning a city.",
                  "path":"C:/docs/doc2.txt",
-                 "modified_at": datetime.now(timezone.utc).isoformat(),
-                 "indexed_at":  datetime.now(timezone.utc).isoformat(),
+                 "modified_at": datetime.now().astimezone().isoformat(),
+                 "indexed_at":  datetime.now().astimezone().isoformat(),
                  "checksum":"chk-2","chunk_index":0}}
 ]
 helpers.bulk(os_client, docs)
@@ -56,6 +56,6 @@ points = [
                  "page":1,"checksum":"chk-1","chunk_index":0,"modified_at":"2024-01-01T00:00:00Z"}),
     models.PointStruct(id=2, vector=vec,
         payload={"path":"C:/docs/doc2.txt","text":"Another sentence mentioning a city.",
-                 "page":1,"checksum":"chk-2","chunk_index":0,"modified_at": datetime.now(timezone.utc).isoformat()}),
+                 "page":1,"checksum":"chk-2","chunk_index":0,"modified_at": datetime.now().astimezone().isoformat()}),
 ]
 qd.upsert(collection_name=QDRANT_COLLECTION, points=points)

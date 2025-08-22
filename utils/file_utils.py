@@ -87,8 +87,12 @@ def get_file_timestamps(path: str) -> dict:
     else:
         modified_dt = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
 
+    # Convert to local timezone for consistency with user-facing logs
+    modified_dt = modified_dt.astimezone()
     created_dt = (
-        datetime.fromtimestamp(created_ts, tz=timezone.utc) if created_ts is not None else None
+        datetime.fromtimestamp(created_ts, tz=timezone.utc).astimezone()
+        if created_ts is not None
+        else None
     )
 
     return {"created": created_dt, "modified": modified_dt}

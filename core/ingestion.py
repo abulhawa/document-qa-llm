@@ -3,7 +3,7 @@ import uuid
 import time
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Dict, Any, Callable, Optional, Iterable, Union
 from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
 from core.file_loader import load_documents
@@ -107,7 +107,8 @@ def ingest_one(
         timestamps = get_file_timestamps(normalized_path)
         created = timestamps.get("created")
         modified = timestamps.get("modified")
-        indexed_at = datetime.now(timezone.utc).isoformat()
+        # Use local timezone for indexing timestamp
+        indexed_at = datetime.now().astimezone().isoformat()
 
         logger.info(f"📄 Loading: {normalized_path}")
         try:
