@@ -193,7 +193,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> None:
         index=OPENSEARCH_FULLTEXT_INDEX,
         id=doc["id"],
         body={k: v for k, v in doc.items() if k != "id"},
-        op_type="create",
+        op_type="create", # pyright: ignore[reportCallIssue]
     )
 
 
