@@ -72,7 +72,7 @@ def get_file_timestamps(path: str) -> dict:
     path = normalize_path(path)
     try:
         stat = os.stat(path)
-        created = datetime.fromtimestamp(stat.st_ctime)
+        created = datetime.fromtimestamp(stat.st_birthtime )
         modified = datetime.fromtimestamp(stat.st_mtime)
         return {"created": created, "modified": modified}
     except Exception as e:
