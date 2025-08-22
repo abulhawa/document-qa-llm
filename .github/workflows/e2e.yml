@@ -48,7 +48,7 @@ jobs:
           path: |
             /tmp/os-image.tar
             /tmp/qd-image.tar
-          key: ${{ runner.os }}-dockerimgs-os2.14.0-qd1.15.3
+          key: ${{ runner.os }}-dockerimgs-os3.2.0-qd1.15.3
 
       - name: Load cached images (if hit)
         if: steps.img-cache.outputs.cache-hit == 'true'
