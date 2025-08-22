@@ -5,7 +5,7 @@ import queue
 import time
 from utils.file_utils import open_file_local, show_in_folder
 from opensearchpy.exceptions import NotFoundError, TransportError
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 from utils.opensearch_utils import (
@@ -18,6 +18,7 @@ from utils.qdrant_utils import (
 )
 from utils.file_utils import format_file_size
 from core.ingestion import ingest
+from core.reembed import reembed_paths
 from config import logger
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
@@ -93,7 +94,7 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
+def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     # Filters
     colf1, colf2, colf3 = st.columns([3, 2, 1], vertical_alignment="bottom")
     with colf1:
@@ -267,20 +268,31 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
 
     # Current selection = rows checked in the widget (relative to display_df)
     sel_idx = (event or {}).get("selection", {}).get("rows", [])
+    if sel_idx:
+        selected_df = display_df.iloc[sel_idx].copy()
+    else:
+        selected_df = pd.DataFrame(columns=display_df.columns)
     try:
         selected_paths = (
-            (display_df.iloc[sel_idx]["Path"].dropna().astype(str).unique().tolist())
-            if sel_idx
+            selected_df["Path"].dropna().astype(str).unique().tolist()
+            if not selected_df.empty
             else []
         )
     except Exception:
         selected_paths = []
+    selected_pairs = (
+        selected_df[["Path", "Checksum"]]
+        .dropna()
+        .astype(str)
+        .itertuples(index=False, name=None)
+    )
+    selected_pairs = list(selected_pairs)
 
     # -------------------- Action bar (above the table) --------------------
     with action_bar:
         st.caption(f"Selected {len(selected_paths)} file(s)")
 
-        c1, c2, c3 = st.columns([1.4, 1.6, 1.2])
+        c1, c2, c3, c4, c5, c6 = st.columns([1.2, 1.3, 1.3, 1.3, 1.3, 1.2])
 
         with c1:
             if st.button("📂 Open selected", use_container_width=True):
@@ -301,6 +313,65 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                     st.success("Done.")
 
         with c3:
+            if st.button("🧠 Re-embed selected", use_container_width=True):
+                if not selected_paths:
+                    st.info("Select one or more rows first.")
+                else:
+                    try:
+                        with st.spinner(
+                            f"Re-embedding chunks for {len(selected_paths)} file(s)…"
+                        ):
+                            reembed_paths(selected_paths)
+                        st.success("Re-embedding complete.")
+                        load_indexed_files.clear()
+                        st.rerun()
+                    except Exception as e:
+                        logger.exception(f"Re-embed failed: {e}")
+                        st.error(f"Re-embed failed: {e}")
+
+        with c4:
+            if st.button("🔄 Reingest selected", use_container_width=True):
+                if not selected_paths:
+                    st.info("Select one or more rows first.")
+                else:
+                    try:
+                        with st.spinner(
+                            f"Queuing reingestion for {len(selected_paths)} file(s)…"
+                        ):
+                            ingest(
+                                selected_paths, force=True, op="reingest", source="viewer"
+                            )
+                        st.success(
+                            f"Queued reingestion for {len(selected_paths)} file(s)."
+                        )
+                        load_indexed_files.clear()
+                        st.rerun()
+                    except Exception as e:
+                        logger.exception(f"Reingest failed: {e}")
+                        st.error(f"Reingest failed: {e}")
+
+        with c5:
+            if st.button("🗑️ Delete selected", use_container_width=True):
+                if not selected_pairs:
+                    st.info("Select one or more rows first.")
+                else:
+                    try:
+                        with st.spinner(
+                            f"Deleting {len(selected_pairs)} file(s) from OpenSearch…"
+                        ):
+                            delete_files_by_path_checksum(selected_pairs)
+                        with st.spinner(
+                            f"Deleting vectors in Qdrant for {len(selected_pairs)} path(s)…"
+                        ):
+                            delete_vectors_by_path_checksum(selected_pairs)
+                        st.success("Deletion complete.")
+                        load_indexed_files.clear()
+                        st.rerun()
+                    except Exception as e:
+                        logger.exception(f"Delete failed: {e}")
+                        st.error(f"Delete failed: {e}")
+
+        with c6:
             if st.button("❌ Clear selection", use_container_width=True):
                 # Bump the table key to visually uncheck all boxes
                 st.session_state["file_index_table_nonce"] = nonce + 1
@@ -362,10 +433,10 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
                 for p in all_paths:
                     show_in_folder(p)
                 st.success("Done.")
-    return fdf
+    return fdf, selected_df
 
 
-def run_batch_actions(fdf: pd.DataFrame) -> None:
+def run_batch_actions(fdf: pd.DataFrame, selected_df: pd.DataFrame) -> None:
     st.subheader("Batch actions")
     with st.form("batch_actions_form", clear_on_submit=False):
         a1, a2 = st.columns([2, 2])
@@ -373,7 +444,7 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
             action = st.selectbox("Action", ["Reingest", "Delete"], index=0)
         with a2:
             scope_options = ["All filtered"]
-            if "Select" in fdf.columns and fdf["Select"].any():
+            if not selected_df.empty:
                 scope_options.append("Only selected")
             scope = st.selectbox("Scope", scope_options, index=0)
 
@@ -387,8 +458,8 @@ def run_batch_actions(fdf: pd.DataFrame) -> None:
         return
 
     # Compute target rows
-    if scope == "Only selected" and "Select" in fdf.columns:
-        targets = fdf[fdf["Select"] == True]  # noqa: E712
+    if scope == "Only selected" and not selected_df.empty:
+        targets = selected_df
     else:
         targets = fdf
 
@@ -510,7 +581,7 @@ except Exception as e:
 if not files:  # None or []
     render_empty_state_for_files()
 df = build_table_data(files)
-fdf = render_filtered_table(df)
-run_batch_actions(fdf)
+fdf, selected_df = render_filtered_table(df)
+run_batch_actions(fdf, selected_df)
 st.divider()
 render_row_actions(fdf)
