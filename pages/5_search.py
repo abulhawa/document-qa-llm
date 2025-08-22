@@ -4,6 +4,10 @@ from datetime import date, time, datetime, tzinfo
 from utils.file_utils import format_file_size, open_file_local
 from utils.time_utils import format_timestamp, format_date
 from utils.fulltext_search import search_documents
+from utils.opensearch_utils import (
+    list_files_missing_fulltext,
+    reindex_fulltext_from_chunks,
+)
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -75,6 +79,19 @@ def _reset_and_search() -> None:
 
 params = current_params()
 res = cached_search_documents(**params) if params else None
+
+
+if st.checkbox("Show files missing from full-text index"):
+    missing_files = list_files_missing_fulltext()
+    if not missing_files:
+        st.success("All indexed files are present in the full-text index.")
+    else:
+        st.warning(f"{len(missing_files)} file(s) missing from full-text index:")
+        for f in missing_files:
+            st.code(f.get("path", ""), language="")
+        if st.button("Reindex missing files", key="reindex_missing"):
+            reindex_fulltext_from_chunks([f.get("path") for f in missing_files])
+            st.success("Reindexed missing files.")
 
 
 search_col, sort_col = st.columns([4, 1], vertical_alignment="bottom")
