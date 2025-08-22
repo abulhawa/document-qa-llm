@@ -74,7 +74,7 @@ class IngestLogEmitter:
                 logger.warning(f"Failed to init ingest log client: {e}")
                 return
         try:
-            self._client.index(index=self.index, body=self.doc)
+            self._client.index(index=self.index, body=self.doc, op_type="create")
         except exceptions.OpenSearchException as e:
             logger.warning(f"Failed to write ingest log: {e}")
         except Exception as e:

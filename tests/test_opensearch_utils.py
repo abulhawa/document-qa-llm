@@ -77,6 +77,28 @@ def test_index_documents_bulk(monkeypatch):
     chunks = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}]
     osu.index_documents(chunks)
     assert len(recorded["actions"]) == 2
+    assert all(a.get("_op_type") == "create" for a in recorded["actions"])
+
+
+def test_index_documents_update(monkeypatch):
+    recorded = {}
+
+    class FakeClient:
+        pass
+
+    def fake_bulk(client, actions):
+        recorded["actions"] = actions
+        return (len(actions), [])
+
+    monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
+    monkeypatch.setattr(osu, "helpers", types.SimpleNamespace(bulk=fake_bulk))
+    monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
+
+    chunks = [{"id": "1", "text": "a", "op_type": "update"}]
+    osu.index_documents(chunks)
+    action = recorded["actions"][0]
+    assert action["_op_type"] == "update"
+    assert action["doc"]["text"] == "a"
 
 
 

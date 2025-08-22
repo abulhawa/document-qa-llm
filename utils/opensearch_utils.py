@@ -163,14 +163,20 @@ def index_documents(chunks: List[Dict[str, Any]]) -> None:
 
     client = get_client()
     ensure_index_exists()
-    actions = [
-        {
+    actions = []
+    for chunk in chunks:
+        op_type = chunk.get("op_type", "create")
+        action: Dict[str, Any] = {
             "_index": OPENSEARCH_INDEX,
             "_id": chunk["id"],
-            "_source": {k: v for k, v in chunk.items() if k != "id"},
+            "_op_type": op_type,
         }
-        for chunk in chunks
-    ]
+        body = {k: v for k, v in chunk.items() if k not in {"id", "op_type"}}
+        if op_type == "update":
+            action["doc"] = body
+        else:
+            action["_source"] = body
+        actions.append(action)
     success_count, errors = helpers.bulk(client, actions)
     if errors:
         logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
@@ -187,6 +193,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> None:
         index=OPENSEARCH_FULLTEXT_INDEX,
         id=doc["id"],
         body={k: v for k, v in doc.items() if k != "id"},
+        op_type="create",
     )
 
 
