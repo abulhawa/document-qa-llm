@@ -214,6 +214,18 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             != fdf["Qdrant Chunks"].fillna(0)
         ]
 
+    # Apply column sorting across the entire filtered DataFrame.
+    sort_state = st.session_state.get("index_sort_by")
+    if sort_state:
+        sort_col, sort_asc = sort_state
+        if sort_col in fdf.columns:
+            try:
+                fdf = fdf.sort_values(
+                    sort_col, ascending=sort_asc, kind="mergesort"
+                )
+            except Exception:
+                pass
+
     st.caption(f"{len(fdf)} file(s) match current filters.")
 
     # Pagination controls
@@ -333,6 +345,29 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         on_select="rerun",  # rerun on checkbox change
         selection_mode="multi-row",  # checkbox UI
     )
+
+    # If the user sorted a column, apply the sort to the full filtered dataset.
+    sort_ev = (event or {}).get("sort_by")
+    if sort_ev is not None:
+        if len(sort_ev) == 0:
+            if st.session_state.get("index_sort_by") is not None:
+                st.session_state.pop("index_sort_by", None)
+                _reset_page()
+                st.rerun()
+        else:
+            spec = sort_ev[0]
+            sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
+            asc = spec.get("ascending")
+            if asc is None:
+                direction = spec.get("direction")
+                if direction is not None:
+                    asc = str(direction).lower() in ("asc", "ascending", "true", "1")
+            if asc is None:
+                asc = not spec.get("descending", False)
+            if sort_col and st.session_state.get("index_sort_by") != (sort_col, asc):
+                st.session_state["index_sort_by"] = (sort_col, asc)
+                _reset_page()
+                st.rerun()
 
     # Current selection = rows checked in the widget (relative to display_df)
     sel_idx = (event or {}).get("selection", {}).get("rows", [])
