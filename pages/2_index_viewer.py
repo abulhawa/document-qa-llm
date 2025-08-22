@@ -95,25 +95,7 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
             }
         )
     df = pd.DataFrame(rows)
-    sort_state = st.session_state.get("index_sort_by")
-    if sort_state:
-        sort_col, sort_asc = sort_state
-        # Map the stored column identifier to an actual column name.
-        sort_key = None
-        if isinstance(sort_col, int):
-            if 0 <= sort_col < len(df.columns):
-                sort_key = df.columns[sort_col]
-        else:
-            sort_key = next(
-                (c for c in df.columns if c.lower() == str(sort_col).lower()),
-                None,
-            )
-        if sort_key:
-            try:
-                df = df.sort_values(sort_key, ascending=sort_asc, kind="mergesort")
-            except Exception:
-                pass
-    elif "Modified" in df.columns:
+    if "Modified" in df.columns:
         df = df.sort_values("Modified", ascending=False, na_position="last")
     return df.reset_index(drop=True)
 
@@ -231,6 +213,36 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             fdf["OpenSearch Chunks"].fillna(0)
             != fdf["Qdrant Chunks"].fillna(0)
         ]
+
+    # Sorting controls for the full dataset
+    sort_cols = list(fdf.columns)
+    if "index_sort_col" not in st.session_state:
+        st.session_state["index_sort_col"] = (
+            "Modified" if "Modified" in sort_cols else sort_cols[0]
+        )
+    if "index_sort_dir" not in st.session_state:
+        st.session_state["index_sort_dir"] = "Descending"
+    sc1, sc2 = st.columns([3, 1], vertical_alignment="center")
+    with sc1:
+        sort_col = st.selectbox(
+            "Sort by",
+            sort_cols,
+            key="index_sort_col",
+            on_change=_reset_page,
+        )
+    with sc2:
+        sort_dir = st.radio(
+            "Order",
+            ["Ascending", "Descending"],
+            key="index_sort_dir",
+            horizontal=True,
+            on_change=_reset_page,
+        )
+    fdf = fdf.sort_values(
+        sort_col,
+        ascending=(sort_dir == "Ascending"),
+        na_position="last",
+    )
 
     st.caption(f"{len(fdf)} file(s) match current filters.")
 
@@ -351,12 +363,6 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         on_select="rerun",  # rerun on checkbox change
         selection_mode="multi-row",  # checkbox UI
     )
-
-    # Capture sort events and handle them on the next run.
-    sort_ev = (event or {}).get("sort_by")
-    if sort_ev is not None:
-        st.session_state["_pending_sort_by"] = sort_ev
-        st.rerun()
 
     # Current selection = rows checked in the widget (relative to display_df)
     sel_idx = (event or {}).get("selection", {}).get("rows", [])
@@ -672,29 +678,6 @@ except Exception as e:
 
 if not files:  # None or []
     render_empty_state_for_files()
-# Handle pending sort events before constructing the DataFrame so that
-# sorting applies across all rows.
-pending_sort = st.session_state.pop("_pending_sort_by", None)
-if pending_sort is not None:
-    if len(pending_sort) == 0:
-        st.session_state.pop("index_sort_by", None)
-    else:
-        spec = pending_sort[0]
-        sort_col = spec.get("column_id") or spec.get("column") or spec.get("id")
-        asc = spec.get("ascending")
-        if asc is None:
-            direction = spec.get("direction")
-            if direction is not None:
-                asc = str(direction).lower() in ("asc", "ascending", "true", "1")
-        if asc is None:
-            asc = not spec.get("descending", False)
-        if sort_col:
-            st.session_state["index_sort_by"] = (sort_col, asc)
-    st.session_state["index_page"] = 0
-    st.session_state["file_index_table_nonce"] = st.session_state.get(
-        "file_index_table_nonce", 0
-    ) + 1
-
 df = build_table_data(files)
 fdf, selected_df = render_filtered_table(df)
 run_batch_actions(fdf, selected_df)
