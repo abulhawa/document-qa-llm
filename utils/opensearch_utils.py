@@ -1,3 +1,4 @@
+import os
 from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
 from opensearchpy import helpers, exceptions
@@ -9,6 +10,15 @@ from config import (
     OPENSEARCH_REQUEST_TIMEOUT,
     INGEST_LOG_INDEX,
     logger,
+)
+
+from core.file_loader import load_documents
+from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
+from utils.file_utils import (
+    hash_path,
+    compute_checksum,
+    get_file_timestamps,
+    get_file_size,
 )
 
 # Analyzer/mapping config (optional: can also be created manually in advance)
@@ -264,6 +274,69 @@ def list_files_from_opensearch(
         )
 
     return results
+
+
+def list_fulltext_paths(size: int = 1000) -> List[str]:
+    """Return a list of file paths present in the full-text index."""
+
+    client = get_client()
+    resp = client.search(
+        index=OPENSEARCH_FULLTEXT_INDEX,
+        body={"size": size, "query": {"match_all": {}}, "_source": ["path"]},
+    )
+    hits = resp.get("hits", {}).get("hits", [])
+    return [h.get("_source", {}).get("path") for h in hits if h.get("_source")]
+
+
+def list_files_missing_fulltext(size: int = 1000) -> List[Dict[str, Any]]:
+    """
+    Return metadata for files that exist in the chunk index but are missing
+    from the full-text index.
+    """
+
+    doc_files = list_files_from_opensearch(size=size)
+    fulltext_paths = {p for p in list_fulltext_paths(size=size) if p}
+    missing = [f for f in doc_files if f.get("path") not in fulltext_paths]
+    return missing
+
+
+def reindex_fulltext_from_chunks(paths: Iterable[str]) -> int:
+    """Rebuild full-text documents for the given file paths by reloading and preprocessing the source files."""
+
+    unique_paths = [p for p in {p for p in paths if p}]
+    if not unique_paths:
+        return 0
+
+    total = 0
+    for path in unique_paths:
+        try:
+            docs = load_documents(path)
+            docs_list = preprocess_to_documents(
+                docs_like=docs,
+                source_path=path,
+                cfg=PreprocessConfig(),
+                doc_type=os.path.splitext(path)[1].lstrip(".").lower(),
+            )
+        except Exception as e:
+            logger.warning(f"Skipping {path}: {e}")
+            continue
+
+        full_text = "\n\n".join(getattr(d, "page_content", "") for d in docs_list)
+        timestamps = get_file_timestamps(path)
+        doc = {
+            "id": hash_path(path),
+            "path": path,
+            "filename": os.path.basename(path),
+            "filetype": os.path.splitext(path)[1].lstrip(".").lower(),
+            "modified_at": timestamps.get("modified"),
+            "created_at": timestamps.get("created"),
+            "size_bytes": get_file_size(path),
+            "checksum": compute_checksum(path),
+            "text_full": full_text,
+        }
+        index_fulltext_document(doc)
+        total += 1
+    return total
 
 
 def get_chunks_by_paths(paths: Iterable[str], batch_size: int = 1000) -> List[Dict[str, Any]]:
