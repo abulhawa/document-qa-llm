@@ -23,6 +23,16 @@ def test_file_utils(tmp_path):
 
     assert get_file_size("does-not-exist") == 0
     assert get_file_size("does\\not\\exist") == 0
+
+    # existing file returns ISO formatted timestamps
+    ts_real = get_file_timestamps(str(file_path))
+    assert ts_real["created"] and ts_real["modified"]
+    from datetime import datetime
+
+    datetime.fromisoformat(ts_real["created"])
+    datetime.fromisoformat(ts_real["modified"])
+
+    # missing file returns empty strings
     ts = get_file_timestamps("does-not-exist")
     assert ts == {"created": "", "modified": ""}
     ts = get_file_timestamps("does\\not\\exist")

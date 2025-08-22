@@ -1,7 +1,7 @@
 import os, sys, subprocess
 import hashlib
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
 from config import logger
 
 __all__ = [
@@ -66,16 +66,23 @@ def format_file_size(num_bytes: Any) -> str:
 
 
 def get_file_timestamps(path: str) -> dict:
+    """Return creation and modification timestamps as ISO strings.
+
+    Some parts of the application expect timestamps to be in a consistent
+    string format. Returning ``datetime`` objects leads to mixed types once the
+    values are persisted (some runs produced strings, others ``datetime``
+    instances).  To avoid downstream parsing issues, always convert the
+    timestamps to ISO formatted strings.  If the file cannot be stat'ed the
+    function still returns the keys with empty string values.
     """
-    Returns creation and modification timestamps in ISO format.
-    """
+
     path = normalize_path(path)
     try:
         stat = os.stat(path)
-        created = datetime.fromtimestamp(stat.st_ctime)
-        modified = datetime.fromtimestamp(stat.st_mtime)
+        created = datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat()
+        modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
         return {"created": created, "modified": modified}
-    except Exception as e:
+    except Exception:
         # Still return keys with fallback values
         return {"created": "", "modified": ""}
 
