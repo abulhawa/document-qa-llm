@@ -129,9 +129,8 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     with colf2:
         only_missing = st.checkbox(
             "Only missing embeddings (Qdrant=0)",
-            value=st.session_state.get("embed_filter", False),
+            key="embed_filter",
         )
-        st.session_state["embed_filter"] = only_missing
     with colf3:
         if st.button("↻ Refresh", use_container_width=True):
             trigger_refresh()
@@ -145,7 +144,7 @@ def render_filtered_table(df: pd.DataFrame) -> pd.DataFrame:
     need_counts = only_missing
     show_qdrant_counts = st.checkbox(
         "Show Qdrant counts (slower)",
-        value=False,
+        key="show_qdrant_counts",
         help="Compute counts only for visible rows",
     )
     # Track if any non-table control changed this run (used to preserve selection)
