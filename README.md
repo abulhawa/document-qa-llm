@@ -61,12 +61,14 @@ The system is built from modular, testable components:
 - 📁 Multi-file + folder ingestion, with parallel processing
 - 🧾 Source attribution (filename + page or position)
 - 🗃️ File deduplication by checksum + path tracking
+- 🗂️ Duplicate file viewer and index manager
 - 🧱 Modular architecture (easy to swap models or vector DB)
 - 📊 Tracing and observability with Phoenix
+- 📝 Ingestion log viewer and full-text search page
 - 🔒 Fully local: no cloud APIs, no internet needed
 - 🧼 **Robust text preprocessing** (PDF-first): header/footer stripping, page-number cleanup,
   hyphenation repair, conservative soft-wrap joining, **table tagging**, and removal of
-  symbol-only / empty-bullet lines to prevent junk chunks.  
+  symbol-only / empty-bullet lines to prevent junk chunks.
 
 ---
 
@@ -89,6 +91,18 @@ The system is built from modular, testable components:
 - Model, temperature, and mode are adjustable in sidebar
 - Supports any LLM with OpenAI-compatible endpoints
 
+### 📊 View File Index
+- Browse ingested files, re-sync or delete entries, and view stats.
+
+### 🗂️ Review Duplicate Files
+- Inspect files with identical checksums across different paths.
+
+### 📝 Inspect Ingestion Logs
+- Filter and review ingestion attempts, errors, and statuses.
+
+### 🔎 Search Documents
+- Query the full-text index with filters, sorting, and filetype facets.
+
 ---
 
 ## 🧰 Requirements
@@ -98,6 +112,7 @@ The system is built from modular, testable components:
 - OpenSearch
 - Redis server for Celery broker
 - Celery worker for async embedding
+- Arize Phoenix for tracing (optional)
 - Text-Generation-WebUI with a loaded model
 - Dockerized embedder API
 
@@ -113,11 +128,19 @@ The system is built from modular, testable components:
 
 2. **Start the services**
 
-   Ensure Qdrant, OpenSearch, Redis, the embedder API, and your Text-Generation-WebUI are running.
+   Ensure Qdrant, OpenSearch, Redis, the embedder API, Phoenix, and your Text-Generation-WebUI are running.
    With Docker:
 
    ```bash
-   docker-compose up qdrant opensearch redis embedder-api celery
+   docker-compose up qdrant opensearch redis embedder-api celery phoenix
+   ```
+
+   (Optionally add `opensearch-dashboards` or `flower` for extra UIs.)
+
+   If running services locally instead of Docker, start the Celery worker:
+
+   ```bash
+   celery -A worker.celery_worker.app worker --loglevel=info
    ```
 
 3. **Launch the Streamlit app**
@@ -141,11 +164,14 @@ pytest
 
 - ✅ Ingestion supports mixed file/folder input, with deduplication
 - ✅ File Index Viewer & manager UI for re-sync, stats, and delete
+- ✅ Duplicate files page highlights checksum collisions
+- ✅ Ingestion log viewer with filtering
 - ✅ Modular pipeline orchestrated by `ingestion.py`
 - ✅ Batched embedding via API and Celery
 - ✅ Phoenix tracing across ingestion and QA flows
 - ✅ Vector store: Qdrant only (no SQLite)
 - ✅ Hybrid search (BM25 + dense vectors)
+- ✅ Full-text search page with filters and sorting
 - ✅ Source filenames and pages displayed with each answer
 - ✅ Works with both chat and completion LLMs (e.g. Mistral, GPTQ)
 - ✅ Query rewriting layer supports clarification and intent extraction
