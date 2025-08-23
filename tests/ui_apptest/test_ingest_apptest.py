@@ -39,6 +39,7 @@ def test_ingest_success_and_progress(monkeypatch):
     # Mock selection and ingestion
     monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: ["/tmp/a.txt"])
     monkeypatch.setattr("ui.ingestion_ui.run_folder_picker", lambda: [])
+    monkeypatch.setattr("utils.opensearch_utils.missing_indices", lambda: [])
 
     progress_updates = []
 

@@ -42,6 +42,31 @@ def test_ensure_ingest_log_index_exists(monkeypatch):
     assert client.indices.create_called_with[0][0] == osu.INGEST_LOG_INDEX
 
 
+def test_missing_indices(monkeypatch):
+    class FakeIndices:
+        def __init__(self, exists_map):
+            self.exists_map = exists_map
+
+        def exists(self, index):
+            return self.exists_map.get(index, False)
+
+    class FakeClient:
+        def __init__(self, exists_map):
+            self.indices = FakeIndices(exists_map)
+
+    exists_map = {
+        osu.OPENSEARCH_INDEX: False,
+        osu.OPENSEARCH_FULLTEXT_INDEX: True,
+        osu.INGEST_LOG_INDEX: False,
+    }
+
+    monkeypatch.setattr(
+        "utils.opensearch_utils.get_client", lambda: FakeClient(exists_map)
+    )
+    missing = osu.missing_indices()
+    assert missing == [osu.OPENSEARCH_INDEX, osu.INGEST_LOG_INDEX]
+
+
 def test_list_files_from_opensearch(monkeypatch):
     class FakeClient:
         def search(self, index, body):

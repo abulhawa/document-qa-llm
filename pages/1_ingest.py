@@ -6,9 +6,24 @@ import threading
 from core.ingestion import ingest
 from ui.ingestion_ui import run_file_picker, run_folder_picker
 from tracing import start_span, CHAIN, INPUT_VALUE, OUTPUT_VALUE, STATUS_OK
+from utils.opensearch_utils import (
+    ensure_index_exists,
+    ensure_fulltext_index_exists,
+    ensure_ingest_log_index_exists,
+    missing_indices,
+)
 
 st.set_page_config(page_title="Ingest Documents", layout="wide")
 st.title("📥 Ingest Documents")
+
+missing = missing_indices()
+if missing:
+    st.warning("Missing OpenSearch indices: " + ", ".join(missing))
+    if st.button("🛠️ Create Indices"):
+        ensure_index_exists()
+        ensure_fulltext_index_exists()
+        ensure_ingest_log_index_exists()
+        st.success("Created required indices. Please try again.")
 
 col1, col2 = st.columns([1, 1], gap="small")
 

@@ -169,6 +169,19 @@ def ensure_ingest_log_index_exists():
         )
 
 
+def missing_indices() -> List[str]:
+    """Return a list of required OpenSearch indices that do not yet exist."""
+    client = get_client()
+    missing: List[str] = []
+    if not client.indices.exists(index=OPENSEARCH_INDEX):
+        missing.append(OPENSEARCH_INDEX)
+    if not client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
+        missing.append(OPENSEARCH_FULLTEXT_INDEX)
+    if not client.indices.exists(index=INGEST_LOG_INDEX):
+        missing.append(INGEST_LOG_INDEX)
+    return missing
+
+
 def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     """Index a list of chunks into OpenSearch using bulk API.
 
