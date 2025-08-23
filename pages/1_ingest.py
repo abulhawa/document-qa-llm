@@ -1,6 +1,7 @@
 # pages/1_Ingest_Documents.py
 import streamlit as st
 import pandas as pd
+import threading
 
 from core.ingestion import ingest
 from ui.ingestion_ui import run_file_picker, run_folder_picker
@@ -19,6 +20,9 @@ with col2:
     if st.button("📂 Select Folder"):
         selected_files = run_folder_picker()
 
+if "stop_event" not in st.session_state:
+    st.session_state.stop_event = threading.Event()
+
 if selected_files:
     st.success(f"Found {len(selected_files)} path(s).")
     status_table = st.empty()
@@ -26,11 +30,17 @@ if selected_files:
     progress_bar = st.progress(0)
     eta_display = st.empty()
 
+    stop_event = st.session_state.stop_event
+    if st.button("⏹️ Interrupt"):
+        stop_event.set()
+
     # Show the list being processed (no persistence across refresh)
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     status_table.dataframe(df, height=300)
 
     def update_progress(done: int, total: int, elapsed: float):
+        if stop_event.is_set():
+            raise RuntimeError("Interrupted")
         # Foreground progress: files loaded/split/enqueued (no Celery polling)
         progress_bar.progress(done / max(total, 1))
         if done:
@@ -54,7 +64,11 @@ if selected_files:
         span.set_attribute(INPUT_VALUE, preview)
 
         # Ingest now does: load → split → enqueue Celery batches (OS + Qdrant in background)
-        results = ingest(selected_files, progress_callback=update_progress)
+        results = ingest(
+            selected_files,
+            progress_callback=update_progress,
+            stop_event=stop_event,
+        )
 
         successes = [r for r in results if r.get("success")]
         failures = [
@@ -87,21 +101,28 @@ if selected_files:
         span.set_status(STATUS_OK)
 
     # Foreground complete message (handles direct vs background indexing)
-    total = len(results)
-    direct_count = len(direct_successes)
-    queued_count = len(queued_successes)
-    if direct_count and queued_count:
-        status_line.success(
-            f"✅ Indexed {direct_count} file(s) immediately and queued {queued_count} / {total} for background indexing."
-        )
-    elif direct_count:
-        status_line.success(f"✅ Indexed {direct_count} / {total} file(s) immediately.")
-    elif queued_count:
-        status_line.success(
-            f"✅ Queued {queued_count} / {total} file(s) for background indexing."
+    if stop_event.is_set():
+        status_line.warning(
+            f"⛔ Ingestion interrupted after processing {len(results)} file(s)."
         )
     else:
-        status_line.warning("⚠️ No files were indexed.")
+        total = len(results)
+        direct_count = len(direct_successes)
+        queued_count = len(queued_successes)
+        if direct_count and queued_count:
+            status_line.success(
+                f"✅ Indexed {direct_count} file(s) immediately and queued {queued_count} / {total} for background indexing."
+            )
+        elif direct_count:
+            status_line.success(f"✅ Indexed {direct_count} / {total} file(s) immediately.")
+        elif queued_count:
+            status_line.success(
+                f"✅ Queued {queued_count} / {total} file(s) for background indexing."
+            )
+        else:
+            status_line.warning("⚠️ No files were indexed.")
+
+    stop_event.clear()
 
     # Summary table for this run only (no persistence)
     # Shows status message from ingest: e.g., "Queued for background indexing (N batches)"

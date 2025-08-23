@@ -315,6 +315,7 @@ def ingest(
     force: bool = False,
     replace: bool = True,
     progress_callback: Optional[Callable[[int, int, float], None]] = None,
+    stop_event: Optional[threading.Event] = None,
     op: str = "ingest",
     source: str = "ingest_page",
 ) -> List[Dict[str, Any]]:
@@ -367,6 +368,12 @@ def ingest(
             for f in doc_files
         }
         for future in as_completed(future_to_path):
+            if stop_event and stop_event.is_set():
+                logger.info("🛑 Ingestion interrupted by user")
+                for f in future_to_path.keys():
+                    f.cancel()
+                break
+
             p = future_to_path[future]
             try:
                 result = future.result()
@@ -392,5 +399,16 @@ def ingest(
                     progress_callback(completed, total, elapsed)
                 except Exception as e:
                     logger.warning(f"Progress callback failed: {e}")
+                    if stop_event and stop_event.is_set():
+                        logger.info("🛑 Ingestion interrupted by user during progress update")
+                        for f in future_to_path.keys():
+                            f.cancel()
+                        break
+
+            if stop_event and stop_event.is_set():
+                logger.info("🛑 Ingestion interrupted by user")
+                for f in future_to_path.keys():
+                    f.cancel()
+                break
 
     return results
