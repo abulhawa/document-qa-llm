@@ -2,7 +2,15 @@ import os
 from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
 from opensearchpy import helpers
-from opensearchpy.exceptions import ConflictError, ConnectionTimeout, TransportError, OpenSearchException
+try:
+    from opensearchpy.exceptions import (
+        ConflictError,
+        ConnectionTimeout,
+        TransportError,
+        OpenSearchException,
+    )
+except Exception:  # pragma: no cover - allows tests to stub opensearchpy
+    ConflictError = ConnectionTimeout = TransportError = OpenSearchException = Exception
 
 
 from config import (
@@ -170,8 +178,13 @@ def ensure_ingest_log_index_exists():
         )
 
 
-def index_documents(chunks: List[Dict[str, Any]]) -> None:
-    """Index a list of chunks into OpenSearch."""
+def index_documents(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Index a list of chunks into OpenSearch.
+
+    Returns a dict with keys ``indexed`` and ``errors`` (list). Raises on
+    fatal OpenSearch errors so callers can handle/log similarly to
+    ``index_fulltext_document``.
+    """
 
     client = get_client()
     ensure_index_exists()
@@ -189,11 +202,43 @@ def index_documents(chunks: List[Dict[str, Any]]) -> None:
         else:
             action["_source"] = body
         actions.append(action)
-    success_count, errors = helpers.bulk(client, actions)
+
+    try:
+        success_count, errors = helpers.bulk(client, actions)
+    except ConnectionTimeout:
+        logger.error(
+            "OpenSearch bulk index timeout.",
+            extra={"index": OPENSEARCH_INDEX},
+        )
+        raise
+    except TransportError as e:
+        status = getattr(e, "status_code", None)
+        info = getattr(e, "info", None)
+        logger.exception(
+            "OpenSearch transport error during bulk indexing.",
+            extra={"index": OPENSEARCH_INDEX, "status": status, "info": info},
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Unexpected error during bulk indexing.",
+            extra={"index": OPENSEARCH_INDEX},
+        )
+        raise
+
     if errors:
-        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+        logger.warning(
+            "Bulk indexing completed with some errors.",
+            extra={"index": OPENSEARCH_INDEX, "errors": len(errors)},
+        )
     else:
-        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
+        logger.info(
+            "Indexed %d chunk document(s).",
+            success_count,
+            extra={"index": OPENSEARCH_INDEX},
+        )
+
+    return {"indexed": success_count, "errors": errors}
 
 
 def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:

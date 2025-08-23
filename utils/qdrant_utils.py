@@ -26,16 +26,16 @@ def ensure_collection_exists() -> None:
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
 
-def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
+def index_chunks(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     ensure_collection_exists()
 
     texts: List[str] = [chunk["text"] for chunk in chunks]
     try:
         embeddings = embed_texts(texts)
-    except Exception as e:
-        logger.error(f"Embedding failed: {e}")
-        return False
+    except Exception:
+        logger.exception("Embedding failed.")
+        raise
 
     points = [
         PointStruct(
@@ -48,11 +48,12 @@ def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
 
     try:
         client.upsert(collection_name=QDRANT_COLLECTION, points=points)
-        logger.info(f"✅ Indexed {len(points)} chunks.")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Indexing to Qdrant failed: {e}")
-        return False
+    except Exception:
+        logger.exception("Qdrant upsert failed.")
+        raise
+
+    logger.info(f"✅ Indexed {len(points)} chunks.")
+    return {"upserted": len(points)}
 
 
 def count_qdrant_chunks_by_path(path: str) -> Optional[int]:

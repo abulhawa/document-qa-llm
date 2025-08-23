@@ -52,9 +52,9 @@ def test_bulk_index_partial_failure(monkeypatch, caplog):
     def fake_bulk(client, actions):
         return (1, ['err'])
     monkeypatch.setattr(osu, 'helpers', types.SimpleNamespace(bulk=fake_bulk))
-    caplog.set_level(logging.ERROR)
+    caplog.set_level(logging.WARNING)
     osu.index_documents([{ 'id':'1','text':'a'}])
-    assert any('OpenSearch indexing failed' in r.message for r in caplog.records)
+    assert any('Bulk indexing completed with some errors' in r.message for r in caplog.records)
 
 
 def test_set_has_embedding_partial_error(monkeypatch):

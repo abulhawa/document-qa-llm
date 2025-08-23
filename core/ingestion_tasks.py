@@ -36,7 +36,10 @@ def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]
     total = len(chunks)
     try:
         # 1) Index to OpenSearch
-        index_documents(chunks)
+        try:
+            index_documents(chunks)
+        except Exception as e:
+            logger.warning("OpenSearch chunk indexing failed: %s", e)
         self.update_state(
             state="PROGRESS",
             meta={
@@ -48,9 +51,7 @@ def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]
         )
 
         # 2) Embed + upsert to Qdrant
-        ok = qdrant_utils.index_chunks(chunks)
-        if not ok:
-            raise RuntimeError("Qdrant upsert failed for batch")
+        qdrant_utils.index_chunks(chunks)
         self.update_state(
             state="PROGRESS",
             meta={

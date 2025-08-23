@@ -97,7 +97,8 @@ def make_chunk(text, idx, checksum=None):
 
 def test_vector_index_and_retrieve(setup_fake_qdrant):
     chunks = [make_chunk("a", 0), make_chunk("b", 1), make_chunk("c", 2)]
-    assert qdrant_utils.index_chunks(chunks) is True
+    resp = qdrant_utils.index_chunks(chunks)
+    assert resp["upserted"] == 3
     # lower threshold so second vector is included
     vector_store.CHUNK_SCORE_THRESHOLD = 0.0
     results = vector_store.retrieve_top_k("q", top_k=2)

@@ -23,9 +23,7 @@ def reembed_paths(paths: List[str]) -> int:
         logger.info("No chunks found for re-embedding.")
         return 0
 
-    ok = qdrant_utils.index_chunks(chunks)
-    if not ok:
-        raise RuntimeError("Qdrant indexing failed")
+    qdrant_utils.index_chunks(chunks)
 
     ids = [c.get("id") for c in chunks if c.get("id")]
     if ids:

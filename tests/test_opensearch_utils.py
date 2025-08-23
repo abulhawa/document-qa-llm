@@ -75,7 +75,8 @@ def test_index_documents_bulk(monkeypatch):
     monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
 
     chunks = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}]
-    osu.index_documents(chunks)
+    resp = osu.index_documents(chunks)
+    assert resp["indexed"] == 2 and resp["errors"] == []
     assert len(recorded["actions"]) == 2
     assert all(a.get("_op_type") == "create" for a in recorded["actions"])
 
@@ -95,7 +96,8 @@ def test_index_documents_update(monkeypatch):
     monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
 
     chunks = [{"id": "1", "text": "a", "op_type": "update"}]
-    osu.index_documents(chunks)
+    resp = osu.index_documents(chunks)
+    assert resp["indexed"] == 1
     action = recorded["actions"][0]
     assert action["_op_type"] == "update"
     assert action["doc"]["text"] == "a"

@@ -2,6 +2,7 @@ import os
 import types
 
 import pytest
+from langchain_core.documents import Document
 
 from core.ingestion import ingest_one
 
@@ -59,7 +60,9 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
-    monkeypatch.setattr("core.ingestion.load_documents", lambda p: ["doc"])  # one doc
+    monkeypatch.setattr(
+        "core.ingestion.load_documents", lambda p: [Document(page_content="hello")]
+    )  # one doc
     monkeypatch.setattr(
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
@@ -67,7 +70,10 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
+    def fail_index(_chunks):
+        raise RuntimeError("fail")
+
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks", fail_index)
 
     called = {"flip": False}
 
@@ -94,7 +100,9 @@ def test_ingest_one_batching(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
-    monkeypatch.setattr("core.ingestion.load_documents", lambda p: ["doc"])  # one doc
+    monkeypatch.setattr(
+        "core.ingestion.load_documents", lambda p: [Document(page_content="doc")]
+    )  # one doc
     monkeypatch.setattr(
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
@@ -131,7 +139,9 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
-    monkeypatch.setattr("core.ingestion.load_documents", lambda p: ["doc"])  # one doc
+    monkeypatch.setattr(
+        "core.ingestion.load_documents", lambda p: [Document(page_content="doc")]
+    )  # one doc
     monkeypatch.setattr(
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,

@@ -2,6 +2,7 @@ import types
 import importlib
 import sys
 from unittest.mock import MagicMock
+import pytest
 
 # Remove stubbed qdrant_client if present and import the real one
 if isinstance(sys.modules.get("qdrant_client"), types.SimpleNamespace):
@@ -64,7 +65,8 @@ def test_index_chunks_success(monkeypatch):
         {"id": 2, "text": "b", "has_embedding": False},
     ]
 
-    assert qdu.index_chunks(chunks) is True
+    resp = qdu.index_chunks(chunks)
+    assert resp["upserted"] == 2
     ec.assert_called_once()
     mock_client.upsert.assert_called_once()
     points = mock_client.upsert.call_args.kwargs["points"]
@@ -84,7 +86,8 @@ def test_index_chunks_embedding_failure(monkeypatch):
 
     chunks = [{"id": 1, "text": "a"}]
 
-    assert qdu.index_chunks(chunks) is False
+    with pytest.raises(Exception):
+        qdu.index_chunks(chunks)
     mock_client.upsert.assert_not_called()
 
 
@@ -97,7 +100,8 @@ def test_index_chunks_upsert_failure(monkeypatch):
 
     chunks = [{"id": 1, "text": "a"}]
 
-    assert qdu.index_chunks(chunks) is False
+    with pytest.raises(Exception):
+        qdu.index_chunks(chunks)
 
 
 def test_count_qdrant_chunks_by_path(monkeypatch):

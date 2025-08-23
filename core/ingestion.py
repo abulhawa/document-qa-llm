@@ -227,12 +227,13 @@ def ingest_one(
         # SMALL workload → do EVERYTHING locally
         try:
             logger.info(f"Indexing {len(chunks)} chunks to OpenSearch (small file).")
-            index_documents(chunks)
+            try:
+                index_documents(chunks)
+            except Exception as e:
+                logger.warning(f"OpenSearch chunk indexing failed: {e}")
 
             logger.info(f"Embedding + upserting {len(chunks)} chunks locally.")
-            ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
-            if not ok:
-                raise RuntimeError("Qdrant upsert returned falsy")
+            qdrant_utils.index_chunks(chunks)  # embeds + upserts
 
             ids = [c["id"] for c in chunks]
             updated, _errs = set_has_embedding_true_by_ids(ids)
