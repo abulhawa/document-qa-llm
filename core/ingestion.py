@@ -131,20 +131,31 @@ def ingest_one(
             logger.warning(f"Preprocess step skipped due to error: {e}")
             docs_list = docs
 
-        try:
-            logger.info("📝 Indexing full document text")
-            full_text = "\n\n".join(getattr(d, "page_content", "") for d in docs_list)
-            full_doc = {
-                "id": hash_path(normalized_path),
+        logger.info("📝 Indexing full document text")
+        full_text = "\n\n".join(
+            getattr(d, "page_content", "") for d in docs_list
+        ).strip()
+        if not full_text:
+            logger.warning(f"⚠️ No valid content found in: {normalized_path}")
+            log.done(status="No valid content found")
+            return {
+                "success": False,
+                "status": "No valid content found",
                 "path": normalized_path,
-                "filename": os.path.basename(normalized_path),
-                "filetype": ext,
-                "modified_at": modified,
-                "created_at": created,
-                "size_bytes": size_bytes,
-                "checksum": checksum,
-                "text_full": full_text,
             }
+
+        full_doc = {
+            "id": hash_path(normalized_path),
+            "path": normalized_path,
+            "filename": os.path.basename(normalized_path),
+            "filetype": ext,
+            "modified_at": modified,
+            "created_at": created,
+            "size_bytes": size_bytes,
+            "checksum": checksum,
+            "text_full": full_text,
+        }
+        try:
             index_fulltext_document(full_doc)
         except Exception as e:
             logger.warning(f"Full-text indexing failed: {e}")
