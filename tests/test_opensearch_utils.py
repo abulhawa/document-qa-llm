@@ -1,12 +1,5 @@
 import os
-import sys
 import types
-
-
-# Stub opensearchpy before importing module under test
-opensearchpy_stub = types.SimpleNamespace(OpenSearch=object, helpers=types.SimpleNamespace(), exceptions=Exception)
-sys.modules.setdefault("opensearchpy", opensearchpy_stub)
-
 import utils.opensearch_utils as osu
 
 
@@ -66,7 +59,7 @@ def test_index_documents_bulk(monkeypatch):
     class FakeClient:
         pass
 
-    def fake_bulk(client, actions):
+    def fake_bulk(client, actions, **kwargs):
         recorded["actions"] = actions
         return (len(actions), [])
 
@@ -86,7 +79,7 @@ def test_index_documents_update(monkeypatch):
     class FakeClient:
         pass
 
-    def fake_bulk(client, actions):
+    def fake_bulk(client, actions, **kwargs):
         recorded["actions"] = actions
         return (len(actions), [])
 
