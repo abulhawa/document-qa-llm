@@ -10,7 +10,14 @@ from utils.opensearch_utils import (
     ensure_index_exists,
     ensure_fulltext_index_exists,
     ensure_ingest_log_index_exists,
+    ensure_ingest_plan_index_exists,
     missing_indices,
+)
+from utils.ingest_plans import (
+    add_planned_ingestions,
+    get_planned_ingestions,
+    update_plan_status,
+    clear_planned_ingestions,
 )
 
 st.set_page_config(page_title="Ingest Documents", layout="wide")
@@ -23,7 +30,16 @@ if missing:
         ensure_index_exists()
         ensure_fulltext_index_exists()
         ensure_ingest_log_index_exists()
+        ensure_ingest_plan_index_exists()
         st.success("Created required indices. Please try again.")
+
+existing_plans = get_planned_ingestions()
+if existing_plans:
+    st.subheader("Planned Ingestions")
+    st.dataframe(pd.DataFrame(existing_plans), height=200)
+    if st.button("🧹 Clear Planned Ingestions"):
+        clear_planned_ingestions()
+        st.experimental_rerun()
 
 col1, col2 = st.columns([1, 1], gap="small")
 
@@ -39,6 +55,9 @@ if "stop_event" not in st.session_state:
     st.session_state.stop_event = threading.Event()
 
 if selected_files:
+    add_planned_ingestions(selected_files)
+    for p in selected_files:
+        update_plan_status(p, "Processing")
     st.success(f"Found {len(selected_files)} path(s).")
     status_table = st.empty()
     status_line = st.empty()
@@ -84,6 +103,12 @@ if selected_files:
             progress_callback=update_progress,
             stop_event=stop_event,
         )
+
+        for r in results:
+            update_plan_status(
+                r.get("path", ""),
+                "Completed" if r.get("success") else "Failed",
+            )
 
         successes = [r for r in results if r.get("success")]
         failures = [

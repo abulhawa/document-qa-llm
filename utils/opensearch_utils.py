@@ -10,6 +10,7 @@ from config import (
     OPENSEARCH_DELETE_BATCH,
     OPENSEARCH_REQUEST_TIMEOUT,
     INGEST_LOG_INDEX,
+    INGEST_PLAN_INDEX,
     logger,
 )
 
@@ -147,6 +148,19 @@ INGEST_LOGS_SETTINGS = {
     },
 }
 
+INGEST_PLAN_SETTINGS = {
+    "settings": {"index": {"number_of_shards": 1}},
+    "mappings": {
+        "properties": {
+            "path": {"type": "keyword"},
+            "status": {"type": "keyword"},
+            "added_at": {"type": "date"},
+            "updated_at": {"type": "date"},
+            "user": {"type": "keyword"},
+        }
+    },
+}
+
 
 def ensure_index_exists():
     client = get_client()
@@ -181,6 +195,17 @@ def ensure_ingest_log_index_exists():
         )
 
 
+def ensure_ingest_plan_index_exists():
+    client = get_client()
+    if not client.indices.exists(index=INGEST_PLAN_INDEX):
+        logger.info(f"Creating OpenSearch index: {INGEST_PLAN_INDEX}")
+        client.indices.create(
+            index=INGEST_PLAN_INDEX,
+            body=INGEST_PLAN_SETTINGS,
+            params={"wait_for_active_shards": "1"},
+        )
+
+
 def missing_indices() -> List[str]:
     """Return a list of required OpenSearch indices that do not yet exist."""
     client = get_client()
@@ -191,6 +216,8 @@ def missing_indices() -> List[str]:
         missing.append(OPENSEARCH_FULLTEXT_INDEX)
     if not client.indices.exists(index=INGEST_LOG_INDEX):
         missing.append(INGEST_LOG_INDEX)
+    if not client.indices.exists(index=INGEST_PLAN_INDEX):
+        missing.append(INGEST_PLAN_INDEX)
     return missing
 
 
