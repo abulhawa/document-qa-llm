@@ -169,8 +169,13 @@ def ensure_ingest_log_index_exists():
         )
 
 
-def index_documents(chunks: List[Dict[str, Any]]) -> None:
-    """Index a list of chunks into OpenSearch."""
+def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
+    """Index a list of chunks into OpenSearch using bulk API.
+
+    Returns a tuple of ``(success_count, errors)`` and raises on fatal
+    connection/transport errors. Conflicts and per-item errors are returned in
+    the ``errors`` list for the caller to inspect.
+    """
 
     client = get_client()
     ensure_index_exists()
@@ -188,11 +193,49 @@ def index_documents(chunks: List[Dict[str, Any]]) -> None:
         else:
             action["_source"] = body
         actions.append(action)
-    success_count, errors = helpers.bulk(client, actions)
+
+    conn_timeout_exc = getattr(exceptions, "ConnectionTimeout", Exception)
+    transport_exc = getattr(exceptions, "TransportError", Exception)
+
+    try:
+        success_count, errors = helpers.bulk(
+            client,
+            actions,
+            raise_on_error=False,
+        )
+    except conn_timeout_exc as e:  # type: ignore[misc]
+        logger.error(
+            "OpenSearch bulk index timeout.",
+            extra={"index": OPENSEARCH_INDEX},
+        )
+        raise
+    except transport_exc as e:  # type: ignore[misc]
+        status = getattr(e, "status_code", None)
+        info = getattr(e, "info", None)
+        logger.exception(
+            "OpenSearch transport error during bulk indexing.",
+            extra={"index": OPENSEARCH_INDEX, "status": status, "info": info},
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Unexpected error during chunk indexing.",
+            extra={"index": OPENSEARCH_INDEX},
+        )
+        raise
+
     if errors:
-        logger.error(f"❌ OpenSearch indexing failed for {len(errors)} chunks")
+        logger.error(
+            f"❌ OpenSearch indexing failed for {len(errors)} chunks",
+            extra={"index": OPENSEARCH_INDEX, "errors": errors},
+        )
     else:
-        logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
+        logger.info(
+            f"✅ OpenSearch successfully indexed {success_count} chunks",
+            extra={"index": OPENSEARCH_INDEX},
+        )
+
+    return success_count, errors
 
 
 def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -204,6 +247,10 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     payload = {k: v for k, v in doc.items() if k != "id"}
     doc_id = doc["id"]
 
+    conn_timeout_exc = getattr(exceptions, "ConnectionTimeout", Exception)
+    transport_exc = getattr(exceptions, "TransportError", Exception)
+    conflict_exc = getattr(exceptions, "ConflictError", Exception)
+
     try:
         resp = client.index(
             index=OPENSEARCH_FULLTEXT_INDEX,
@@ -213,20 +260,20 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
             refresh=False,               # pyright: ignore[reportCallIssue]
             request_timeout=30,          # pyright: ignore[reportCallIssue]
         )
-    except exceptions.ConflictError:
+    except conflict_exc:  # type: ignore[misc]
         # Document already exists (expected with op_type=create)
         logger.info(
             "Full-text indexing skipped (already exists).",
             extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
         )
         return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
-    except exceptions.ConnectionTimeout as e:
+    except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch index timeout.",
             extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
         )
         raise
-    except exceptions.TransportError as e:
+    except transport_exc as e:  # type: ignore[misc]
         # Surface status code/info if available
         status = getattr(e, "status_code", None)
         info = getattr(e, "info", None)

@@ -226,9 +226,25 @@ def ingest_one(
     if not queue_background:
         # SMALL workload → do EVERYTHING locally
         try:
-            logger.info(f"Indexing {len(chunks)} chunks to OpenSearch (small file).")
+            logger.info(
+                f"Indexing {len(chunks)} chunks to OpenSearch (small file)."
+            )
             index_documents(chunks)
+        except Exception as e:
+            logger.error(f"❌ OpenSearch chunk indexing failed: {e}")
+            log.fail(
+                stage="index_os",
+                error_type=e.__class__.__name__,
+                reason=str(e),
+            )
+            return {
+                "success": False,
+                "status": "Local indexing failed",
+                "path": normalized_path,
+                "num_chunks": len(chunks),
+            }
 
+        try:
             logger.info(f"Embedding + upserting {len(chunks)} chunks locally.")
             ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
             if not ok:
@@ -247,7 +263,7 @@ def ingest_one(
             }
         except Exception as e:
             logger.error(f"❌ Local pipeline failed: {e}")
-            stage = "index_vec" if "qdrant" in str(e).lower() else "index_os"
+            stage = "index_vec" if "qdrant" in str(e).lower() else "flip_flag"
             log.fail(stage=stage, error_type=e.__class__.__name__, reason=str(e))
             return {
                 "success": False,
