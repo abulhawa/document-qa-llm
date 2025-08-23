@@ -1,7 +1,9 @@
 import os
 from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
-from opensearchpy import helpers, exceptions
+from opensearchpy import helpers
+from opensearchpy.exceptions import ConflictError, ConnectionTimeout, TransportError, OpenSearchException
+
 
 from config import (
     OPENSEARCH_INDEX,
@@ -194,17 +196,86 @@ def index_documents(chunks: List[Dict[str, Any]]) -> None:
         logger.info(f"✅ OpenSearch successfully indexed {success_count} chunks")
 
 
-def index_fulltext_document(doc: Dict[str, Any]) -> None:
-    """Index a single full-text document into OpenSearch."""
-
+def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Index a single full-text document into OpenSearch (op_type=create).
+    Returns the OpenSearch response dict. Raises on fatal errors."""
     client = get_client()
     ensure_fulltext_index_exists()
-    client.index(
-        index=OPENSEARCH_FULLTEXT_INDEX,
-        id=doc["id"],
-        body={k: v for k, v in doc.items() if k != "id"},
-        op_type="create", # pyright: ignore[reportCallIssue]
-    )
+
+    payload = {k: v for k, v in doc.items() if k != "id"}
+    doc_id = doc["id"]
+
+    try:
+        resp = client.index(
+            index=OPENSEARCH_FULLTEXT_INDEX,
+            id=doc_id,
+            body=payload,
+            op_type="create",            # pyright: ignore[reportCallIssue]
+            refresh=False,               # pyright: ignore[reportCallIssue]
+            request_timeout=30,          # pyright: ignore[reportCallIssue]
+        )
+    except ConflictError:
+        # Document already exists (expected with op_type=create)
+        logger.info(
+            "Full-text indexing skipped (already exists).",
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+        )
+        return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
+    except ConnectionTimeout as e:
+        logger.error(
+            "OpenSearch index timeout.",
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+        )
+        raise
+    except TransportError as e:
+        # Surface status code/info if available
+        status = getattr(e, "status_code", None)
+        info = getattr(e, "info", None)
+        logger.exception(
+            "OpenSearch transport error during indexing.",
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id, "status": status, "info": info}
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Unexpected error during full-text indexing.",
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+        )
+        raise
+
+    # Examine response and log accordingly
+    result = resp.get("result")                # expected: "created"
+    shards = resp.get("_shards", {}) or {}
+    failed = int(shards.get("failed", 0))
+    successful = int(shards.get("successful", 0))
+    version = resp.get("_version")
+
+    if failed > 0 or result != "created":
+        logger.warning(
+            "Indexing completed with non-ideal outcome.",
+            extra={
+                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "doc_id": doc_id,
+                "result": result,
+                "version": version,
+                "shards_failed": failed,
+                "shards_successful": successful,
+                "resp": resp,  # keep raw for troubleshooting; remove if logs must stay minimal
+            },
+        )
+    else:
+        logger.info(
+            "Indexed full-text doc.",
+            extra={
+                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "doc_id": doc_id,
+                "result": result,
+                "version": version,
+                "shards_successful": successful,
+            },
+        )
+
+    return resp
 
 
 def list_files_from_opensearch(
@@ -404,7 +475,7 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
             logger.info(
                 f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} checksum(s)."
             )
-        except exceptions.OpenSearchException as e:
+        except OpenSearchException as e:
             logger.exception(
                 f"OpenSearch delete failed for a batch of {len(batch)} checksum(s): {e}"
             )
@@ -464,7 +535,7 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
             logger.info(
                 f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
             )
-        except exceptions.OpenSearchException as e:
+        except OpenSearchException as e:
             logger.exception(
                 f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
             )
@@ -614,7 +685,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
             },
         )
         return response.get("count", 0) > 0
-    except exceptions.OpenSearchException as e:
+    except OpenSearchException as e:
         logger.warning(f"OpenSearch checksum/path check failed: {e}")
         return False
 
@@ -635,7 +706,7 @@ def is_duplicate_checksum(checksum: str, path: str) -> bool:
             },
         )
         return response.get("count", 0) > 0
-    except exceptions.OpenSearchException as e:
+    except OpenSearchException as e:
         logger.warning(f"OpenSearch duplicate check failed: {e}")
         return False
 
@@ -671,6 +742,6 @@ def search_ingest_logs(
         resp = client.search(index=INGEST_LOG_INDEX, body=body)
         hits = resp.get("hits", {}).get("hits", [])
         return [{"log_id": h.get("_id"), **h.get("_source", {})} for h in hits]
-    except exceptions.OpenSearchException as e:
+    except OpenSearchException as e:
         logger.warning(f"Search ingest logs failed: {e}")
         return []
