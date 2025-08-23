@@ -42,7 +42,7 @@ def test_ingest_success_and_progress(monkeypatch):
 
     progress_updates = []
 
-    def fake_ingest(paths, progress_callback):
+    def fake_ingest(paths, progress_callback=None, stop_event=None):
         progress_callback(0, 2, 0)
         progress_updates.append(0)
         progress_callback(1, 2, 0)
