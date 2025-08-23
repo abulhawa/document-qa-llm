@@ -60,18 +60,48 @@ if selected_files:
         failures = [
             (r.get("path"), r.get("status")) for r in results if not r.get("success")
         ]
+        # Categorise successful ingests by whether they were indexed immediately or
+        # queued for background processing.
+        direct_successes = [
+            r
+            for r in successes
+            if "background" not in r.get("status", "").lower()
+            and "partially" not in r.get("status", "").lower()
+        ]
+        queued_successes = [
+            r
+            for r in successes
+            if "background" in r.get("status", "").lower()
+            or "partially" in r.get("status", "").lower()
+        ]
+
         span.set_attribute("indexed_files", len(successes))
+        span.set_attribute("indexed_files_direct", len(direct_successes))
+        span.set_attribute("indexed_files_queued", len(queued_successes))
         span.set_attribute("failed_files", len(failures))
         span.set_attribute("failed_files_details", str(failures))
         span.set_attribute(
-            OUTPUT_VALUE, f"{len(successes)} queued, {len(failures)} failed"
+            OUTPUT_VALUE,
+            f"{len(direct_successes)} direct, {len(queued_successes)} queued, {len(failures)} failed",
         )
         span.set_status(STATUS_OK)
 
-    # Foreground complete message (queued in background)
-    status_line.success(
-        f"✅ Queued {len(successes)} / {len(results)} file(s) for background indexing."
-    )
+    # Foreground complete message (handles direct vs background indexing)
+    total = len(results)
+    direct_count = len(direct_successes)
+    queued_count = len(queued_successes)
+    if direct_count and queued_count:
+        status_line.success(
+            f"✅ Indexed {direct_count} file(s) immediately and queued {queued_count} / {total} for background indexing."
+        )
+    elif direct_count:
+        status_line.success(f"✅ Indexed {direct_count} / {total} file(s) immediately.")
+    elif queued_count:
+        status_line.success(
+            f"✅ Queued {queued_count} / {total} file(s) for background indexing."
+        )
+    else:
+        status_line.warning("⚠️ No files were indexed.")
 
     # Summary table for this run only (no persistence)
     # Shows status message from ingest: e.g., "Queued for background indexing (N batches)"
