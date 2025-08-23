@@ -13,14 +13,26 @@ from config import (
     logger,
 )
 
-from core.file_loader import load_documents
-from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
+from typing import Any
 from utils.file_utils import (
     hash_path,
     compute_checksum,
     get_file_timestamps,
     get_file_size,
 )
+
+# These are only needed for full-text reindexing, which runs in the API process.
+# Define placeholders so the worker can import this module without LangChain.
+load_documents: Any | None = None
+preprocess_to_documents: Any | None = None
+
+
+class _DummyPreprocessConfig:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - simple placeholder
+        pass
+
+
+PreprocessConfig: Any | None = _DummyPreprocessConfig
 
 # Analyzer/mapping config (optional: can also be created manually in advance)
 INDEX_SETTINGS = {
@@ -427,6 +439,17 @@ def reindex_fulltext_from_chunks(paths: Iterable[str]) -> int:
     total = 0
     for path in unique_paths:
         try:
+            global load_documents, preprocess_to_documents, PreprocessConfig
+            if load_documents is None or preprocess_to_documents is None or PreprocessConfig is None:
+                from core.file_loader import load_documents as _load_documents  # local import to avoid Celery hard dependency on langchain
+                from core.document_preprocessor import (
+                    preprocess_to_documents as _preprocess_to_documents,
+                    PreprocessConfig as _PreprocessConfig,
+                )
+                load_documents = _load_documents
+                preprocess_to_documents = _preprocess_to_documents
+                PreprocessConfig = _PreprocessConfig
+
             docs = load_documents(path)
             docs_list = preprocess_to_documents(
                 docs_like=docs,
