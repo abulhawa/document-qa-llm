@@ -1,8 +1,7 @@
 import os
 from typing import List, Dict, Any, Optional, Tuple, Iterable
 from core.opensearch_client import get_client
-from opensearchpy import helpers
-from opensearchpy.exceptions import ConflictError, ConnectionTimeout, TransportError, OpenSearchException
+from opensearchpy import helpers, exceptions
 
 
 from config import (
@@ -214,20 +213,20 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
             refresh=False,               # pyright: ignore[reportCallIssue]
             request_timeout=30,          # pyright: ignore[reportCallIssue]
         )
-    except ConflictError:
+    except exceptions.ConflictError:
         # Document already exists (expected with op_type=create)
         logger.info(
             "Full-text indexing skipped (already exists).",
             extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
         )
         return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
-    except ConnectionTimeout as e:
+    except exceptions.ConnectionTimeout as e:
         logger.error(
             "OpenSearch index timeout.",
             extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
         )
         raise
-    except TransportError as e:
+    except exceptions.TransportError as e:
         # Surface status code/info if available
         status = getattr(e, "status_code", None)
         info = getattr(e, "info", None)
@@ -475,7 +474,7 @@ def delete_files_by_checksum(checksums: Iterable[str]) -> int:
             logger.info(
                 f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} checksum(s)."
             )
-        except OpenSearchException as e:
+        except exceptions.OpenSearchException as e:
             logger.exception(
                 f"OpenSearch delete failed for a batch of {len(batch)} checksum(s): {e}"
             )
@@ -535,7 +534,7 @@ def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
             logger.info(
                 f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
             )
-        except OpenSearchException as e:
+        except exceptions.OpenSearchException as e:
             logger.exception(
                 f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
             )
@@ -685,7 +684,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
             },
         )
         return response.get("count", 0) > 0
-    except OpenSearchException as e:
+    except exceptions.OpenSearchException as e:
         logger.warning(f"OpenSearch checksum/path check failed: {e}")
         return False
 
@@ -706,7 +705,7 @@ def is_duplicate_checksum(checksum: str, path: str) -> bool:
             },
         )
         return response.get("count", 0) > 0
-    except OpenSearchException as e:
+    except exceptions.OpenSearchException as e:
         logger.warning(f"OpenSearch duplicate check failed: {e}")
         return False
 
@@ -742,6 +741,6 @@ def search_ingest_logs(
         resp = client.search(index=INGEST_LOG_INDEX, body=body)
         hits = resp.get("hits", {}).get("hits", [])
         return [{"log_id": h.get("_id"), **h.get("_source", {})} for h in hits]
-    except OpenSearchException as e:
+    except exceptions.OpenSearchException as e:
         logger.warning(f"Search ingest logs failed: {e}")
         return []
