@@ -68,7 +68,7 @@ def test_ingest_success_and_progress(monkeypatch):
 
     # Success notice and log row
     assert "Found 1 path" in at.success[0].value
-    assert "Queued" in at.success[1].value
+    assert "Indexed" in at.success[1].value
     assert len(at.dataframe[0].value) == 1
 
     # Progress callback invoked for 0 -> 50 -> 100%
