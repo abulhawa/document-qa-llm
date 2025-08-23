@@ -49,7 +49,7 @@ def test_ensure_index_noop(monkeypatch):
 def test_bulk_index_partial_failure(monkeypatch, caplog):
     client = FakeClient()
     monkeypatch.setattr(osu, 'get_client', lambda: client)
-    def fake_bulk(client, actions):
+    def fake_bulk(client, actions, **kwargs):
         return (1, ['err'])
     monkeypatch.setattr(osu, 'helpers', types.SimpleNamespace(bulk=fake_bulk))
     caplog.set_level(logging.ERROR)
