@@ -32,3 +32,6 @@ data/
 datasets/
 downloads/
 .venv/
+venv
+tests/
+docs/
