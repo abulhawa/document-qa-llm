@@ -12,9 +12,56 @@ from utils.opensearch_utils import (
     ensure_ingest_log_index_exists,
     missing_indices,
 )
+from core.job_queue import (
+    push_pending,
+    pending_count,
+    active_count,
+    retry_count,
+)
+from core.job_control import set_state, get_state, incr_stat, get_stats
+from core.job_commands import pause_job, resume_job, cancel_job, stop_job
+from core.feeder import feed_once
 
 st.set_page_config(page_title="Ingest Documents", layout="wide")
 st.title("📥 Ingest Documents")
+
+JOB_ID = "default"
+
+import os as _os
+if not _os.getenv("PYTEST_CURRENT_TEST"):
+    with st.expander("Jobs", expanded=False):
+        if st.button("Register Folder(s)"):
+            paths = run_folder_picker()
+            for p in paths:
+                push_pending(JOB_ID, p)
+                incr_stat(JOB_ID, "registered", 1)
+            set_state(JOB_ID, "running")
+
+        state = get_state(JOB_ID)
+        if state is None:
+            set_state(JOB_ID, "idle")
+            state = "idle"
+        stats = get_stats(JOB_ID)
+        st.write(
+            f"state={state} pending={pending_count(JOB_ID)} active={active_count(JOB_ID)} "
+            f"needs_retry={retry_count(JOB_ID)} done={stats.get('done',0)} failed={stats.get('failed',0)}"
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button("Pause"):
+            pause_job(JOB_ID)
+        if c2.button("Resume"):
+            resume_job(JOB_ID)
+        if c3.button("Cancel"):
+            cancel_job(JOB_ID)
+        if c4.button("Stop"):
+            stop_job(JOB_ID)
+
+        if state == "running":
+            feed_once(JOB_ID)
+            rerun = getattr(st, "experimental_rerun", getattr(st, "rerun", None))
+            if rerun:
+                rerun()
 
 missing = missing_indices()
 if missing:
