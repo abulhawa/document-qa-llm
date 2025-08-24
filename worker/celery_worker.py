@@ -7,5 +7,6 @@ backend_url = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 app = Celery("document_qa_worker", broker=broker_url, backend=backend_url)
 app.config_from_object("config")
 
+app.autodiscover_tasks(["core"])
 # Autodiscover tasks from your main project
 app.autodiscover_tasks(["core"], related_name="ingestion_tasks")
