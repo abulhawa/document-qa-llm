@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  celery:
+    read_only: true
+    tmpfs: ["/tmp", "/var/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    user: "1000:1000"
+    environment:
+      - DOC_PATH_MAP=C:/=>/host-c
+      - MAX_INFLIGHT=2
+    volumes:
+      - ./:/app:ro
+      - type: bind
+        source: "C:/"
+        target: /host-c
+        read_only: true
+      - ./logs:/app/logs:rw
