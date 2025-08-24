@@ -6,17 +6,15 @@ from __future__ import annotations
 
 from typing import Iterable, Dict, Any
 
-from core.job_queue import (
-    push_pending,
-    pending_count,
-    active_count,
-    retry_count,
-)
+from config import logger
+from core.celery_client import get_celery
+from core.job_queue import active_count, retry_count, celery_queue_len
 from core.job_control import (
     set_state,
     get_state,
     incr_stat,
     get_stats,
+    add_task,
 )
 from core.discovery_filters import should_skip
 
@@ -48,20 +46,34 @@ def enqueue_ingest(
         if should_skip(p):
             skipped += 1
             continue
-        push_pending(job_id, p)
+        result = get_celery().send_task(
+            "core.tasks.ingest_file_task", kwargs={"job_id": job_id, "path": p}
+        )
+        add_task(job_id, result.id)
         incr_stat(job_id, "registered", 1)
+        incr_stat(job_id, "enqueued", 1)
         enqueued += 1
+    if enqueued:
+        logger.info("Queued %s task(s); celery pending=%s", enqueued, celery_queue_len())
     if enqueued and get_state(job_id) != "running":
         set_state(job_id, "running")
     return {"job_id": job_id, "enqueued": enqueued, "skipped": skipped}
 
 def job_stats(job: str = DEFAULT_JOB_ID) -> Dict[str, Any]:
     """Return current statistics for a job."""
+    stats = get_stats(job)
+    active = active_count(job)
+    retry = retry_count(job)
+    registered = stats.get("registered", 0)
+    done = stats.get("done", 0)
+    failed = stats.get("failed", 0)
+    pending = max(registered - done - failed - active - retry, 0)
     return {
         "job_id": job,
         "state": get_state(job),
-        "pending": pending_count(job),
-        "active": active_count(job),
-        "retry": retry_count(job),
-        "stats": get_stats(job),
+        "pending": pending,
+        "active": active,
+        "retry": retry,
+        "stats": stats,
+        "celery_queue": celery_queue_len(),
     }
