@@ -24,7 +24,7 @@ class FailingLoader(AutoLoader):
 def test_load_txt_autodetect(monkeypatch, tmp_path):
     file_path = tmp_path / "doc.txt"
     file_path.write_text("hello")
-    monkeypatch.setattr("core.file_loader.TextLoader", AutoLoader)
+    monkeypatch.setattr("langchain_community.document_loaders.TextLoader", AutoLoader)
     docs = _load_txt_with_fallbacks(str(file_path))
     assert docs[0].metadata["encoding"] == "autodetect"
 
@@ -43,7 +43,7 @@ def test_load_txt_fallback_and_salvage(monkeypatch, tmp_path):
                 raise TypeError("no autodetect")
             raise ValueError("bad")
 
-    monkeypatch.setattr("core.file_loader.TextLoader", FallbackLoader)
+    monkeypatch.setattr("langchain_community.document_loaders.TextLoader", FallbackLoader)
     docs = _load_txt_with_fallbacks(str(file_path))
     assert docs[0].metadata["encoding"].startswith("utf-8")
 
@@ -55,7 +55,7 @@ def test_load_documents_branches(monkeypatch, tmp_path):
     docs = load_documents(str(txtfile))
     assert docs and docs[0].page_content == "x"
 
-    monkeypatch.setattr("core.file_loader.PyPDFLoader", lambda path: FailingLoader(path))
+    monkeypatch.setattr("langchain_community.document_loaders.PyPDFLoader", lambda path: FailingLoader(path))
     assert load_documents(str(tmp_path / "a.pdf")) == []
 
     class DocxLoader:
@@ -63,7 +63,7 @@ def test_load_documents_branches(monkeypatch, tmp_path):
             self.path = path
         def load(self):
             return [Document(page_content="docx")]
-    monkeypatch.setattr("core.file_loader.Docx2txtLoader", DocxLoader)
+    monkeypatch.setattr("langchain_community.document_loaders.Docx2txtLoader", DocxLoader)
     docs = load_documents(str(tmp_path / "a.docx"))
     assert docs and docs[0].page_content == "docx"
 

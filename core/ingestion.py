@@ -5,9 +5,6 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 from typing import List, Dict, Any, Callable, Optional, Iterable, Union
-from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
-from core.file_loader import load_documents
-from core.chunking import split_documents
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from worker.celery_worker import app as celery_app
 from config import (
@@ -75,6 +72,11 @@ def ingest_one(
     Returns:
       dict with keys: success, status, path, and optionally num_chunks
     """
+    from core.file_loader import load_documents
+    from core.document_preprocessor import preprocess_to_documents
+    from core.text_preprocess import PreprocessConfig
+    from core.chunking import split_documents
+
     logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = normalize_path(path)
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")

@@ -1,12 +1,12 @@
-import time, uuid
+import uuid
 from pathlib import Path
 import streamlit as st
-from core.job_control import set_state, get_state, get_stats, incr_stat
-from core.job_queue import push_pending, inflight, pending_len, retry_len
+from core.job_control import set_state, incr_stat
+from core.job_queue import push_pending
 from core.discovery_filters import should_skip
-from core.feeder import feed_once
 from core.job_commands import pause_job, resume_job, cancel_job, stop_job
 from core.reaper import reap_stale_active
+from ui.ingest_client import job_stats
 
 st.set_page_config(page_title="Ingestion Jobs", layout="wide")
 st.title("🧩 Ingestion Jobs")
@@ -48,11 +48,12 @@ if st.button("Scan & Register"):
 
 # --- Stats ---
 
-state = get_state(job_id)
-stats = get_stats(job_id)
-pending = pending_len(job_id)
-active = inflight(job_id)
-retry = retry_len(job_id)
+js = job_stats(job_id)
+state = js["state"]
+stats = js["stats"]
+pending = js["pending"]
+active = js["active"]
+retry = js["retry"]
 
 if state in {"paused", "stopping", "canceled"}:
     moved = reap_stale_active(job_id)
@@ -87,14 +88,5 @@ with c4:
         stop_job(job_id)
         st.rerun()
 with c5:
-    if st.button("➡️ Feed now"):
-        started = feed_once(job_id)
-        st.toast(f"Enqueued {started} file(s)")
-
-# --- Auto-feed while running ---
-if state == "running":
-    started = feed_once(job_id)
-    if started:
-        st.toast(f"Enqueued {started} file(s)")
-    time.sleep(1.5)
-    st.rerun()
+    if st.button("🔄 Refresh"):
+        st.rerun()

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from core.ingestion import ingest
+from ui.ingest_client import enqueue_ingest, job_stats
 from utils.opensearch_utils import search_ingest_logs
 from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp

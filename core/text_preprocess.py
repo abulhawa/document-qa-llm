@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import List, Tuple, Dict, Literal, Optional
 import re
 import unicodedata
-import ftfy
 import math
 
 
@@ -156,8 +155,9 @@ def _normalize_text(text: str, cfg: PreprocessConfig) -> str:
     t = text
 
     # Fix mojibake and oddities
-    t2 = ftfy.fix_text(t)
-    t = t2
+    import ftfy
+
+    t = ftfy.fix_text(t)
 
     # Normalize newlines and Unicode
     t = t.replace("\r\n", "\n").replace("\r", "\n")

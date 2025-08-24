@@ -1,13 +1,17 @@
 import os
-from typing import List, Optional, Tuple
-from langchain_core.documents import Document
-from langchain_community.document_loaders import TextLoader, PyPDFLoader, Docx2txtLoader
+from typing import List, Optional, Tuple, TYPE_CHECKING
 from config import logger
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
 
 
 _TXT_FALLBACK_ENCODINGS: Tuple[str, ...] = ("utf-8", "utf-8-sig", "utf-16", "cp1252", "latin-1")
 
-def _load_txt_with_fallbacks(path: str) -> List[Document]:
+def _load_txt_with_fallbacks(path: str) -> List["Document"]:
+    from langchain_core.documents import Document
+    from langchain_community.document_loaders import TextLoader
+
     # Try autodetect first (if supported by your langchain version)
     try:
         docs = TextLoader(path, autodetect_encoding=True).load()
@@ -41,8 +45,11 @@ def _load_txt_with_fallbacks(path: str) -> List[Document]:
         logger.exception("Failed to salvage text from %s: %r", path, e)
         return []
 
-def load_documents(path: str) -> List[Document]:
+def load_documents(path: str) -> List["Document"]:
     """Load a document from a file path."""
+    from langchain_core.documents import Document
+    from langchain_community.document_loaders import TextLoader, PyPDFLoader, Docx2txtLoader
+
     ext = os.path.splitext(path)[1].lower()
     try:
         if ext == ".pdf":
