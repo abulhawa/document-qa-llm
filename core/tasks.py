@@ -6,7 +6,7 @@ from celery.exceptions import Ignore
 from core.paths import to_worker_path
 from core.job_guard import ensure_job_can_start
 from core.job_control import incr_stat
-from core.job_queue import rem_active, add_retry
+from core.job_queue import rem_active, add_retry, add_active
 from core.checksum import file_checksum, chunk_id
 from core.qdrant_bootstrap import ensure_doc_collection, COLLECTION, QDRANT_URL
 from dq_loaders_langchain.loader import load_with_langchain
@@ -19,6 +19,7 @@ from config import CHUNK_SIZE, CHUNK_OVERLAP, logger
 @shared_task(bind=True, acks_late=True, autoretry_for=(), retry_backoff=True, max_retries=None)
 def ingest_file_task(self, *, job_id: str, path: str) -> Dict[str, Any]:
     ensure_job_can_start(job_id, task=self)   # boundary gate only
+    add_active(job_id, path)
     real_path = to_worker_path(path)
     try:
         ensure_doc_collection()

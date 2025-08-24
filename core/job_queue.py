@@ -164,4 +164,17 @@ def pending_len(job_id: str) -> int:
 
 def retry_len(job_id: str) -> int:
     client = _client()
-    return int(client.scard(k(job_id, "needs_retry")) or 0) if client else 0
+    return int(client.llen(k(job_id, "needs_retry")) or 0) if client else 0
+
+
+def celery_queue_len(queue: str | None = None) -> int:
+    """Return length of the Celery task queue for quick diagnostics."""
+    broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    queue = queue or os.getenv("CELERY_TASK_QUEUE", "celery")
+    try:
+        client = redis.from_url(
+            broker_url, decode_responses=True, socket_connect_timeout=0.1
+        )
+        return int(client.llen(queue) or 0)
+    except Exception:
+        return 0
