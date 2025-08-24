@@ -2,14 +2,7 @@ import time, uuid
 from pathlib import Path
 import streamlit as st
 from core.job_control import set_state, get_state, get_stats, incr_stat
-from core.job_queue import (
-    push_pending,
-    inflight,
-    pending_count,
-    retry_count,
-    r,
-    k,
-)
+from core.job_queue import push_pending, inflight, pending_len, retry_len
 from core.discovery_filters import should_skip
 from core.feeder import feed_once
 from core.job_commands import pause_job, resume_job, cancel_job, stop_job
@@ -55,23 +48,11 @@ if st.button("Scan & Register"):
 
 # --- Stats ---
 
-def count_pending(job: str) -> int:
-    return int(r.llen(k(job, "pending")) or 0) if r else pending_count(job)
-
-
-def count_active(job: str) -> int:
-    return inflight(job)
-
-
-def count_retry(job: str) -> int:
-    return int(r.scard(k(job, "needs_retry")) or 0) if r else retry_count(job)
-
-
 state = get_state(job_id)
 stats = get_stats(job_id)
-pending = count_pending(job_id)
-active = count_active(job_id)
-retry = count_retry(job_id)
+pending = pending_len(job_id)
+active = inflight(job_id)
+retry = retry_len(job_id)
 
 if state in {"paused", "stopping", "canceled"}:
     moved = reap_stale_active(job_id)
