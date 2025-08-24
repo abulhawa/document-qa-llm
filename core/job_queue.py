@@ -157,3 +157,11 @@ def retry_count(job_id: str) -> int:
 
 def inflight(job_id: str) -> int:
     return active_count(job_id)
+
+def pending_len(job_id: str) -> int:
+    client = _client()
+    return int(client.llen(k(job_id, "pending")) or 0) if client else 0
+
+def retry_len(job_id: str) -> int:
+    client = _client()
+    return int(client.scard(k(job_id, "needs_retry")) or 0) if client else 0
