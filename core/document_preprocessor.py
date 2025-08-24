@@ -1,10 +1,16 @@
-from typing import Any, Iterable, List, Dict
-from core.text_preprocess import preprocess_document, PreprocessConfig
-from langchain_core.documents import Document
+from __future__ import annotations
+
+from typing import Any, Iterable, List, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
+    from core.text_preprocess import PreprocessConfig
 
 
-def _to_documents(obj: Any, source_path: str) -> List[Document]:
+def _to_documents(obj: Any, source_path: str) -> List["Document"]:
     """Coerce common loader outputs into List[Document] (preserving metadata when present)."""
+    from langchain_core.documents import Document
+
     seq: Iterable[Any] = obj if isinstance(obj, list) else [obj]
     out: List[Document] = []
     for o in seq:
@@ -44,13 +50,16 @@ def preprocess_to_documents(
     docs_like: Any,
     *,
     source_path: str,
-    cfg: PreprocessConfig | None = None,
+    cfg: "PreprocessConfig" | None = None,
     doc_type: str,
-) -> List[Document]:
+) -> List["Document"]:
     """
     Convert input to List[Document], run text preprocessing across pages,
     and return the same list with cleaned page_content. Metadata is preserved.
     """
+    from core.text_preprocess import preprocess_document, PreprocessConfig
+    from langchain_core.documents import Document
+
     docs: List[Document] = _to_documents(docs_like, source_path)
     if not docs:
         return docs

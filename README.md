@@ -24,6 +24,13 @@ This system aims to become a **powerful and private Retrieval-Augmented Generati
 
 The system is built from modular, testable components:
 
+### UI / Worker dependency split
+
+The Streamlit UI runs with a minimal dependency set and never imports heavy
+ingestion libraries. All document loading and parsing happens in the Celery
+worker. The UI simply queues file paths and monitors job status, keeping the
+interactive frontend lightweight and easy to run.
+
 ### ✅ 1. **Embedding Service** (Dockerized or local)
 - Runs a multilingual model (e.g., `intfloat/multilingual-e5-base`)
 - Accepts batch inputs via a local FastAPI server

@@ -35,55 +35,24 @@ def _stub_tracing(monkeypatch):
     monkeypatch.setitem(sys.modules, "tracing", dummy)
 
 
-def test_ingest_success_and_progress(monkeypatch):
-    # Mock selection and ingestion
+def test_ingest_enqueues(monkeypatch):
     monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: ["/tmp/a.txt"])
     monkeypatch.setattr("ui.ingestion_ui.run_folder_picker", lambda: [])
     monkeypatch.setattr("utils.opensearch_utils.missing_indices", lambda: [])
 
-    progress_updates = []
+    calls = []
 
-    def fake_ingest(paths, progress_callback=None, stop_event=None):
-        progress_callback(0, 2, 0)
-        progress_updates.append(0)
-        progress_callback(1, 2, 0)
-        progress_updates.append(0.5)
-        progress_callback(2, 2, 0)
-        progress_updates.append(1)
-        return [
-            {
-                "path": paths[0],
-                "success": True,
-                "status": "ok",
-                "num_chunks": 1,
-            }
-        ]
+    def fake_enqueue(paths, **kwargs):
+        calls.append(list(paths))
+        return {"job_id": "default", "enqueued": len(list(paths))}
 
-    monkeypatch.setattr("core.ingestion.ingest", fake_ingest)
+    monkeypatch.setattr("ui.ingest_client.enqueue_ingest", fake_enqueue)
 
     at = AppTest.from_file("pages/1_ingest.py", default_timeout=10)
     at.run()
 
-    # Select file which triggers ingestion automatically
     at.button[0].click().run()
 
-    # Success notice and log row
-    assert "Found 1 path" in at.success[0].value
-    assert "Indexed" in at.success[1].value
+    assert calls == [["/tmp/a.txt"]]
+    assert "Queued 1 file(s) for ingestion." in at.success[1].value
     assert len(at.dataframe[0].value) == 1
-
-    # Progress callback invoked for 0 -> 50 -> 100%
-    assert progress_updates == [0, 0.5, 1]
-
-    def find_progress(node):
-        elems = []
-        if getattr(node, "type", "") == "progress":
-            elems.append(node)
-        for child in (
-            getattr(node, "children", {}).values() if hasattr(node, "children") else []
-        ):
-            elems.extend(find_progress(child))
-        return elems
-
-    progress_elems = find_progress(at._tree[0])
-    assert progress_elems[0].value == 100

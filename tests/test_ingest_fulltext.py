@@ -40,15 +40,15 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
     )
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents", lambda p: [Document(page_content="full", metadata={})]
+        "core.file_loader.load_documents", lambda p: [Document(page_content="full", metadata={})]
     )
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
+        "core.document_preprocessor.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: [
             Document(page_content="full", metadata={})
         ],
     )
-    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "chunk"}])
+    monkeypatch.setattr("core.chunking.split_documents", lambda docs: [{"text": "chunk"}])
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr(
         "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)

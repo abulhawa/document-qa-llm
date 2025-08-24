@@ -42,7 +42,7 @@ def test_ingest_one_idempotent_skip(tmp_path, monkeypatch):
     def boom(path):
         raise AssertionError("should not load")
 
-    monkeypatch.setattr("core.ingestion.load_documents", boom)
+    monkeypatch.setattr("core.file_loader.load_documents", boom)
 
     result = ingest_one(str(f))
     assert result["status"] == "Already indexed"
@@ -61,14 +61,14 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "core.file_loader.load_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )  # one doc
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
+        "core.document_preprocessor.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
-    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
+    monkeypatch.setattr("core.chunking.split_documents", lambda docs: [{"text": "hello"}])
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
@@ -99,16 +99,16 @@ def test_ingest_one_batching(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "core.file_loader.load_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )  # one doc
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
+        "core.document_preprocessor.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
     # produce 5 chunks
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": str(i)} for i in range(5)]
+        "core.chunking.split_documents", lambda docs: [{"text": str(i)} for i in range(5)]
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
@@ -139,14 +139,14 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "core.file_loader.load_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )  # one doc
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
+        "core.document_preprocessor.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
-    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
+    monkeypatch.setattr("core.chunking.split_documents", lambda docs: [{"text": "hello"}])
 
     # Ensure thresholds trigger on total_files
     monkeypatch.setattr("core.ingestion.CHUNK_EMBEDDING_THRESHOLD", 100)

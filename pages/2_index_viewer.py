@@ -18,7 +18,7 @@ from utils.qdrant_utils import (
     delete_vectors_by_path_checksum,
 )
 from utils.file_utils import format_file_size
-from core.ingestion import ingest
+from ui.ingest_client import enqueue_ingest, job_stats
 from core.reembed import reembed_paths
 from config import logger
 
@@ -442,7 +442,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         with st.spinner(
                             f"Queuing reingestion for {len(selected_paths)} file(s)…"
                         ):
-                            ingest(
+                            enqueue_ingest(
                                 selected_paths, force=True, op="reingest", source="viewer"
                             )
                         status, status_msg = (
@@ -598,7 +598,7 @@ def run_batch_actions(fdf: pd.DataFrame, selected_df: pd.DataFrame) -> None:
     try:
         if action == "Reingest":
             with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
-                ingest(paths, force=True, op="reingest", source="viewer")
+                enqueue_ingest(paths, force=True, op="reingest", source="viewer")
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
             with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
@@ -642,7 +642,7 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c1.button("🔄 Reingest File", use_container_width=True):
         try:
-            ingest([row["Path"]], force=True, op="reingest", source="viewer")
+            enqueue_ingest([row["Path"]], force=True, op="reingest", source="viewer")
             st.success(f"Reingestion triggered for: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:

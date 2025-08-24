@@ -1,12 +1,13 @@
-from typing import List, Dict, Any
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing import List, Dict, Any, TYPE_CHECKING
 
 from config import logger, CHUNK_SIZE, CHUNK_OVERLAP
 
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
+
 
 def split_documents(
-    docs: List[Document],
+    docs: List["Document"],
     chunk_size: int = CHUNK_SIZE,
     chunk_overlap: int = CHUNK_OVERLAP,
 ) -> List[Dict[str, Any]]:
@@ -28,6 +29,8 @@ def split_documents(
             - chunk_index:       int, index of the chunk within its document
             - location_percent:  float, approx position of the chunk in the doc (0..100)
     """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     logger.info(f"Splitting {len(docs)} documents...")
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
