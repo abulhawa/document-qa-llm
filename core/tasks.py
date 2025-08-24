@@ -36,6 +36,15 @@ def ingest_file_task(self, *, job_id: str, path: str) -> Dict[str, Any]:
         for i in range(0, len(texts), 32):
             embeds.extend(embed_texts(texts[i:i+32]))
 
+        from os import getenv
+        EMBED_DIM = int(getenv("EMBED_DIM", "768"))
+        if embeds:
+            dim = len(embeds[0])
+            if dim != EMBED_DIM:
+                raise ValueError(
+                    f"Embedding dim mismatch: got {dim}, expected {EMBED_DIM}"
+                )
+
         client = QdrantClient(url=QDRANT_URL)
         points = []
         for idx, (c, v) in enumerate(zip(chunks, embeds)):

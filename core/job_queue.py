@@ -2,12 +2,14 @@ import os
 from typing import List
 import redis
 import threading
+from time import time as _now
 
 _redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/2")
 _redis: redis.Redis | None | bool = None
 _lock = threading.Lock()
 _pending_fallback: dict[str, List[str]] = {}
 _active_fallback: dict[str, set] = {}
+_active_started_fallback: dict[str, dict[str, int]] = {}
 _retry_fallback: dict[str, List[str]] = {}
 
 
@@ -25,16 +27,27 @@ def _client() -> redis.Redis | None:
     return _redis if _redis is not False else None
 
 
+def k(job_id: str, suffix: str) -> str:
+    return f"job:{job_id}:{suffix}"
+
+
+r = _client()
+
+
 def _pending_key(job_id: str) -> str:
     return f"job:{job_id}:pending"
 
 
 def _active_key(job_id: str) -> str:
-    return f"job:{job_id}:active"
+    return k(job_id, "active")
+
+
+def _active_started_key(job_id: str) -> str:
+    return k(job_id, "active_started")
 
 
 def _retry_key(job_id: str) -> str:
-    return f"job:{job_id}:needs_retry"
+    return k(job_id, "needs_retry")
 
 
 def push_pending(job_id: str, path: str) -> None:
@@ -65,20 +78,26 @@ def pending_count(job_id: str) -> int:
 
 def add_active(job_id: str, path: str) -> None:
     r = _client()
+    ts = int(_now())
     if r:
         r.sadd(_active_key(job_id), path)
+        r.hset(_active_started_key(job_id), path, ts)
     else:
         with _lock:
             _active_fallback.setdefault(job_id, set()).add(path)
+            _active_started_fallback.setdefault(job_id, {})[path] = ts
 
 
 def rem_active(job_id: str, path: str) -> None:
     r = _client()
     if r:
         r.srem(_active_key(job_id), path)
+        r.hdel(_active_started_key(job_id), path)
     else:
         with _lock:
             _active_fallback.setdefault(job_id, set()).discard(path)
+            started = _active_started_fallback.get(job_id, {})
+            started.pop(path, None)
 
 
 def pop_all_active(job_id: str) -> List[str]:
@@ -88,10 +107,12 @@ def pop_all_active(job_id: str) -> List[str]:
         paths = list(r.smembers(key))
         if paths:
             r.delete(key)
+            r.delete(_active_started_key(job_id))
         return paths
     with _lock:
         paths = list(_active_fallback.get(job_id, set()))
         _active_fallback.pop(job_id, None)
+        _active_started_fallback.pop(job_id, None)
         return paths
 
 
