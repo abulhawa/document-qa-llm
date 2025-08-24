@@ -96,6 +96,5 @@ if state == "running":
     started = feed_once(job_id)
     if started:
         st.toast(f"Enqueued {started} file(s)")
-    st.autorefresh = st.experimental_rerun  # for older Streamlit, emulate
     time.sleep(1.5)
-    st.experimental_rerun()
+    st.rerun()
