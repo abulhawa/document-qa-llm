@@ -13,6 +13,10 @@ def get_celery() -> Celery:
     """
     broker = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
     backend = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+    queue = os.getenv("CELERY_TASK_QUEUE", "celery")
     app = Celery("document_qa_worker", broker=broker, backend=backend)
-    logger.info("Celery client broker=%s backend=%s", broker, backend)
+    app.conf.task_default_queue = queue
+    logger.info(
+        "Celery client broker=%s backend=%s queue=%s", broker, backend, queue
+    )
     return app
