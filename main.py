@@ -27,6 +27,11 @@ pages = [
         title="Search",
         icon="🔎",
     ),
+    st.Page(
+        "pages/30_Jobs.py",
+        title="Ingestion Jobs",
+        icon="🧩",
+    ),
 ]
 
 pg = st.navigation(pages, position="top")
