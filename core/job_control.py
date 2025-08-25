@@ -1,5 +1,5 @@
 import os
-from typing import Dict, List
+from typing import Dict, List, Set
 import redis
 import threading
 
@@ -94,3 +94,26 @@ def pop_all_tasks(job_id: str) -> List[str]:
         tasks = list(_tasks_fallback.get(job_id, set()))
         _tasks_fallback.pop(job_id, None)
         return tasks
+
+
+def all_jobs() -> List[str]:
+    """Return a sorted list of all known job IDs.
+
+    Job identifiers may be present in state, stats or task tracking. This
+    helper aggregates IDs from all sources, supporting both Redis-backed and
+    in-memory fallback storage.
+    """
+    r = _client()
+    if r:
+        job_ids: Set[str] = set()
+        for pattern in ("job:*:state", "job:*:stats", "job:*:tasks"):
+            for key in r.scan_iter(pattern):
+                parts = key.split(":")
+                if len(parts) >= 3:
+                    job_ids.add(parts[1])
+        return sorted(job_ids)
+    with _lock:
+        job_ids = set(_state_fallback.keys()) | set(_stats_fallback.keys()) | set(
+            _tasks_fallback.keys()
+        )
+        return sorted(job_ids)

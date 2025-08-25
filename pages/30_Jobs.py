@@ -1,7 +1,6 @@
-import uuid
 from pathlib import Path
 import streamlit as st
-from core.job_control import set_state, incr_stat
+from core.job_control import set_state, incr_stat, all_jobs
 from core.job_queue import push_pending
 from core.discovery_filters import should_skip
 from core.job_commands import pause_job, resume_job, cancel_job, stop_job
@@ -11,18 +10,12 @@ from ui.ingest_client import job_stats
 st.set_page_config(page_title="Ingestion Jobs", layout="wide")
 st.title("🧩 Ingestion Jobs")
 
-# --- Pick / create a job ---
-if "job_id" not in st.session_state:
-    st.session_state.job_id = uuid.uuid4().hex[:8]
-
-c1, c2 = st.columns([3, 1])
-with c1:
-    st.text_input("Job ID", key="job_id")
-with c2:
-    if st.button("New Job ID"):
-        st.session_state.job_id = uuid.uuid4().hex[:8]
-
-job_id = st.session_state.job_id
+# --- Select a job ---
+jobs = all_jobs()
+if not jobs:
+    st.info("No ingestion jobs found.")
+    st.stop()
+job_id = st.selectbox("Job", jobs)
 
 # --- Register paths under C:\ ---
 st.subheader("Register files")
