@@ -24,6 +24,7 @@ PAGES = [
     ("pages/2_index_viewer.py", "\U0001F4C2 File Index Viewer", "Index Viewer"),
     ("pages/3_duplicates_viewer.py", "Duplicate Files", "Duplicates"),
     ("pages/4_ingest_logs.py", "\U0001F4DD Ingestion Logs", "Ingest Logs"),
+    ("pages/30_Jobs.py", "\U0001F9E9 Ingestion Jobs", "Jobs"),
 ]
 
 
@@ -60,7 +61,7 @@ def test_navigation_links_and_titles():
     # Assert sidebar link labels
     sidebar_links = [link for _, _, link in PAGES]
     assert sidebar_links == [
-        "Chat", "Ingest", "Index Viewer", "Duplicates", "Ingest Logs"
+        "Chat", "Ingest", "Index Viewer", "Duplicates", "Ingest Logs", "Jobs"
     ]
 
     # Navigate to each page and verify title text
