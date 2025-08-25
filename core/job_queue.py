@@ -178,3 +178,75 @@ def celery_queue_len(queue: str | None = None) -> int:
         return int(client.llen(queue) or 0)
     except Exception:
         return 0
+
+
+def _keys(job_id: str) -> list[str]:
+    return [
+        f"job:{job_id}:pending",
+        f"job:{job_id}:active",
+        f"job:{job_id}:active_started",
+        f"job:{job_id}:needs_retry",
+        f"job:{job_id}:tasks",
+    ]
+
+
+def clear_job(job_id: str, *, terminate: bool = False) -> dict[str, int]:
+    """Revoke tasks and remove all job-related bookkeeping keys."""
+
+    from .celery_client import get_celery
+    from .job_control import pop_all_tasks
+
+    app = get_celery()
+    counts: dict[str, int] = {
+        "pending": 0,
+        "active": 0,
+        "active_started": 0,
+        "needs_retry": 0,
+        "tasks": 0,
+    }
+
+    # Revoke any tracked tasks and count them
+    task_ids = pop_all_tasks(job_id)
+    if task_ids:
+        for tid in task_ids:
+            app.control.revoke(tid, terminate=terminate)
+        counts["tasks"] = len(task_ids)
+
+    r = _client()
+    if r:
+        counts["pending"] = int(r.llen(k(job_id, "pending")) or 0)
+        counts["active"] = int(r.scard(k(job_id, "active")) or 0)
+        counts["active_started"] = int(r.hlen(k(job_id, "active_started")) or 0)
+        counts["needs_retry"] = int(r.llen(k(job_id, "needs_retry")) or 0)
+
+        pipe = r.pipeline()
+        for key in _keys(job_id):
+            pipe.delete(key)
+        pipe.execute()
+    else:
+        with _lock:
+            counts["pending"] = len(_pending_fallback.pop(job_id, []))
+            counts["active"] = len(_active_fallback.pop(job_id, set()))
+            counts["active_started"] = len(_active_started_fallback.pop(job_id, {}))
+            counts["needs_retry"] = len(_retry_fallback.pop(job_id, []))
+    return counts
+
+
+def list_jobs() -> list[str]:
+    """Return a sorted list of job identifiers with pending work."""
+
+    r = _client()
+    if r:
+        cursor = 0
+        jobs: set[str] = set()
+        while True:
+            cursor, keys = r.scan(cursor=cursor, match="job:*:pending", count=100)
+            for key in keys:
+                parts = key.split(":")
+                if len(parts) >= 3:
+                    jobs.add(parts[1])
+            if cursor == 0:
+                break
+        return sorted(jobs)
+    with _lock:
+        return sorted(_pending_fallback.keys())
