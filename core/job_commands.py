@@ -4,6 +4,7 @@ from .job_queue import (
     pop_all_retry,
     pop_all_active,
     add_retry,
+    pop_all_pending,
 )
 
 
@@ -31,9 +32,14 @@ def cancel_job(job_id: str) -> None:
     task_ids = pop_all_tasks(job_id)
     if task_ids:
         get_celery().control.revoke(task_ids, terminate=True, signal="SIGKILL")
+    pop_all_pending(job_id)
     for path in pop_all_active(job_id):
         add_retry(job_id, path)
 
 
 def stop_job(job_id: str) -> None:
     set_state(job_id, "stopping")
+    task_ids = pop_all_tasks(job_id)
+    if task_ids:
+        get_celery().control.revoke(task_ids, terminate=False)
+    pop_all_pending(job_id)

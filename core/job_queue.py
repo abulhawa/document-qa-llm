@@ -76,6 +76,20 @@ def pending_count(job_id: str) -> int:
         return len(_pending_fallback.get(job_id, []))
 
 
+def pop_all_pending(job_id: str) -> List[str]:
+    r = _client()
+    key = _pending_key(job_id)
+    if r:
+        items = r.lrange(key, 0, -1)
+        if items:
+            r.delete(key)
+        return items
+    with _lock:
+        items = list(_pending_fallback.get(job_id, []))
+        _pending_fallback.pop(job_id, None)
+        return items
+
+
 def add_active(job_id: str, path: str) -> None:
     r = _client()
     ts = int(_now())
@@ -159,8 +173,11 @@ def inflight(job_id: str) -> int:
     return active_count(job_id)
 
 def pending_len(job_id: str) -> int:
-    client = _client()
-    return int(client.llen(k(job_id, "pending")) or 0) if client else 0
+    r = _client()
+    if r:
+        return int(r.llen(_pending_key(job_id)) or 0)
+    with _lock:
+        return len(_pending_fallback.get(job_id, []))
 
 def retry_len(job_id: str) -> int:
     client = _client()

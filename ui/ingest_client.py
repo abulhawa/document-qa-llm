@@ -8,7 +8,7 @@ from typing import Iterable, Dict, Any
 
 from config import logger
 from core.celery_client import get_celery
-from core.job_queue import active_count, retry_count, celery_queue_len
+from core.job_queue import active_count, retry_count, celery_queue_len, pending_len
 from core.job_control import (
     set_state,
     get_state,
@@ -64,10 +64,7 @@ def job_stats(job: str = DEFAULT_JOB_ID) -> Dict[str, Any]:
     stats = get_stats(job)
     active = active_count(job)
     retry = retry_count(job)
-    registered = stats.get("registered", 0)
-    done = stats.get("done", 0)
-    failed = stats.get("failed", 0)
-    pending = max(registered - done - failed - active - retry, 0)
+    pending = pending_len(job)
     return {
         "job_id": job,
         "state": get_state(job),
