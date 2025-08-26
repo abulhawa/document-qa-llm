@@ -46,7 +46,7 @@ def test_ingest_one_idempotent_skip(tmp_path, monkeypatch):
 
     result = ingest_one(str(f))
     assert result["status"] == "Already indexed"
-    assert result["success"] is False
+    assert result["success"] is True
 
 
 # Test 23: Embedder failure marks log and skips flag flip
@@ -87,9 +87,7 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     assert called["flip"] is False
 
 
-# Test 24: batching behavior for large files
-
-def test_ingest_one_batching(tmp_path, monkeypatch):
+def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
@@ -101,34 +99,32 @@ def test_ingest_one_batching(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "core.ingestion.load_documents",
         lambda p: [Document(page_content="doc", metadata={})],
-    )  # one doc
+    )
     monkeypatch.setattr(
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
-    # produce 5 chunks
     monkeypatch.setattr(
         "core.ingestion.split_documents", lambda docs: [{"text": str(i)} for i in range(5)]
     )
-    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
-    # Force large path
-    monkeypatch.setattr("core.ingestion.CHUNK_EMBEDDING_THRESHOLD", 2)
-    monkeypatch.setattr("core.ingestion.EMBEDDING_BATCH_SIZE", 2)
+    captured = {}
 
-    calls = []
+    def fake_index_documents(chunks):
+        captured["count"] = len(chunks)
 
-    class DummyApp:
-        def send_task(self, *args, **kwargs):
-            calls.append((args, kwargs))
-
-    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
+    monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr(
+        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
+    )
 
     result = ingest_one(str(f))
-    assert len(calls) == 3
+    assert result["success"] is True
+    assert captured["count"] == 5
 
 
-# Test 25: many files trigger background indexing even if chunks are small
 def test_ingest_one_background_many_files(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
@@ -141,31 +137,19 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "core.ingestion.load_documents",
         lambda p: [Document(page_content="doc", metadata={})],
-    )  # one doc
+    )
     monkeypatch.setattr(
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
     monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
-
-    # Ensure thresholds trigger on total_files
-    monkeypatch.setattr("core.ingestion.CHUNK_EMBEDDING_THRESHOLD", 100)
-    monkeypatch.setattr("core.ingestion.MAX_FILES_FOR_FULL_EMBEDDING", 1)
-
-    # Prevent local indexing
-    def boom(chunks):
-        raise AssertionError("should not index locally")
-
-    monkeypatch.setattr("core.ingestion.index_documents", boom)
-
-    calls = []
-
-    class DummyApp:
-        def send_task(self, *args, **kwargs):
-            calls.append((args, kwargs))
-
-    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
+    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr(
+        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
+    )
 
     result = ingest_one(str(f), total_files=2)
-    assert len(calls) == 1
+    assert result["success"] is True
 

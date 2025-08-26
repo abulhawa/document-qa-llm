@@ -1,8 +1,7 @@
 import os
-import sys
+from langchain_core.documents import Document
 
-
-from core.ingestion import ingest
+from core.ingestion import ingest_one
 
 
 def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkeypatch):
@@ -12,24 +11,36 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
     file_a.write_text(content)
     file_b.write_text(content)
 
-    captured = {}
+    captured: dict[str, list[str]] = {}
 
     def fake_index_documents(chunks):
         for c in chunks:
             captured.setdefault(c["path"], []).append(c["id"])
 
+    monkeypatch.setattr(
+        "core.ingestion.load_documents",
+        lambda p: [Document(page_content=content, metadata={})],
+    )
+    monkeypatch.setattr(
+        "core.ingestion.preprocess_to_documents",
+        lambda docs_like, source_path, cfg, doc_type: docs_like,
+    )
+    monkeypatch.setattr(
+        "core.ingestion.split_documents", lambda docs: [{"text": content}]
+    )
     monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr(
+        "core.ingestion.is_duplicate_checksum", lambda c, p: False
+    )
+    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr(
+        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
+    )
 
-    class DummyApp:
-        def send_task(self, *args, **kwargs):
-            pass
-
-    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda checksum, path: False)
-    monkeypatch.setattr("core.ingestion.MAX_WORKERS", 1)
-
-    ingest([str(file_a), str(file_b)])
+    ingest_one(str(file_a))
+    ingest_one(str(file_b))
 
     assert len(captured) == 2
     paths = sorted(captured.keys())
