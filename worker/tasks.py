@@ -39,10 +39,6 @@ def host_to_container_path(host_path: str) -> str:
     return hp
 
 
-# Ensure worker also loads batch tasks (referenced by ingestion.py on large files)
-import core.ingestion_tasks  # registers "core.ingestion_tasks.index_and_embed_chunks" if present
-
-
 @celery_app.task(
     name="tasks.ingest_document",
     acks_late=True,
@@ -60,8 +56,29 @@ def ingest_document(host_path: str, mode: str = "reingest") -> dict:
 
     container_path = host_to_container_path(host_path)
     if mode == "ingest":
-        return ingest_one(host_path, container_path=container_path, force=False, replace=False, op="ingest",   source="celery")
+        return ingest_one(
+            host_path,
+            fs_path=container_path,
+            force=False,
+            replace=False,
+            op="ingest",
+            source="celery",
+        )
     if mode == "reembed":
-        return ingest_one(host_path, container_path=container_path, force=True,  replace=False, op="reembed",  source="celery")
+        return ingest_one(
+            host_path,
+            fs_path=container_path,
+            force=True,
+            replace=False,
+            op="reembed",
+            source="celery",
+        )
     # default: full reingest
-    return ingest_one(host_path, container_path=container_path, force=True,  replace=True,  op="reingest", source="celery")
+    return ingest_one(
+        host_path,
+        fs_path=container_path,
+        force=True,
+        replace=True,
+        op="reingest",
+        source="celery",
+    )
