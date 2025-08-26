@@ -59,6 +59,7 @@ def _io_guard():
 def ingest_one(
     path: str,
     *,
+    container_path: str,
     force: bool = False,
     replace: bool = True,
     total_files: int = 1,
@@ -75,16 +76,17 @@ def ingest_one(
     Returns:
       dict with keys: success, status, path, and optionally num_chunks
     """
-    logger.info(f"📥 Starting ingestion for: {path}")
     normalized_path = normalize_path(path)
+    io_path = normalize_path(container_path)
+    logger.info(f"📥 Starting ingestion for: {path}")
     ext = os.path.splitext(normalized_path)[1].lower().lstrip(".")
     log = IngestLogEmitter(path=normalized_path, op=op, source=source)
     with log:
-        checksum = compute_checksum(normalized_path)
-        size_bytes = get_file_size(normalized_path)
+        checksum = compute_checksum(io_path)
+        size_bytes = get_file_size(io_path)
         log.set(
             checksum=checksum,
-            path_hash=hash_path(normalized_path),
+            path_hash=hash_path(io_path),
             bytes=size_bytes,
             size=format_file_size(size_bytes),
         )
@@ -104,16 +106,16 @@ def ingest_one(
             logger.info(f"♻️ Duplicate file detected: {normalized_path}")
             is_dup = True
 
-        timestamps = get_file_timestamps(normalized_path)
+        timestamps = get_file_timestamps(io_path)
         created = timestamps.get("created")
         modified = timestamps.get("modified")
         # Use local timezone for indexing timestamp
         indexed_at = datetime.now().astimezone().isoformat()
 
-        logger.info(f"📄 Loading: {normalized_path}")
+        logger.info(f"📄 Loading: {normalized_path} (fs: {io_path})")
         try:
             with _io_guard():
-                docs = load_documents(normalized_path)
+                docs = load_documents(io_path)
         except Exception as e:
             logger.error(f"❌ Failed to load document: {e}")
             log.fail(stage="load", error_type=e.__class__.__name__, reason=str(e))
