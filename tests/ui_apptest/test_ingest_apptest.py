@@ -40,25 +40,13 @@ def test_ingest_success_and_progress(monkeypatch):
     monkeypatch.setattr("ui.ingestion_ui.run_file_picker", lambda: ["/tmp/a.txt"])
     monkeypatch.setattr("ui.ingestion_ui.run_folder_picker", lambda: [])
 
-    progress_updates = []
+    calls = {}
 
-    def fake_ingest(paths, progress_callback):
-        progress_callback(0, 2, 0)
-        progress_updates.append(0)
-        progress_callback(1, 2, 0)
-        progress_updates.append(0.5)
-        progress_callback(2, 2, 0)
-        progress_updates.append(1)
-        return [
-            {
-                "path": paths[0],
-                "success": True,
-                "status": "ok",
-                "num_chunks": 1,
-            }
-        ]
+    def fake_enqueue(paths, mode="ingest"):
+        calls["paths"] = paths
+        return ["t1"]
 
-    monkeypatch.setattr("core.ingestion.ingest", fake_ingest)
+    monkeypatch.setattr("ui.ingest_client.enqueue_paths", fake_enqueue)
 
     at = AppTest.from_file("pages/1_ingest.py", default_timeout=10)
     at.run()
@@ -68,11 +56,8 @@ def test_ingest_success_and_progress(monkeypatch):
 
     # Success notice and log row
     assert "Found 1 path" in at.success[0].value
-    assert "Indexed" in at.success[1].value
+    assert "Queued 1 file(s) for ingestion." in at.info[0].value
     assert len(at.dataframe[0].value) == 1
-
-    # Progress callback invoked for 0 -> 50 -> 100%
-    assert progress_updates == [0, 0.5, 1]
 
     def find_progress(node):
         elems = []
@@ -86,3 +71,4 @@ def test_ingest_success_and_progress(monkeypatch):
 
     progress_elems = find_progress(at._tree[0])
     assert progress_elems[0].value == 100
+    assert calls["paths"] == ["/tmp/a.txt"]

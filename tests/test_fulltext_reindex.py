@@ -20,13 +20,11 @@ def test_reindex_fulltext_from_chunks(tmp_path, monkeypatch):
     f.write_text("raw")
 
     monkeypatch.setattr(
-        opensearch_utils,
-        "load_documents",
+        "core.file_loader.load_documents",
         lambda p: [Document(page_content="one"), Document(page_content="two")],
     )
     monkeypatch.setattr(
-        opensearch_utils,
-        "preprocess_to_documents",
+        "core.document_preprocessor.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: [
             Document(page_content="A"),
             Document(page_content="B"),

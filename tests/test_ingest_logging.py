@@ -1,4 +1,5 @@
 from core import ingestion
+from langchain_core.documents import Document
 
 
 class DummyClient:
@@ -46,18 +47,26 @@ def test_duplicate_files_are_indexed_and_logged(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "core.ingestion.is_duplicate_checksum", lambda checksum, path: True
     )
+    monkeypatch.setattr(
+        "core.ingestion.load_documents",
+        lambda p: [Document(page_content="doc", metadata={})],
+    )
+    monkeypatch.setattr(
+        "core.ingestion.preprocess_to_documents",
+        lambda docs_like, source_path, cfg, doc_type: docs_like,
+    )
+    monkeypatch.setattr(
+        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+    )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
     monkeypatch.setattr(
         "core.ingestion.set_has_embedding_true_by_ids",
         lambda ids: (len(ids), []),
     )
-
-    class DummyApp:
-        def send_task(self, *args, **kwargs):
-            pass
-
-    monkeypatch.setattr("core.ingestion.celery_app", DummyApp())
+    monkeypatch.setattr(
+        "core.ingestion.index_fulltext_document", lambda doc: None
+    )
 
     result = ingestion.ingest_one(str(file_path))
 
