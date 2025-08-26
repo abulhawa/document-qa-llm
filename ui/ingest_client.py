@@ -1,7 +1,7 @@
 from typing import List
 from ui.celery_client import get_ui_celery
 
-def enqueue_paths(paths: List[str], *, mode: str = "reingest") -> List[str]:
+def enqueue_paths(paths: List[str], *, mode: str = "ingest") -> List[str]:
     """
     mode: "reingest" (full re-index + re-embed) or "reembed" (re-embed-only-ish).
     """
