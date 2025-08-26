@@ -14,5 +14,5 @@ app.conf.update(
     task_time_limit=1800,
     task_soft_time_limit=1500,
     task_default_queue="ingest",
-    include=["worker.tasks", "core.ingestion_tasks"],
+    include=["worker.tasks"],
 )
