@@ -10,6 +10,7 @@ from tracing import start_span, CHAIN, INPUT_VALUE, OUTPUT_VALUE, STATUS_OK
 
 st.set_page_config(page_title="Ingest Documents", layout="wide")
 st.title("📥 Ingest Documents")
+st.session_state.setdefault("ingest_tasks", [])
 
 col1, col2 = st.columns([1, 1], gap="small")
 
@@ -76,8 +77,8 @@ if selected_files:
         span.set_attribute(OUTPUT_VALUE, f"queued {len(task_ids)}")
         span.set_status(STATUS_OK)
 
-    # Render a small task panel so users can refresh/clear task states
-    should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
-    if should_rerun:
-        st.session_state["ingest_tasks"] = updated
-        st.rerun()
+# Render a small task panel so users can refresh/clear task states
+should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
+if should_rerun:
+    st.session_state["ingest_tasks"] = updated
+    st.rerun()
