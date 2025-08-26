@@ -2,8 +2,10 @@
 import streamlit as st
 import pandas as pd
 
-from core.ingestion import ingest
+from ui.ingest_client import enqueue_paths
 from ui.ingestion_ui import run_file_picker, run_folder_picker
+from ui.task_status import add_records
+from components.task_panel import render_task_panel
 from tracing import start_span, CHAIN, INPUT_VALUE, OUTPUT_VALUE, STATUS_OK
 
 st.set_page_config(page_title="Ingest Documents", layout="wide")
@@ -53,66 +55,29 @@ if selected_files:
 
         span.set_attribute(INPUT_VALUE, preview)
 
-        # Ingest now does: load → split → enqueue Celery batches (OS + Qdrant in background)
-        results = ingest(selected_files, progress_callback=update_progress)
+        # Enqueue ingestion to the worker; progress bar shows "queued" state only.
+        task_ids = enqueue_paths(selected_files)
+        status_line.info(f"Queued {len(task_ids)} file(s) for ingestion.")
 
-        successes = [r for r in results if r.get("success")]
-        failures = [
-            (r.get("path"), r.get("status")) for r in results if not r.get("success")
-        ]
-        # Categorise successful ingests by whether they were indexed immediately or
-        # queued for background processing.
-        direct_successes = [
-            r
-            for r in successes
-            if "background" not in r.get("status", "").lower()
-            and "partially" not in r.get("status", "").lower()
-        ]
-        queued_successes = [
-            r
-            for r in successes
-            if "background" in r.get("status", "").lower()
-            or "partially" in r.get("status", "").lower()
-        ]
-
-        span.set_attribute("indexed_files", len(successes))
-        span.set_attribute("indexed_files_direct", len(direct_successes))
-        span.set_attribute("indexed_files_queued", len(queued_successes))
-        span.set_attribute("failed_files", len(failures))
-        span.set_attribute("failed_files_details", str(failures))
-        span.set_attribute(
-            OUTPUT_VALUE,
-            f"{len(direct_successes)} direct, {len(queued_successes)} queued, {len(failures)} failed",
+        # Persist tasks in session (path -> task_id); UI polling happens via task panel
+        st.session_state["ingest_tasks"] = add_records(
+            st.session_state.get("ingest_tasks"),
+            selected_files,
+            task_ids,
         )
+
+        # Mark foreground progress as "all queued"
+        progress_bar.progress(1.0)
+        eta_display.text(f"Queued {len(selected_files)} / {len(selected_files)} files.")
+
+        # Tracing: record what we actually did in async mode
+        span.set_attribute("files_queued", len(task_ids))
+        span.set_attribute("task_ids_preview", str(task_ids[:5]))
+        span.set_attribute(OUTPUT_VALUE, f"queued {len(task_ids)}")
         span.set_status(STATUS_OK)
 
-    # Foreground complete message (handles direct vs background indexing)
-    total = len(results)
-    direct_count = len(direct_successes)
-    queued_count = len(queued_successes)
-    if direct_count and queued_count:
-        status_line.success(
-            f"✅ Indexed {direct_count} file(s) immediately and queued {queued_count} / {total} for background indexing."
-        )
-    elif direct_count:
-        status_line.success(f"✅ Indexed {direct_count} / {total} file(s) immediately.")
-    elif queued_count:
-        status_line.success(
-            f"✅ Queued {queued_count} / {total} file(s) for background indexing."
-        )
-    else:
-        status_line.warning("⚠️ No files were indexed.")
-
-    # Summary table for this run only (no persistence)
-    # Shows status message from ingest: e.g., "Queued for background indexing (N batches)"
-    summary_df = pd.DataFrame(
-        {
-            "File": [r.get("path", "") for r in results],
-            "Status": [
-                ("✅" if r.get("success") else "❌") + " " + r.get("status", "")
-                for r in results
-            ],
-            "Num. Chunks": [r.get("num_chunks", 0) for r in results],
-        }
-    )
-    status_table.dataframe(summary_df, height=300)
+    # Render a small task panel so users can refresh/clear task states
+    should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
+    if should_rerun:
+        st.session_state["ingest_tasks"] = updated
+        st.rerun()

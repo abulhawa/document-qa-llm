@@ -18,8 +18,9 @@ from utils.qdrant_utils import (
     delete_vectors_by_path_checksum,
 )
 from utils.file_utils import format_file_size
-from core.ingestion import ingest
-from core.reembed import reembed_paths
+from ui.ingest_client import enqueue_paths
+from ui.task_status import add_records
+from components.task_panel import render_task_panel
 from config import logger
 
 st.set_page_config(page_title="File Index Viewer", layout="wide")
@@ -103,9 +104,9 @@ def build_table_data(files: List[Dict[str, Any]]) -> pd.DataFrame:
 def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     def _reset_page() -> None:
         st.session_state["index_page"] = 0
-        st.session_state["file_index_table_nonce"] = st.session_state.get(
-            "file_index_table_nonce", 0
-        ) + 1
+        st.session_state["file_index_table_nonce"] = (
+            st.session_state.get("file_index_table_nonce", 0) + 1
+        )
 
     # Filters
     colf1, colf2, colf3 = st.columns([3, 2, 1], vertical_alignment="bottom")
@@ -209,10 +210,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
 
     # Now that counts exist (if needed), apply the discrepancy filter
     if only_missing:
-        fdf = fdf[
-            fdf["OpenSearch Chunks"].fillna(0)
-            != fdf["Qdrant Chunks"].fillna(0)
-        ]
+        fdf = fdf[fdf["OpenSearch Chunks"].fillna(0) != fdf["Qdrant Chunks"].fillna(0)]
 
     # Sorting controls for the full dataset
     sort_cols = list(fdf.columns)
@@ -279,9 +277,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                 ),
             )
         with info_col:
-            st.markdown(
-                f"**Page {st.session_state.index_page + 1} of {total_pages}**"
-            )
+            st.markdown(f"**Page {st.session_state.index_page + 1} of {total_pages}**")
         with col_next:
             st.button(
                 "Next ▶",
@@ -423,15 +419,25 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                 else:
                     try:
                         with st.spinner(
-                            f"Re-embedding chunks for {len(selected_paths)} file(s)…"
+                            f"Queuing re-embed for {len(selected_paths)} file(s)…"
                         ):
-                            reembed_paths(selected_paths)
-                        status, status_msg = "success", "Re-embedding complete."
+                            # Reuse ingestion path in the worker; it handles re-embedding
+                            task_ids = enqueue_paths(selected_paths)
+                            st.session_state["ingest_tasks"] = add_records(
+                                st.session_state.get("ingest_tasks"),
+                                selected_paths,
+                                task_ids,
+                            )
+
+                        status, status_msg = (
+                            "success",
+                            f"Queued {len(task_ids)} file(s) for ingestion.",
+                        )
                         load_indexed_files.clear()
                         st.rerun()
                     except Exception as e:
-                        logger.exception(f"Re-embed failed: {e}")
-                        status, status_msg = "error", f"Re-embed failed: {e}"
+                        logger.exception(f"Re-embed enqueue failed: {e}")
+                        status, status_msg = "error", f"Re-embed enqueue failed: {e}"
 
         with c4:
             if st.button("🔄 Reingest selected", use_container_width=True):
@@ -442,9 +448,13 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         with st.spinner(
                             f"Queuing reingestion for {len(selected_paths)} file(s)…"
                         ):
-                            ingest(
-                                selected_paths, force=True, op="reingest", source="viewer"
+                            task_ids = enqueue_paths(selected_paths)
+                            st.session_state["ingest_tasks"] = add_records(
+                                st.session_state.get("ingest_tasks"),
+                                selected_paths,
+                                task_ids,
                             )
+
                         status, status_msg = (
                             "success",
                             f"Queued reingestion for {len(selected_paths)} file(s).",
@@ -452,8 +462,8 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         load_indexed_files.clear()
                         st.rerun()
                     except Exception as e:
-                        logger.exception(f"Reingest failed: {e}")
-                        status, status_msg = "error", f"Reingest failed: {e}"
+                        logger.exception(f"Reingest enqueue failed: {e}")
+                        status, status_msg = "error", f"Reingest enqueue failed: {e}"
 
         with c5:
             if st.button("🗑️ Delete selected", use_container_width=True):
@@ -598,7 +608,10 @@ def run_batch_actions(fdf: pd.DataFrame, selected_df: pd.DataFrame) -> None:
     try:
         if action == "Reingest":
             with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
-                ingest(paths, force=True, op="reingest", source="viewer")
+                task_ids = enqueue_paths(paths)
+                st.session_state["ingest_tasks"] = add_records(
+                    st.session_state.get("ingest_tasks"), paths, task_ids
+                )
             st.success(f"Queued reingestion for {len(paths)} file(s).")
         elif action == "Delete":
             with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
@@ -642,8 +655,11 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c1.button("🔄 Reingest File", use_container_width=True):
         try:
-            ingest([row["Path"]], force=True, op="reingest", source="viewer")
-            st.success(f"Reingestion triggered for: {row[name_col]}")
+            task_ids = enqueue_paths([row["Path"]])
+            st.session_state["ingest_tasks"] = add_records(
+                st.session_state.get("ingest_tasks"), [row["Path"]], task_ids
+            )
+            st.success(f"Reingestion queued for: {row[name_col]}")
             load_indexed_files.clear()
         except Exception as e:
             logger.exception(f"Row reingest failed: {e}")
@@ -673,6 +689,7 @@ def render_empty_state_for_files() -> None:
             st.rerun()
     st.stop()
 
+
 try:
     files = _get_files_fast()  # ← the only line that touches OpenSearch
 except NotFoundError as e:
@@ -698,3 +715,9 @@ fdf, selected_df = render_filtered_table(df)
 run_batch_actions(fdf, selected_df)
 st.divider()
 render_row_actions(fdf)
+
+# Task panel at bottom (polls Celery and lets users clear finished)
+should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
+if should_rerun:
+    st.session_state["ingest_tasks"] = updated
+    st.rerun()
