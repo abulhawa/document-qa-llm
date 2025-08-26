@@ -57,7 +57,7 @@ if selected_files:
         span.set_attribute(INPUT_VALUE, preview)
 
         # Enqueue ingestion to the worker; progress bar shows "queued" state only.
-        task_ids = enqueue_paths(selected_files)
+        task_ids = enqueue_paths(selected_files, mode="ingest")
         status_line.info(f"Queued {len(task_ids)} file(s) for ingestion.")
 
         # Persist tasks in session (path -> task_id); UI polling happens via task panel

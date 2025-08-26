@@ -59,5 +59,9 @@ def ingest_document(host_path: str, mode: str = "reingest") -> dict:
     from core.ingestion import ingest_one  # heavy imports stay worker-side
 
     container_path = host_to_container_path(host_path)
-    return ingest_one(host_path, container_path=container_path, force=True, replace=(mode=="reingest"), op=mode, source="celery")
-
+    if mode == "ingest":
+        return ingest_one(host_path, container_path=container_path, force=False, replace=False, op="ingest",   source="celery")
+    if mode == "reembed":
+        return ingest_one(host_path, container_path=container_path, force=True,  replace=False, op="reembed",  source="celery")
+    # default: full reingest
+    return ingest_one(host_path, container_path=container_path, force=True,  replace=True,  op="reingest", source="celery")
