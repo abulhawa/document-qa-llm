@@ -288,7 +288,6 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         raise
 
     # Examine response and log accordingly
-    print(resp)
     result = resp.get("result")                # expected: "created"
     shards = resp.get("_shards", {}) or {}
     failed = int(shards.get("failed", 0))
