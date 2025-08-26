@@ -16,6 +16,14 @@ def render_task_panel(records: List[Dict[str, Any]]) -> Tuple[bool, List[Dict[st
     ids = [r["task_id"] for r in records]
     states = fetch_states(ids)
 
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 Refresh task status"):
+            return True, records
+    with col2:
+        if st.button("🧹 Clear finished"):
+            return True, clear_finished(records, states)
+
     for r in records:
         tid = r["task_id"]
         state = states.get(tid, {}).get("state", "UNKNOWN")
@@ -27,12 +35,12 @@ def render_task_panel(records: List[Dict[str, Any]]) -> Tuple[bool, List[Dict[st
             if fields:
                 st.caption("  ↳ " + ", ".join(f"{k}={v}" for k, v in fields.items()))
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 Refresh task status"):
+    col3, col4 = st.columns(2)
+    with col3:
+        if st.button("🔄 Refresh task status", key="bot1"):
             return True, records
-    with col2:
-        if st.button("🧹 Clear finished"):
+    with col4:
+        if st.button("🧹 Clear finished", key="bot2"):
             return True, clear_finished(records, states)
 
     return False, records
