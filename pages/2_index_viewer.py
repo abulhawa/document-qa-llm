@@ -422,7 +422,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                             f"Queuing re-embed for {len(selected_paths)} file(s)…"
                         ):
                             # Reuse ingestion path in the worker; it handles re-embedding
-                            task_ids = enqueue_paths(selected_paths)
+                            task_ids = enqueue_paths(selected_paths, mode="reembed")
                             st.session_state["ingest_tasks"] = add_records(
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
@@ -448,7 +448,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         with st.spinner(
                             f"Queuing reingestion for {len(selected_paths)} file(s)…"
                         ):
-                            task_ids = enqueue_paths(selected_paths)
+                            task_ids = enqueue_paths(selected_paths, mode="reingest")
                             st.session_state["ingest_tasks"] = add_records(
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
@@ -608,7 +608,7 @@ def run_batch_actions(fdf: pd.DataFrame, selected_df: pd.DataFrame) -> None:
     try:
         if action == "Reingest":
             with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
-                task_ids = enqueue_paths(paths)
+                task_ids = enqueue_paths(paths, mode="reingest")
                 st.session_state["ingest_tasks"] = add_records(
                     st.session_state.get("ingest_tasks"), paths, task_ids
                 )
@@ -655,7 +655,7 @@ def render_row_actions(fdf: pd.DataFrame) -> None:
 
     if c1.button("🔄 Reingest File", use_container_width=True):
         try:
-            task_ids = enqueue_paths([row["Path"]])
+            task_ids = enqueue_paths([row["Path"]], mode="reingest")
             st.session_state["ingest_tasks"] = add_records(
                 st.session_state.get("ingest_tasks"), [row["Path"]], task_ids
             )

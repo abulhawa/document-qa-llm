@@ -27,7 +27,19 @@ import core.ingestion_tasks  # registers "core.ingestion_tasks.index_and_embed_c
     retry_backoff=True,
     retry_kwargs={"max_retries": 5},
 )
-def ingest_document(host_path: str) -> dict:
+def ingest_document(host_path: str, mode: str = "reingest") -> dict:
+    """
+    mode:
+      - "reingest": force + replace (delete old OS/Qdrant entries first)
+      - "reembed": force + no replace (re-process & re-embed without pre-deleting)
+    """
     from core.ingestion import ingest_one  # heavy imports stay worker-side
     container_path = host_to_container_path(host_path)
-    return ingest_one(container_path, source="celery")
+    if mode == "reembed":
+        return ingest_one(
+            container_path, force=True, replace=False, op="reembed", source="celery"
+        )
+    # default: full reingest
+    return ingest_one(
+        container_path, force=True, replace=True, op="reingest", source="celery"
+    )
