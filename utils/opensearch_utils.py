@@ -13,8 +13,6 @@ from config import (
     logger,
 )
 
-from core.file_loader import load_documents
-from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
 from utils.file_utils import (
     hash_path,
     compute_checksum,
@@ -290,6 +288,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         raise
 
     # Examine response and log accordingly
+    print(resp)
     result = resp.get("result")                # expected: "created"
     shards = resp.get("_shards", {}) or {}
     failed = int(shards.get("failed", 0))
@@ -419,6 +418,8 @@ def list_files_missing_fulltext(size: int = 1000) -> List[Dict[str, Any]]:
 
 def reindex_fulltext_from_chunks(paths: Iterable[str]) -> int:
     """Rebuild full-text documents for the given file paths by reloading and preprocessing the source files."""
+    from core.file_loader import load_documents
+    from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
 
     unique_paths = [p for p in {p for p in paths if p}]
     if not unique_paths:

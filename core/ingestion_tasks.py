@@ -1,4 +1,4 @@
-from celery import shared_task
+from worker.celery_worker import app as celery_app
 from typing import List, Dict, Any
 from config import logger
 from utils.file_utils import normalize_path
@@ -6,13 +6,13 @@ from utils.opensearch_utils import index_documents, set_has_embedding_true_by_id
 from utils import qdrant_utils
 
 
-@shared_task(
-    name="core.ingestion_tasks.index_and_embed_chunks",
+@celery_app.task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=10,
+    name="core.ingestion_tasks.index_and_embed_chunks",
+    acks_late=True,
+    autoretry_for=(Exception,),
     retry_backoff=True,
-    retry_backoff_max=60,
+    retry_kwargs={"max_retries": 5},
 )
 def index_and_embed_chunks(self, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """

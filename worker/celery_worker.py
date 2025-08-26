@@ -1,11 +1,18 @@
-from celery import Celery
 import os
+from celery import Celery
 
-# Connect to Redis (host will be the docker-compose service name)
-broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-backend_url = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-app = Celery("document_qa_worker", broker=broker_url, backend=backend_url)
-app.config_from_object("config")
+app = Celery(
+    "docqa",
+    broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
+    backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1"),
+)
 
-# Autodiscover tasks from your main project
-app.autodiscover_tasks(["core"], related_name="ingestion_tasks")
+app.conf.update(
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    broker_transport_options={"visibility_timeout": 3600},
+    task_time_limit=1800,
+    task_soft_time_limit=1500,
+    task_default_queue="ingest",
+    include=["worker.tasks", "core.ingestion_tasks"],
+)
