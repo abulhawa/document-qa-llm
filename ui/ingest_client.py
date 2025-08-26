@@ -1,9 +1,10 @@
 from typing import List
 from ui.celery_client import get_ui_celery
 
-def enqueue_paths(paths: List[str]) -> List[str]:
+def enqueue_paths(paths: List[str], *, mode: str = "reingest") -> List[str]:
+    """
+    mode: "reingest" (full re-index + re-embed) or "reembed" (re-embed-only-ish).
+    """
     app = get_ui_celery()
-    return [
-        app.signature("tasks.ingest_document", kwargs={"host_path": p}).apply_async().id
-        for p in paths
-    ]
+    sig = app.signature("tasks.ingest_document")
+    return [sig.clone(kwargs={"host_path": p, "mode": mode}).apply_async().id for p in paths]
