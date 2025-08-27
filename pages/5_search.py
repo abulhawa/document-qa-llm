@@ -6,9 +6,9 @@ from utils.time_utils import format_timestamp, format_date
 from utils.fulltext_search import search_documents
 from utils.opensearch_utils import (
     list_files_missing_fulltext,
-    reindex_fulltext_from_chunks,
 )
-
+from ui.ingest_client import enqueue_paths
+from ui.task_status import add_records
 
 @st.cache_data(ttl=180, show_spinner=False)
 def cached_search_documents(**params):
@@ -87,11 +87,21 @@ if st.checkbox("Show files missing from full-text index"):
         st.success("All indexed files are present in the full-text index.")
     else:
         st.warning(f"{len(missing_files)} file(s) missing from full-text index:")
-        for f in missing_files:
-            st.code(f.get("path", ""), language="")
-        if st.button("Reindex missing files", key="reindex_missing"):
-            reindex_fulltext_from_chunks([f.get("path") for f in missing_files])
-            st.success("Reindexed missing files.")
+        paths = [f.get("path", "") for f in missing_files if f.get("path")]
+        for p in paths:
+            st.code(p, language="")
+
+        if st.button("Rebuild full-text (reingest)", key="reindex_missing"):
+            with st.spinner(f"Queuing reingest for {len(paths)} file(s)…"):
+                task_ids = enqueue_paths(paths, mode="reingest")
+                st.session_state["ingest_tasks"] = add_records(
+                    st.session_state.get("ingest_tasks"),
+                    paths,
+                    task_ids,
+                    action="reingest",
+                )
+            st.success(f"Queued reingest for {len(paths)} file(s).")
+            # st.rerun()
 
 
 search_col, sort_col = st.columns([4, 1], vertical_alignment="bottom")

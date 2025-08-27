@@ -33,16 +33,14 @@ class IngestLogEmitter:
         self._start = time.time()
         # Record attempt time in the local timezone
         self.doc["attempt_at"] = datetime.now().astimezone().isoformat()
-        try:
-            ensure_ingest_log_index_exists()
-        except Exception as e:  # best effort
-            logger.warning(f"ensure_ingest_log_index_exists failed: {e}")
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
         # If an exception bubbled up without calling fail/done
         if exc and not self._finished:
-            self.fail(stage="unknown", error_type=exc.__class__.__name__, reason=str(exc))
+            self.fail(
+                stage="unknown", error_type=exc.__class__.__name__, reason=str(exc)
+            )
 
     def set(self, **fields: Any) -> None:
         self.doc.update(fields)

@@ -22,7 +22,6 @@ from utils.opensearch_utils import (
     is_file_up_to_date,
     is_duplicate_checksum,
     index_documents,
-    set_has_embedding_true_by_ids,
     index_fulltext_document,
 )
 from utils.ingest_logging import IngestLogEmitter
@@ -57,8 +56,7 @@ def ingest_one(
     Ingest a single file path:
       1) load + split locally
       2) build chunk metadata (UUIDv5 ids)
-      3) SMALL workloads  -> do ALL locally (OS + embed + Qdrant + flag flip)
-         LARGE workloads -> queue ALL to Celery (OS + embed + Qdrant + flag flip)
+      3) workload -> queue to Celery (OS + full text + embed + Qdrant)
 
     Returns:
       dict with keys: success, status, path, and optionally num_chunks
@@ -106,7 +104,7 @@ def ingest_one(
         except Exception as e:
             logger.error(f"❌ Failed to load document: {e}")
             log.fail(stage="load", error_type=e.__class__.__name__, reason=str(e))
-            return {"success": False, "status": "Load failed", "path": normalized_path}
+            raise RuntimeError(f"Failed to load document {normalized_path}: {e}") from e
 
         logger.info(f"🧼 Preprocessing {len(docs)} documents")
         try:
@@ -128,7 +126,7 @@ def ingest_one(
             logger.warning(f"⚠️ No valid content found in: {normalized_path}")
             log.done(status="No valid content found")
             return {
-                "success": False,
+                "success": True,
                 "status": "No valid content found",
                 "path": normalized_path,
             }
@@ -140,14 +138,11 @@ def ingest_one(
             "filetype": ext,
             "modified_at": modified,
             "created_at": created,
+            "indexed_at": indexed_at,
             "size_bytes": size_bytes,
             "checksum": checksum,
             "text_full": full_text,
         }
-        try:
-            index_fulltext_document(full_doc)
-        except Exception as e:
-            logger.warning(f"Full-text indexing failed: {e}")
 
         logger.info("✂️ Splitting document into chunks")
         try:
@@ -155,15 +150,18 @@ def ingest_one(
         except Exception as e:
             logger.error(f"❌ Failed to split document: {e}")
             log.fail(stage="extract", error_type=e.__class__.__name__, reason=str(e))
-            return {"success": False, "status": "Split failed", "path": normalized_path}
+            raise RuntimeError(
+                f"Failed to split document {normalized_path}: {e}"
+            ) from e
 
         if not chunks:
             logger.warning(f"⚠️ No chunks generated from: {normalized_path}")
             log.done(status="No valid content found")
             return {
-                "success": False,
+                "success": True,
                 "status": "No valid content found",
                 "path": normalized_path,
+                "num_chunks": 0,
             }
 
         logger.info(f"🧩 Split into {len(chunks)} chunks")
@@ -183,27 +181,46 @@ def ingest_one(
         chunk["page"] = chunk.get("page", None)
         # position approx. (0..100)
         chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)
-        chunk["has_embedding"] = False  # we flip to True below after Qdrant upsert
 
     # Optional: on force+replace, purge existing entries
     if force and replace:
-        try:
-            from utils.opensearch_utils import delete_files_by_path_checksum
-            from utils.qdrant_utils import delete_vectors_by_path_checksum
+        from utils.opensearch_utils import (
+            delete_chunks_by_path,
+            delete_fulltext_by_path,
+            get_chunk_ids_by_path,
+        )
+        from utils.qdrant_utils import delete_vectors_by_ids
 
-            logger.info(
-                f"♻️ Reingest replace: deleting existing docs/vectors for checksum={checksum}"
-            )
-            try:
-                delete_files_by_path_checksum([(normalized_path, checksum)])
-            except Exception as e:
-                logger.warning(f"OpenSearch pre-delete failed: {e}")
-            try:
-                delete_vectors_by_path_checksum([(normalized_path, checksum)])
-            except Exception as e:
-                logger.warning(f"Qdrant pre-delete failed: {e}")
+        logger.info(
+            f"♻️ Reingest replace: deleting existing docs/vectors for file={normalized_path}"
+        )
+
+        # 1) Fetch existing chunk IDs from OS for this file (to delete vectors precisely)
+        try:
+            ids = get_chunk_ids_by_path(normalized_path)
         except Exception as e:
-            logger.warning(f"Pre-delete imports failed: {e}")
+            logger.warning(f"List chunk IDs failed for {normalized_path}: {e}")
+            ids = []
+        # 2) Delete vectors in Qdrant by IDs (safe if ids is empty)
+        try:
+            if ids:
+                delete_vectors_by_ids(ids)
+        except Exception as e:
+            logger.warning(f"Qdrant delete failed for {normalized_path}: {e}")
+
+        # 3) Delete chunk docs from OS
+        try:
+            delete_chunks_by_path(normalized_path)
+        except Exception as e:
+            logger.warning(f"OpenSearch chunk delete failed for {normalized_path}: {e}")
+
+        # 4) Delete full-text doc(s) from OS
+        try:
+            delete_fulltext_by_path(normalized_path)
+        except Exception as e:
+            logger.warning(
+                f"OpenSearch full-text delete failed for {normalized_path}: {e}"
+            )
 
     try:
         logger.info(f"Indexing {len(chunks)} chunks to OpenSearch.")
@@ -215,37 +232,39 @@ def ingest_one(
             error_type=e.__class__.__name__,
             reason=str(e),
         )
-        return {
-            "success": False,
-            "status": "Local indexing failed",
-            "path": normalized_path,
-            "num_chunks": len(chunks),
-        }
+        raise RuntimeError(
+            f"OpenSearch chunk indexing failed for {normalized_path}: {e}"
+        ) from e
+
+    try:
+        index_fulltext_document(full_doc)
+    except Exception as e:
+        logger.warning(f"OpenSearch full-text indexing failed: {e}")
+        log.fail(
+            stage="index_fulltext",
+            error_type=e.__class__.__name__,
+            reason=str(e),
+        )
+        raise RuntimeError(
+            f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
+        ) from e
 
     try:
         logger.info(f"Embedding + upserting {len(chunks)} chunks to Qdrant.")
         ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
         if not ok:
             raise RuntimeError("Qdrant upsert returned falsy")
-
-        ids = [c["id"] for c in chunks]
-        updated, _errs = set_has_embedding_true_by_ids(ids)
-
-        final_status = "Duplicate & Indexed" if is_dup else "Success"
-        log.done(status=final_status)
-        return {
-            "success": True,
-            "num_chunks": len(chunks),
-            "path": normalized_path,
-            "status": final_status,
-        }
     except Exception as e:
-        logger.error(f"❌ Local pipeline failed: {e}")
-        stage = "index_vec" if "qdrant" in str(e).lower() else "flip_flag"
+        logger.error(f"❌ Vector indexing failed: {e}")
+        stage = "index_vec"
         log.fail(stage=stage, error_type=e.__class__.__name__, reason=str(e))
-        return {
-            "success": False,
-            "status": "Local indexing failed",
-            "path": normalized_path,
-            "num_chunks": len(chunks),
-        }
+        raise RuntimeError(f"Vector indexing failed for {normalized_path}: {e}") from e
+
+    final_status = "Duplicate & Indexed" if is_dup else "Success"
+    log.done(status=final_status)
+    return {
+        "success": True,
+        "num_chunks": len(chunks),
+        "path": normalized_path,
+        "status": final_status,
+    }
