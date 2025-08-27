@@ -31,7 +31,6 @@ def test_is_file_up_to_date_does_not_match_similar_paths(monkeypatch):
     assert osu.is_file_up_to_date(checksum, "/foo/bar.txt") is False
 
 
-
 def test_ensure_index_exists_creates_mapping(monkeypatch):
     created = {}
 
@@ -50,7 +49,6 @@ def test_ensure_index_exists_creates_mapping(monkeypatch):
     osu.ensure_index_exists()
     assert created["index"] == osu.OPENSEARCH_INDEX
     assert "mappings" in created["body"]
-
 
 
 def test_index_documents_bulk(monkeypatch):
@@ -92,20 +90,3 @@ def test_index_documents_update(monkeypatch):
     action = recorded["actions"][0]
     assert action["_op_type"] == "update"
     assert action["doc"]["text"] == "a"
-
-
-
-def test_set_has_embedding_true_by_ids(monkeypatch):
-    class FakeClient:
-        def bulk(self, body, params):
-            # simulate success for each update
-            items = []
-            for i in range(0, len(body), 2):
-                items.append({"update": {"result": "updated"}})
-            return {"items": items}
-
-    monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
-
-    updated, errors = osu.set_has_embedding_true_by_ids(["a", "b", "a"])
-    assert updated == 2
-    assert errors == 0

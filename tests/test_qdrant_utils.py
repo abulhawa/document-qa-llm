@@ -60,8 +60,8 @@ def test_index_chunks_success(monkeypatch):
     monkeypatch.setattr(qdu, "embed_texts", fake_embed)
 
     chunks = [
-        {"id": 1, "text": "a", "has_embedding": True, "extra": "x"},
-        {"id": 2, "text": "b", "has_embedding": False},
+        {"id": 1, "text": "a", "extra": "x"},
+        {"id": 2, "text": "b"},
     ]
 
     assert qdu.index_chunks(chunks) is True
@@ -69,7 +69,6 @@ def test_index_chunks_success(monkeypatch):
     mock_client.upsert.assert_called_once()
     points = mock_client.upsert.call_args.kwargs["points"]
     assert len(points) == 2
-    assert all("has_embedding" not in p.payload for p in points)
 
 
 def test_index_chunks_embedding_failure(monkeypatch):

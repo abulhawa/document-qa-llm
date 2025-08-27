@@ -60,13 +60,7 @@ def test_duplicate_files_are_indexed_and_logged(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
-    monkeypatch.setattr(
-        "core.ingestion.set_has_embedding_true_by_ids",
-        lambda ids: (len(ids), []),
-    )
-    monkeypatch.setattr(
-        "core.ingestion.index_fulltext_document", lambda doc: None
-    )
+    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
 
     result = ingestion.ingest_one(str(file_path))
 
