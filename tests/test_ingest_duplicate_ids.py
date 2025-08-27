@@ -35,9 +35,6 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
         "core.ingestion.is_duplicate_checksum", lambda c, p: False
     )
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
-    monkeypatch.setattr(
-        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
-    )
 
     ingest_one(str(file_a))
     ingest_one(str(file_b))

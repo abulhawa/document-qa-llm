@@ -31,9 +31,6 @@ def test_ingest_one_returns_normalized_path(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "core.ingestion.index_fulltext_document", lambda doc: None
     )
-    monkeypatch.setattr(
-        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
-    )
 
     result = ingest_one(str(sample))
 

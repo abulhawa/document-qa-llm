@@ -29,6 +29,7 @@ class DummyLog:
 
 # Test 21: idempotent skip when file unchanged
 
+
 def test_ingest_one_idempotent_skip(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
@@ -49,7 +50,8 @@ def test_ingest_one_idempotent_skip(tmp_path, monkeypatch):
     assert result["success"] is True
 
 
-# Test 23: Embedder failure marks log and skips flag flip
+# Test 23: Embedder failure marks log
+
 
 def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
@@ -68,23 +70,16 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
-    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
+    monkeypatch.setattr(
+        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+    )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
 
-    called = {"flip": False}
-
-    def fake_flip(ids):
-        called["flip"] = True
-        return (0, 0)
-
-    monkeypatch.setattr("core.ingestion.set_has_embedding_true_by_ids", fake_flip)
-
     result = ingest_one(str(f))
     assert result["success"] is False
     assert result["status"] == "Local indexing failed"
-    assert called["flip"] is False
 
 
 def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
@@ -105,7 +100,8 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": str(i)} for i in range(5)]
+        "core.ingestion.split_documents",
+        lambda docs: [{"text": str(i)} for i in range(5)],
     )
 
     captured = {}
@@ -116,9 +112,6 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
     monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
-    monkeypatch.setattr(
-        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
-    )
 
     result = ingest_one(str(f))
     assert result["success"] is True
@@ -142,14 +135,12 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
         "core.ingestion.preprocess_to_documents",
         lambda docs_like, source_path, cfg, doc_type: docs_like,
     )
-    monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "hello"}])
+    monkeypatch.setattr(
+        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+    )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
-    monkeypatch.setattr(
-        "core.ingestion.set_has_embedding_true_by_ids", lambda ids: (0, 0)
-    )
 
     result = ingest_one(str(f), total_files=2)
     assert result["success"] is True
-
