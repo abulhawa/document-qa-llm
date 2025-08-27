@@ -20,7 +20,7 @@ from utils.file_utils import (
     get_file_size,
 )
 
-# Analyzer/mapping config (optional: can also be created manually in advance)
+# Analyzer/mapping config
 INDEX_SETTINGS = {
     "settings": {
         "analysis": {
@@ -104,6 +104,7 @@ FULLTEXT_INDEX_SETTINGS = {
             "filetype": {"type": "keyword"},
             "modified_at": {"type": "date"},
             "created_at": {"type": "date"},
+            "indexed_at": {"type": "date"},
             "size_bytes": {"type": "long"},
             "checksum": {"type": "keyword"},
         }
@@ -176,7 +177,6 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     """
 
     client = get_client()
-    ensure_index_exists()
     actions = []
     for chunk in chunks:
         op_type = chunk.get("op_type", "create")
@@ -240,7 +240,6 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     """Index a single full-text document into OpenSearch (op_type=create).
     Returns the OpenSearch response dict. Raises on fatal errors."""
     client = get_client()
-    ensure_fulltext_index_exists()
 
     payload = {k: v for k, v in doc.items() if k != "id"}
     doc_id = doc["id"]
@@ -254,21 +253,21 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
             index=OPENSEARCH_FULLTEXT_INDEX,
             id=doc_id,
             body=payload,
-            op_type="create",            # pyright: ignore[reportCallIssue]
-            refresh=False,               # pyright: ignore[reportCallIssue]
-            request_timeout=30,          # pyright: ignore[reportCallIssue]
+            op_type="create",  # pyright: ignore[reportCallIssue]
+            refresh=False,  # pyright: ignore[reportCallIssue]
+            request_timeout=30,  # pyright: ignore[reportCallIssue]
         )
     except conflict_exc:  # type: ignore[misc]
         # Document already exists (expected with op_type=create)
         logger.info(
             "Full-text indexing skipped (already exists).",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
         )
         return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch index timeout.",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
         )
         raise
     except transport_exc as e:  # type: ignore[misc]
@@ -277,18 +276,23 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         info = getattr(e, "info", None)
         logger.exception(
             "OpenSearch transport error during indexing.",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id, "status": status, "info": info}
+            extra={
+                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "doc_id": doc_id,
+                "status": status,
+                "info": info,
+            },
         )
         raise
     except Exception:
         logger.exception(
             "Unexpected error during full-text indexing.",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id}
+            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
         )
         raise
 
     # Examine response and log accordingly
-    result = resp.get("result")                # expected: "created"
+    result = resp.get("result")  # expected: "created"
     shards = resp.get("_shards", {}) or {}
     failed = int(shards.get("failed", 0))
     successful = int(shards.get("successful", 0))
@@ -391,6 +395,50 @@ def list_files_from_opensearch(
     return results
 
 
+def get_chunk_ids_by_path(path: str, size: int = 10000) -> list[str]:
+    """Fetch chunk IDs for a file path from the documents index."""
+    client = get_client()
+    resp = client.search(
+        index=OPENSEARCH_INDEX,
+        body={
+            "size": size,
+            "_source": False,
+            "query": {"term": {"path.keyword": path}},
+        },
+    )
+    return [h.get("_id") for h in resp.get("hits", {}).get("hits", []) if h.get("_id")]
+
+
+def delete_chunks_by_path(path: str) -> int:
+    """Delete all chunk docs for a file from the documents index."""
+    client = get_client()
+    resp = client.delete_by_query(
+        index=OPENSEARCH_INDEX,
+        body={"query": {"term": {"path.keyword": path}}},
+        params={
+            "refresh": "true",
+            "conflicts": "proceed",
+            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+        },
+    )
+    return int(resp.get("deleted", 0))
+
+
+def delete_fulltext_by_path(path: str) -> int:
+    """Delete full-text doc(s) for a file from the full_text index."""
+    client = get_client()
+    resp = client.delete_by_query(
+        index=OPENSEARCH_FULLTEXT_INDEX,
+        body={"query": {"term": {"path.keyword": path}}},
+        params={
+            "refresh": "true",
+            "conflicts": "proceed",
+            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+        },
+    )
+    return int(resp.get("deleted", 0))
+
+
 def list_fulltext_paths(size: int = 1000) -> List[str]:
     """Return a list of file paths present in the full-text index."""
 
@@ -415,48 +463,9 @@ def list_files_missing_fulltext(size: int = 1000) -> List[Dict[str, Any]]:
     return missing
 
 
-def reindex_fulltext_from_chunks(paths: Iterable[str]) -> int:
-    """Rebuild full-text documents for the given file paths by reloading and preprocessing the source files."""
-    from core.file_loader import load_documents
-    from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
-
-    unique_paths = [p for p in {p for p in paths if p}]
-    if not unique_paths:
-        return 0
-
-    total = 0
-    for path in unique_paths:
-        try:
-            docs = load_documents(path)
-            docs_list = preprocess_to_documents(
-                docs_like=docs,
-                source_path=path,
-                cfg=PreprocessConfig(),
-                doc_type=os.path.splitext(path)[1].lstrip(".").lower(),
-            )
-        except Exception as e:
-            logger.warning(f"Skipping {path}: {e}")
-            continue
-
-        full_text = "\n\n".join(getattr(d, "page_content", "") for d in docs_list)
-        timestamps = get_file_timestamps(path)
-        doc = {
-            "id": hash_path(path),
-            "path": path,
-            "filename": os.path.basename(path),
-            "filetype": os.path.splitext(path)[1].lstrip(".").lower(),
-            "modified_at": timestamps.get("modified"),
-            "created_at": timestamps.get("created"),
-            "size_bytes": get_file_size(path),
-            "checksum": compute_checksum(path),
-            "text_full": full_text,
-        }
-        index_fulltext_document(doc)
-        total += 1
-    return total
-
-
-def get_chunks_by_paths(paths: Iterable[str], batch_size: int = 1000) -> List[Dict[str, Any]]:
+def get_chunks_by_paths(
+    paths: Iterable[str], batch_size: int = 1000
+) -> List[Dict[str, Any]]:
     """Fetch all chunk documents from OpenSearch for the given file paths.
 
     Args:
@@ -491,157 +500,46 @@ def get_chunks_by_paths(paths: Iterable[str], batch_size: int = 1000) -> List[Di
     return results
 
 
-def delete_files_by_checksum(checksums: Iterable[str]) -> int:
-    """Delete all OpenSearch docs that match any of the given checksums.
-    Uses batched `terms` delete_by_query for speed. Returns total deleted count.
+def get_duplicate_checksums(page_size: int = 1000, max_results: int | None = None) -> list[str]:
+    """
+    Scan for all checksums that appear under >1 distinct path.
+    Uses composite agg for deterministic paging (no 'top N' bias).
     """
     client = get_client()
-    total_deleted = 0
-    unique = [c for c in {c for c in checksums if c}]
-    if not unique:
-        return 0
+    dups: list[str] = []
+    after = None
 
-    # Chunk to avoid overly large queries (safe default 1024)
-    CHUNK = OPENSEARCH_DELETE_BATCH
+    while True:
+        comp = {
+            "size": page_size,
+            "sources": [{"checksum": {"terms": {"field": "checksum"}}}],
+        }
+        if after:
+            comp["after"] = after
 
-    for i in range(0, len(unique), CHUNK):
-        batch = unique[i : i + CHUNK]
-        try:
-            resp = client.delete_by_query(
-                index=OPENSEARCH_INDEX,
-                body={"query": {"terms": {"checksum": batch}}},
-                params={
-                    "refresh": "true",
-                    "conflicts": "proceed",
-                    "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-                },
-            )
-            deleted = int(resp.get("deleted", 0))
-            total_deleted += deleted
-            logger.info(
-                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} checksum(s)."
-            )
-        except exceptions.OpenSearchException as e:
-            logger.exception(
-                f"OpenSearch delete failed for a batch of {len(batch)} checksum(s): {e}"
-            )
-        except Exception as e:
-            logger.exception(f"Unexpected error deleting a batch: {e}")
-
-    return total_deleted
-
-
-def delete_files_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> int:
-    """Delete OpenSearch docs matching specific (path, checksum) pairs.
-
-    Each pair targets a unique file instance so duplicates with the same
-    checksum but different paths can be removed individually. The deletion
-    is batched for efficiency.
-    """
-
-    client = get_client()
-    total_deleted = 0
-    unique = [(p, c) for p, c in {(p, c) for p, c in pairs if p and c}]
-    if not unique:
-        return 0
-
-    CHUNK = OPENSEARCH_DELETE_BATCH
-
-    for i in range(0, len(unique), CHUNK):
-        batch = unique[i : i + CHUNK]
-        should = []
-        for path, checksum in batch:
-            should.append(
-                {
-                    "bool": {
-                        "filter": [
-                            {"term": {"path.keyword": path}},
-                            {"term": {"checksum": checksum}},
-                        ]
-                    }
-                }
-            )
-        try:
-            resp = client.delete_by_query(
-                index=OPENSEARCH_INDEX,
-                body={"query": {"bool": {"should": should, "minimum_should_match": 1}}},
-                params={
-                    "refresh": "true",
-                    "conflicts": "proceed",
-                    "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-                    "slices": "auto",
-                },
-            )
-            deleted = int(resp.get("deleted", 0))
-            conflicts = resp.get("version_conflicts", 0)
-            failures = resp.get("failures", [])
-            if failures:
-                logger.warning("delete_by_query had failures: %s", failures)
-            total_deleted += deleted
-            logger.info(
-                f"🗑️ OpenSearch deleted {deleted} docs for {len(batch)} path/checksum pair(s)."
-            )
-        except exceptions.OpenSearchException as e:
-            logger.exception(
-                f"OpenSearch delete failed for {len(batch)} path/checksum pair(s): {e}"
-            )
-        except Exception as e:
-            logger.exception(f"Unexpected error deleting a batch: {e}")
-
-    return total_deleted
-
-
-def get_duplicate_checksums(limit: int = 10000) -> List[str]:
-    """Return checksums that appear under more than one distinct path.
-    Uses an aggregation over `checksum` with a cardinality sub-agg on `path`.
-    """
-    client = get_client()
-    try:
         body = {
             "size": 0,
             "aggs": {
                 "by_checksum": {
-                    "terms": {"field": "checksum", "size": limit},
-                    "aggs": {
-                        "distinct_paths": {"cardinality": {"field": "path"}},
+                    "composite": comp,
+                    "aggregations": {
+                        "paths": {"terms": {"field": "path.keyword", "size": 2}},
                     },
                 }
             },
         }
         resp = client.search(index=OPENSEARCH_INDEX, body=body)
-        buckets = resp.get("aggregations", {}).get("by_checksum", {}).get("buckets", [])
-        dups = [
-            b["key"] for b in buckets if b.get("distinct_paths", {}).get("value", 0) > 1
-        ]
-        return dups
-    except Exception as e:
-        # Fallback: if mapping uses 'path.keyword'
-        try:
-            body = {
-                "size": 0,
-                "aggs": {
-                    "by_checksum": {
-                        "terms": {"field": "checksum", "size": limit},
-                        "aggs": {
-                            "distinct_paths": {
-                                "cardinality": {"field": "path.keyword"}
-                            },
-                        },
-                    }
-                },
-            }
-            resp = client.search(index=OPENSEARCH_INDEX, body=body)
-            buckets = (
-                resp.get("aggregations", {}).get("by_checksum", {}).get("buckets", [])
-            )
-            dups = [
-                b["key"]
-                for b in buckets
-                if b.get("distinct_paths", {}).get("value", 0) > 1
-            ]
-            return dups
-        except Exception:
-            return []
+        agg = resp["aggregations"]["by_checksum"]
+        for b in agg["buckets"]:
+            if len(b["paths"]["buckets"]) >= 2:
+                dups.append(b["key"]["checksum"])
+                if max_results and len(dups) >= max_results:
+                    return dups
+        after = agg.get("after_key")
+        if not after:
+            break
+
+    return dups
 
 
 def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
@@ -674,43 +572,6 @@ def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
         )
         info["num_chunks"] += 1
     return list(files.values())
-
-
-def set_has_embedding_true_by_ids(ids: Iterable[str]) -> Tuple[int, int]:
-    """
-    Bulk-update docs by _id to set has_embedding=True.
-    Returns (updated_or_noop_count, error_count).
-    Idempotent: running it twice is safe.
-    """
-    ids = [i for i in dict.fromkeys(ids) if i]  # dedupe, keep order, drop falsy
-    if not ids:
-        return (0, 0)
-
-    ops = []
-    for doc_id in ids:
-        ops.append({"update": {"_index": OPENSEARCH_INDEX, "_id": doc_id}})
-        ops.append({"doc": {"has_embedding": True}})
-
-    client = get_client()
-    resp = client.bulk(
-        body=ops,
-        params={"refresh": "true", "timeout": OPENSEARCH_REQUEST_TIMEOUT},
-    )
-
-    updated = 0
-    errors = 0
-    for item in resp.get("items", []):
-        upd = item.get("update", {})
-        if upd.get("error"):
-            errors += 1
-        else:
-            # result can be "updated" or "noop" (already true)
-            if upd.get("result") in ("updated", "noop"):
-                updated += 1
-    logger.info(
-        f"🔖 OpenSearch flip has_embedding: updated/noop={updated}, errors={errors}"
-    )
-    return updated, errors
 
 
 def is_file_up_to_date(checksum: str, path: str) -> bool:

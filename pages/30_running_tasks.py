@@ -175,6 +175,7 @@ else:
         rows.append(
             {
                 "Path": r.get("path", ""),
+                "Action": r.get("action"),
                 "Task ID": r["task_id"],
                 "State": s.get("state", "UNKNOWN"),
                 "Result": json.dumps(res, ensure_ascii=False)[:160] if res else "",

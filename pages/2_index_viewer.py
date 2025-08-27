@@ -11,14 +11,12 @@ from typing import List, Dict, Any, Tuple
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 from utils.opensearch_utils import (
     list_files_from_opensearch,
-    delete_files_by_path_checksum,
 )
 from utils.qdrant_utils import (
     count_qdrant_chunks_by_path,
-    delete_vectors_by_path_checksum,
 )
 from utils.file_utils import format_file_size
-from ui.ingest_client import enqueue_paths
+from ui.ingest_client import enqueue_paths, enqueue_delete_by_path
 from ui.task_status import add_records
 from components.task_panel import render_task_panel
 from config import logger
@@ -26,11 +24,17 @@ from config import logger
 st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
 
+
 # Confirm when opening/showing > N files
 MAX_BULK_OPEN = 10
 
 PAGE_SIZE_OPTIONS = [5, 25, 50, 100]
 DEFAULT_PAGE_SIZE = 25
+
+kind_msg = st.session_state.pop("flash", None)
+if kind_msg:
+    kind, msg = kind_msg
+    getattr(st, kind)(msg)  # st.success / st.error / st.info
 
 
 # ---------- Data loading ----------
@@ -374,13 +378,6 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
         )
     except Exception:
         selected_paths = []
-    selected_pairs = (
-        selected_df[["Path", "Checksum"]]
-        .dropna()
-        .astype(str)
-        .itertuples(index=False, name=None)
-    )
-    selected_pairs = list(selected_pairs)
 
     # -------------------- Action bar (above the table) --------------------
     with action_bar:
@@ -427,6 +424,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
                                 task_ids,
+                                action="reembed",
                             )
 
                         status, status_msg = (
@@ -453,6 +451,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
                                 task_ids,
+                                action="reingest",
                             )
 
                         status, status_msg = (
@@ -467,24 +466,30 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
 
         with c5:
             if st.button("🗑️ Delete selected", use_container_width=True):
-                if not selected_pairs:
+                if not selected_paths:
                     status, status_msg = "info", "Select one or more rows first."
                 else:
                     try:
                         with st.spinner(
-                            f"Deleting {len(selected_pairs)} file(s) from OpenSearch…"
+                            f"Queuing deletion for {len(selected_paths)} file(s)…"
                         ):
-                            delete_files_by_path_checksum(selected_pairs)
-                        with st.spinner(
-                            f"Deleting vectors in Qdrant for {len(selected_pairs)} path(s)…"
-                        ):
-                            delete_vectors_by_path_checksum(selected_pairs)
-                        status, status_msg = "success", "Deletion complete."
+                            task_ids = enqueue_delete_by_path(selected_paths)
+                            st.session_state["ingest_tasks"] = add_records(
+                                st.session_state.get("ingest_tasks"),
+                                selected_paths,
+                                task_ids,
+                                action="delete",
+                            )
+                        st.session_state["flash"] = (
+                            "success",
+                            f"Queued delete for {len(selected_paths)} file(s).",
+                        )
                         load_indexed_files.clear()
                         st.rerun()
                     except Exception as e:
                         logger.exception(f"Delete failed: {e}")
-                        status, status_msg = "error", f"Delete failed: {e}"
+                        st.session_state["flash"] = ("error", f"Delete failed: {e}")
+                        st.rerun()
 
         with c6:
             if st.button("❌ Clear selection", use_container_width=True):
@@ -559,123 +564,6 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     return fdf, selected_df
 
 
-def run_batch_actions(fdf: pd.DataFrame, selected_df: pd.DataFrame) -> None:
-    st.subheader("Batch actions")
-    with st.form("batch_actions_form", clear_on_submit=False):
-        a1, a2 = st.columns([2, 2])
-        with a1:
-            action = st.selectbox("Action", ["Reingest", "Delete"], index=0)
-        with a2:
-            scope_options = ["All filtered"]
-            if not selected_df.empty:
-                scope_options.append("Only selected")
-            scope = st.selectbox("Scope", scope_options, index=0)
-
-        confirm = ""
-        if action == "Delete":
-            confirm = st.text_input("Type to confirm (e.g., DELETE 3 paths)", value="")
-
-        submitted = st.form_submit_button("Run")
-
-    if not submitted:
-        return
-
-    # Compute target rows
-    if scope == "Only selected" and not selected_df.empty:
-        targets = selected_df
-    else:
-        targets = fdf
-
-    if targets.empty:
-        st.warning("No rows to act on.")
-        return
-
-    if action == "Delete":
-        expected = len(targets)
-        if confirm.strip() != f"DELETE {expected}":
-            st.error(f"Confirmation mismatch. Please type exactly: DELETE {expected}")
-            return
-
-    pairs = (
-        targets[["Path", "Checksum"]]
-        .dropna()
-        .astype(str)
-        .itertuples(index=False, name=None)
-    )
-    pairs = list(pairs)
-    paths = sorted({p for p, _ in pairs})
-
-    try:
-        if action == "Reingest":
-            with st.spinner(f"Queuing reingestion for {len(paths)} file(s)…"):
-                task_ids = enqueue_paths(paths, mode="reingest")
-                st.session_state["ingest_tasks"] = add_records(
-                    st.session_state.get("ingest_tasks"), paths, task_ids
-                )
-            st.success(f"Queued reingestion for {len(paths)} file(s).")
-        elif action == "Delete":
-            with st.spinner(f"Deleting {len(pairs)} file(s) from OpenSearch…"):
-                deleted = delete_files_by_path_checksum(pairs)
-            st.info(
-                f"OpenSearch deleted {deleted} chunks across {len(pairs)} file(s).",
-            )
-            with st.spinner(
-                f"Deleting vectors in Qdrant for {len(pairs)} path(s)…",
-            ):
-                delete_vectors_by_path_checksum(pairs)
-            st.success("Qdrant deletion requested.")
-        # Refresh cache after action
-        load_indexed_files.clear()
-    except Exception as e:
-        logger.exception(f"Batch action failed: {e}")
-        st.error(f"Batch action failed: {e}")
-
-
-def render_row_actions(fdf: pd.DataFrame) -> None:
-    st.subheader("Row actions")
-    name_col = (
-        "Filename"
-        if "Filename" in fdf.columns
-        else ("Path" if "Path" in fdf.columns else None)
-    )
-    if not name_col or fdf.empty:
-        st.info("No rows to act on.")
-        return
-
-    options = fdf[name_col].astype(str).tolist()
-    idx = st.selectbox(
-        "Pick a file",
-        options=list(range(len(options))),
-        format_func=lambda i: options[i],
-        key="row_pick",
-    )
-    row = fdf.iloc[int(idx)]
-    st.markdown(f"**Selected File:** `{row[name_col]}`")
-    c1, c2 = st.columns(2)
-
-    if c1.button("🔄 Reingest File", use_container_width=True):
-        try:
-            task_ids = enqueue_paths([row["Path"]], mode="reingest")
-            st.session_state["ingest_tasks"] = add_records(
-                st.session_state.get("ingest_tasks"), [row["Path"]], task_ids
-            )
-            st.success(f"Reingestion queued for: {row[name_col]}")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row reingest failed: {e}")
-            st.error(f"Row reingest failed: {e}")
-
-    if c2.button("🗑️ Delete from Index", use_container_width=True):
-        try:
-            delete_files_by_path_checksum([(row["Path"], row["Checksum"])])
-            delete_vectors_by_path_checksum([(row["Path"], row["Checksum"])])
-            st.success(f"Deleted: {row[name_col]}")
-            load_indexed_files.clear()
-        except Exception as e:
-            logger.exception(f"Row delete failed: {e}")
-            st.error(f"Row delete failed: {e}")
-
-
 def render_empty_state_for_files() -> None:
     st.warning("📭 No files indexed yet.")
     st.caption("Use the Ingest page to add documents, then refresh.")
@@ -712,9 +600,7 @@ if not files:  # None or []
     render_empty_state_for_files()
 df = build_table_data(files)
 fdf, selected_df = render_filtered_table(df)
-run_batch_actions(fdf, selected_df)
 st.divider()
-render_row_actions(fdf)
 
 # Task panel at bottom (polls Celery and lets users clear finished)
 should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))

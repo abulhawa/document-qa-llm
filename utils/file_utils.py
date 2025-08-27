@@ -77,8 +77,8 @@ def get_file_timestamps(path: str) -> dict:
         return {"created": "", "modified": ""}
     # Created: macOS has st_birthtime. Windows uses st_ctime as creation time.
     created_ts = getattr(st, "st_birthtime", None)
-    if created_ts is None and os.name == "nt":
-        created_ts = st.st_ctime  # Windows creation time
+    if created_ts is None:
+        created_ts = getattr(st, "st_ctime", None)
     # Linux usually has no birth time. Keep None.
 
     # Modified: always available. Prefer nanosecond precision if present.

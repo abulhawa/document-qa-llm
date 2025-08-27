@@ -1,6 +1,7 @@
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import (
     PointStruct,
+    PointIdsList,
     VectorParams,
     Distance,
 )
@@ -26,33 +27,23 @@ def ensure_collection_exists() -> None:
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
 
-def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
-
-    ensure_collection_exists()
-
-    texts: List[str] = [chunk["text"] for chunk in chunks]
-    try:
-        embeddings = embed_texts(texts)
-    except Exception as e:
-        logger.error(f"Embedding failed: {e}")
-        return False
-
+def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
     points = [
         PointStruct(
             id=chunk["id"],
-            vector=vector,
-            payload={k: v for k, v in chunk.items() if k != "has_embedding"},
+            vector=vec,
+            payload=chunk,
         )
-        for vector, chunk in zip(embeddings, chunks)
+        for chunk, vec in zip(chunks, vectors)
     ]
+    client.upsert(collection_name=QDRANT_COLLECTION, points=points, wait=True)
+    return True
 
-    try:
-        client.upsert(collection_name=QDRANT_COLLECTION, points=points)
-        logger.info(f"✅ Indexed {len(points)} chunks.")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Indexing to Qdrant failed: {e}")
-        return False
+
+def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
+    texts = [c["text"] for c in chunks]
+    embeddings = embed_texts(texts)
+    return upsert_vectors(chunks, embeddings)
 
 
 def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
@@ -77,74 +68,13 @@ def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
         return None
 
 
-def delete_vectors_by_checksum(checksum: str) -> None:
-    """Delete all vectors in Qdrant for a given checksum."""
-    try:
-        client.delete(
-            collection_name=QDRANT_COLLECTION,
-            points_selector=models.FilterSelector(
-                filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="checksum", match=models.MatchValue(value=checksum)
-                        )
-                    ]
-                )
-            ),
-        )
-    except Exception as e:
-        logger.error("❌ Qdrant delete error for checksum=%s: %s", checksum, e)
-
-
-def delete_vectors_many_by_checksum(checksums: Iterable[str]) -> None:
-    unique = [c for c in {c for c in checksums if c}]
-    if not unique:
-        return
-    # Qdrant's filter supports OR via 'should'. Chunk to keep payload reasonable.
-    CHUNK = 64
-    for i in range(0, len(unique), CHUNK):
-        part = unique[i : i + CHUNK]
-        flt = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="checksum",
-                    match=models.MatchAny(any=part),  # ← OR on these values
-                )
-            ]
-        )
-        try:
-            client.delete(
-                collection_name=QDRANT_COLLECTION,
-                points_selector=models.FilterSelector(filter=flt),
-            )
-        except Exception as e:
-            logger.error(
-                "❌ Qdrant batch delete error for %d checksum(s): %s", len(part), e
-            )
-
-
-def delete_vectors_by_path_checksum(pairs: Iterable[Tuple[str, str]]) -> None:
-    """Delete vectors matching both path and checksum for each pair."""
-    unique = {(p, c) for p, c in pairs if p and c}
-    if not unique:
-        return
-
-    for path, checksum in unique:
-        flt = models.Filter(
-            must=[
-                models.FieldCondition(key="path", match=models.MatchValue(value=path)),
-                models.FieldCondition(
-                    key="checksum", match=models.MatchValue(value=checksum)
-                ),
-            ]
-        )
-        try:
-            client.delete(
-                collection_name=QDRANT_COLLECTION,
-                points_selector=models.FilterSelector(filter=flt),
-            )
-        except Exception as e:
-            logger.error(
-                "❌ Qdrant delete error for path=%s checksum=%s: %s", path, checksum, e
-            )
-    logger.info(f"🗑️ Qdrant deleted vectors for {len(unique)} path/checksum pair(s).")
+def delete_vectors_by_ids(ids: list[str]) -> int:
+    """Delete Qdrant points by chunk IDs. Returns number requested."""
+    if not ids:
+        return 0
+    client.delete(
+        collection_name=QDRANT_COLLECTION,
+        points_selector=PointIdsList(points=[i for i in ids]),
+        wait=True,
+    )
+    return len(ids)

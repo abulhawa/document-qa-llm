@@ -26,8 +26,9 @@ def render_task_panel(records: List[Dict[str, Any]]) -> Tuple[bool, List[Dict[st
 
     for r in records:
         tid = r["task_id"]
+        action = r["action"].capitalize()
         state = states.get(tid, {}).get("state", "UNKNOWN")
-        st.write(f"- `{r['path']}`  \n  • Task: `{tid}`  \n  • State: **{state}**")
+        st.write(f"- `{r['path']}`  \n  • Task: `{tid}`  \n  • Action: **{action}**  \n  • State: **{state.capitalize()}**")
         res = states.get(tid, {}).get("result")
         if isinstance(res, dict) and res:
             # Show a few common fields if present
