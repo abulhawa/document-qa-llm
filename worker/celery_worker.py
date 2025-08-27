@@ -1,5 +1,7 @@
 import os
 from celery import Celery
+from celery.signals import worker_ready
+
 
 app = Celery(
     "docqa",
@@ -16,3 +18,18 @@ app.conf.update(
     task_default_queue="ingest",
     include=["worker.tasks"],
 )
+
+
+@worker_ready.connect
+def _warmup(**_):
+    from utils.opensearch_utils import (
+        ensure_index_exists,
+        ensure_fulltext_index_exists,
+        ensure_ingest_log_index_exists,
+    )
+    from utils.qdrant_utils import ensure_collection_exists
+
+    ensure_index_exists()
+    ensure_fulltext_index_exists()
+    ensure_ingest_log_index_exists()
+    ensure_collection_exists()

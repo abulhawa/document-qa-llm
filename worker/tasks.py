@@ -22,18 +22,21 @@ def _audit_fail(task_id=None, exception=None, sender=None, **_):
     log_task("failure", task_id, name, state="FAILURE", error=str(exception))
 
 
+# --- tiny mapper: host (Windows) -> container path (e.g., /host-c) ---
 def host_to_container_path(host_path: str) -> str:
     # Uses DOC_PATH_MAP like 'C:/=>/host-c;G:/=>/host-g'
-    mapping = []
+    pairs = []
     env = os.getenv("DOC_PATH_MAP", "")
     for part in env.split(";"):
         if "=>" in part:
             src, dst = part.split("=>", 1)
-            mapping.append((src.rstrip("/\\").lower(), dst.rstrip("/")))
-    mapping.sort(key=lambda p: len(p[0]), reverse=True)
+            src = src.rstrip("/\\").lower()
+            dst = dst.rstrip("/\\")
+            pairs.append((src, dst))
+    pairs.sort(key=lambda p: len(p[0]), reverse=True)
     hp = host_path.replace("\\", "/")
     low = hp.lower()
-    for src, dst in mapping:
+    for src, dst in pairs:
         if low.startswith(src):
             return dst + hp[len(src) :]
     return hp
@@ -46,19 +49,18 @@ def host_to_container_path(host_path: str) -> str:
     retry_backoff=True,
     retry_kwargs={"max_retries": 5},
 )
-def ingest_document(host_path: str, mode: str = "reingest") -> dict:
+def ingest_document(host_path: str, mode: str = "ingest") -> dict:
     """
-    mode:
-      - "reingest": force + replace (delete old OS/Qdrant entries first)
-      - "reembed": force + no replace (re-process & re-embed without pre-deleting)
+    host_path: Windows host path selected in UI (stored in metadata)
+    mode: 'ingest' (default), 'reembed', 'reingest'
     """
-    from core.ingestion import ingest_one  # heavy imports stay worker-side
-
-    container_path = host_to_container_path(host_path)
+    from core.ingestion import ingest_one
+    
+    fs_path = host_to_container_path(host_path)
     if mode == "ingest":
         return ingest_one(
             host_path,
-            fs_path=container_path,
+            fs_path=fs_path,
             force=False,
             replace=False,
             op="ingest",
@@ -67,18 +69,75 @@ def ingest_document(host_path: str, mode: str = "reingest") -> dict:
     if mode == "reembed":
         return ingest_one(
             host_path,
-            fs_path=container_path,
+            fs_path=fs_path,
             force=True,
             replace=False,
             op="reembed",
             source="celery",
         )
-    # default: full reingest
     return ingest_one(
         host_path,
-        fs_path=container_path,
+        fs_path=fs_path,
         force=True,
         replace=True,
         op="reingest",
         source="celery",
     )
+
+
+@celery_app.task(
+    name="tasks.delete_document",
+    acks_late=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 3},
+)
+def delete_document(path: str) -> dict:
+    """
+    path: EXACT value stored in OpenSearch payloads (path.keyword). 
+    We purge:
+      1) Qdrant vectors by chunk IDs (fetched from OS),
+      2) OS chunk docs (documents index),
+      3) OS full-text doc(s) (full_text index).
+    """
+    from config import logger
+    from utils.opensearch_utils import (
+        get_chunk_ids_by_path,
+        delete_chunks_by_path,
+        delete_fulltext_by_path,
+    )
+    from utils.qdrant_utils import delete_vectors_by_ids
+
+    ids = []
+    try:
+        ids = get_chunk_ids_by_path(path)
+    except Exception as e:
+        logger.exception("List chunk IDs failed for %s: %s", path, e)
+
+    deleted_vec = 0
+    try:
+        deleted_vec = delete_vectors_by_ids(ids)
+    except Exception as e:
+        logger.exception("Qdrant delete failed for %s: %s", path, e)
+
+    deleted_chunks = 0
+    try:
+        deleted_chunks = delete_chunks_by_path(path)
+    except Exception as e:
+        logger.exception("OS chunk delete failed for %s: %s", path, e)
+
+    deleted_fulltext = 0
+    try:
+        deleted_fulltext = delete_fulltext_by_path(path)
+    except Exception as e:
+        logger.exception("OS fulltext delete failed for %s: %s", path, e)
+
+    return {
+        "success": True,
+        "path": path,
+        "deleted": {
+            "qdrant_points": deleted_vec,
+            "os_chunks": deleted_chunks,
+            "os_fulltext": deleted_fulltext,
+        },
+    }
