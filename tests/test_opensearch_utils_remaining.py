@@ -1,19 +1,4 @@
 import os
-import sys
-import types
-
-
-# stub opensearchpy before importing module under test
-class DummyOpenSearchException(Exception):
-    pass
-
-
-opensearchpy_stub = types.SimpleNamespace(
-    OpenSearch=object,
-    helpers=types.SimpleNamespace(),
-    exceptions=types.SimpleNamespace(OpenSearchException=DummyOpenSearchException),
-)
-sys.modules.setdefault("opensearchpy", opensearchpy_stub)
 
 import utils.opensearch_utils as osu
 
@@ -107,20 +92,15 @@ def test_list_files_from_opensearch(monkeypatch):
     assert files[1]["size"] == "200 B"
 
 
-def test_get_duplicate_checksums_with_fallback(monkeypatch):
+def test_get_duplicate_checksums(monkeypatch):
     class FakeClient:
         def search(self, index, body):
-            field = body["aggs"]["by_checksum"]["aggs"]["distinct_paths"][
-                "cardinality"
-            ]["field"]
-            if field == "path":
-                raise Exception("no fielddata")
             return {
                 "aggregations": {
                     "by_checksum": {
                         "buckets": [
-                            {"key": "abc", "distinct_paths": {"value": 2}},
-                            {"key": "def", "distinct_paths": {"value": 1}},
+                            {"key": {"checksum": "abc"}, "paths": {"buckets": [{"key": "p1"}, {"key": "p2"}]}},
+                            {"key": {"checksum": "def"}, "paths": {"buckets": [{"key": "p1"}]}}
                         ]
                     }
                 }

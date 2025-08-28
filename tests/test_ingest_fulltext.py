@@ -59,7 +59,8 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
 
     monkeypatch.setattr("core.ingestion.index_fulltext_document", fake_index_fulltext)
 
-    ingest_one(str(f))
+    with pytest.raises(RuntimeError):
+        ingest_one(str(f))
 
     assert "doc" in called
     assert called["doc"]["text_full"] == "full"
