@@ -77,9 +77,8 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
 
     monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
 
-    result = ingest_one(str(f))
-    assert result["success"] is False
-    assert result["status"] == "Local indexing failed"
+    with pytest.raises(RuntimeError):
+        ingest_one(str(f))
 
 
 def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):

@@ -20,7 +20,7 @@ class FakeQdrant:
         self.collections.add(collection_name)
 
     # Upsert points
-    def upsert(self, collection_name, points):
+    def upsert(self, collection_name, points, **kwargs):
         for p in points:
             self.points[p.id] = p
 
@@ -40,13 +40,17 @@ class FakeQdrant:
         scored.sort(key=lambda r: r.score, reverse=True)
         return scored[:limit]
 
-    def delete(self, collection_name, points_selector):
-        # assume filter has must[0] with checksum
-        flt = points_selector.filter.must[0]
-        checksum = flt.match.value
-        to_del = [pid for pid, p in self.points.items() if p.payload.get("checksum") == checksum]
+    def delete(self, collection_name, points_selector, **kwargs):
+        if hasattr(points_selector, "filter"):
+            flt = points_selector.filter.must[0]
+            checksum = flt.match.value
+            to_del = [
+                pid for pid, p in self.points.items() if p.payload.get("checksum") == checksum
+            ]
+        else:
+            to_del = list(points_selector.points)
         for pid in to_del:
-            del self.points[pid]
+            self.points.pop(pid, None)
 
 
 # Fixture to set up fake Qdrant and embedding
@@ -125,12 +129,12 @@ def test_vector_threshold_filter(monkeypatch, setup_fake_qdrant):
     assert [r["id"] for r in results] == ["id0"]
 
 
-# Test 13: delete by checksum removes points
+# Test 13: delete by ids removes points
 
-def test_vector_delete_by_checksum(setup_fake_qdrant):
-    chunks = [make_chunk("a", 0, checksum="dup"), make_chunk("b", 1, checksum="dup")]
+def test_vector_delete_by_ids(setup_fake_qdrant):
+    chunks = [make_chunk("a", 0), make_chunk("b", 1)]
     qdrant_utils.index_chunks(chunks)
-    qdrant_utils.delete_vectors_by_checksum("dup")
+    qdrant_utils.delete_vectors_by_ids(["id0", "id1"])
     results = vector_store.retrieve_top_k("q", top_k=5)
     assert results == []
 
