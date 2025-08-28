@@ -2,6 +2,7 @@ import types
 import importlib
 import sys
 from unittest.mock import MagicMock
+import pytest
 
 # Remove stubbed qdrant_client if present and import the real one
 if isinstance(sys.modules.get("qdrant_client"), types.SimpleNamespace):
@@ -50,9 +51,6 @@ def test_ensure_collection_exists_noop(monkeypatch):
 def test_index_chunks_success(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
-    ec = MagicMock()
-    monkeypatch.setattr(qdu, "ensure_collection_exists", ec)
-    monkeypatch.setattr(qdu, "EMBEDDING_SIZE", 3)
 
     def fake_embed(texts):
         return [[i, i + 1, i + 2] for i, _ in enumerate(texts)]
@@ -65,7 +63,6 @@ def test_index_chunks_success(monkeypatch):
     ]
 
     assert qdu.index_chunks(chunks) is True
-    ec.assert_called_once()
     mock_client.upsert.assert_called_once()
     points = mock_client.upsert.call_args.kwargs["points"]
     assert len(points) == 2
@@ -74,7 +71,6 @@ def test_index_chunks_success(monkeypatch):
 def test_index_chunks_embedding_failure(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
-    monkeypatch.setattr(qdu, "ensure_collection_exists", MagicMock())
 
     def fail_embed(texts):
         raise RuntimeError("fail")
@@ -83,7 +79,8 @@ def test_index_chunks_embedding_failure(monkeypatch):
 
     chunks = [{"id": 1, "text": "a"}]
 
-    assert qdu.index_chunks(chunks) is False
+    with pytest.raises(RuntimeError):
+        qdu.index_chunks(chunks)
     mock_client.upsert.assert_not_called()
 
 
@@ -91,12 +88,12 @@ def test_index_chunks_upsert_failure(monkeypatch):
     mock_client = MagicMock()
     mock_client.upsert.side_effect = Exception("boom")
     monkeypatch.setattr(qdu, "client", mock_client)
-    monkeypatch.setattr(qdu, "ensure_collection_exists", MagicMock())
     monkeypatch.setattr(qdu, "embed_texts", lambda texts: [[0, 0, 0] for _ in texts])
 
     chunks = [{"id": 1, "text": "a"}]
 
-    assert qdu.index_chunks(chunks) is False
+    with pytest.raises(Exception):
+        qdu.index_chunks(chunks)
 
 
 def test_count_qdrant_chunks_by_path(monkeypatch):
@@ -122,81 +119,30 @@ def test_count_qdrant_chunks_by_path_failure(monkeypatch):
     assert qdu.count_qdrant_chunks_by_path("/p") is None
 
 
-def test_delete_vectors_by_checksum(monkeypatch):
+def test_delete_vectors_by_ids(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    qdu.delete_vectors_by_checksum("abc")
+    ids = ["a", "b", "c"]
+    assert qdu.delete_vectors_by_ids(ids) == 3
 
     call = mock_client.delete.call_args
     assert call.kwargs["collection_name"] == qdu.QDRANT_COLLECTION
-    filt = call.kwargs["points_selector"].filter
-    cond = filt.must[0]
-    assert cond.key == "checksum"
-    assert cond.match.value == "abc"
+    assert list(call.kwargs["points_selector"].points) == ids
 
 
-def test_delete_vectors_by_checksum_handles_error(monkeypatch):
-    mock_client = MagicMock()
-    mock_client.delete.side_effect = Exception("boom")
-    monkeypatch.setattr(qdu, "client", mock_client)
-
-    qdu.delete_vectors_by_checksum("abc")  # should not raise
-
-
-def test_delete_vectors_many_by_checksum(monkeypatch):
+def test_delete_vectors_by_ids_empty(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    checksums = [f"c{i}" for i in range(70)] + [None, "", "c1"]
-    qdu.delete_vectors_many_by_checksum(checksums)
-
-    assert mock_client.delete.call_count == 2
-    lengths = [
-        len(call.kwargs["points_selector"].filter.must[0].match.any)
-        for call in mock_client.delete.call_args_list
-    ]
-    assert sorted(lengths) == [6, 64]
-
-
-def test_delete_vectors_many_by_checksum_empty(monkeypatch):
-    mock_client = MagicMock()
-    monkeypatch.setattr(qdu, "client", mock_client)
-
-    qdu.delete_vectors_many_by_checksum([None, ""])
-
+    assert qdu.delete_vectors_by_ids([]) == 0
     mock_client.delete.assert_not_called()
 
 
-def test_delete_vectors_by_path_checksum(monkeypatch):
-    mock_client = MagicMock()
-    monkeypatch.setattr(qdu, "client", mock_client)
-
-    pairs = [
-        ("/a", "1"),
-        ("/a", "1"),  # duplicate
-        ("/b", "2"),
-        ("", "3"),
-        ("/c", None),
-    ]
-
-    qdu.delete_vectors_by_path_checksum(pairs)
-
-    assert mock_client.delete.call_count == 2
-    called = [
-        {c.key: c.match.value for c in call.kwargs["points_selector"].filter.must}
-        for call in mock_client.delete.call_args_list
-    ]
-    expected = [{"path": "/a", "checksum": "1"}, {"path": "/b", "checksum": "2"}]
-    assert {tuple(sorted(d.items())) for d in called} == {
-        tuple(sorted(e.items())) for e in expected
-    }
-
-
-def test_delete_vectors_by_path_checksum_handles_error(monkeypatch):
+def test_delete_vectors_by_ids_failure(monkeypatch):
     mock_client = MagicMock()
     mock_client.delete.side_effect = Exception("boom")
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    pairs = [("/a", "1"), ("/b", "2")]
-    qdu.delete_vectors_by_path_checksum(pairs)  # should not raise
+    with pytest.raises(Exception):
+        qdu.delete_vectors_by_ids(["a"])
