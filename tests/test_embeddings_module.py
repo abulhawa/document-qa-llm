@@ -1,6 +1,7 @@
 import pytest
-from core.embeddings import embed_texts
 import requests
+import core.embeddings as embeddings
+from core.embeddings import embed_texts
 
 class DummyResponse:
     def __init__(self, data):
@@ -12,16 +13,20 @@ class DummyResponse:
 
 
 def test_embed_texts_success(monkeypatch):
-    def fake_post(url, json, timeout):
-        return DummyResponse({"embeddings": [[0.1, 0.2]]})
-    monkeypatch.setattr(requests, "post", fake_post)
+    class DummySession:
+        def post(self, url, json, timeout):
+            return DummyResponse({"embeddings": [[0.1, 0.2]]})
+
+    monkeypatch.setattr(embeddings, "_session", DummySession())
     result = embed_texts(["hello"], batch_size=1)
     assert result == [[0.1, 0.2]]
 
 
 def test_embed_texts_failure(monkeypatch):
-    def fake_post(url, json, timeout):
-        raise requests.RequestException("boom")
-    monkeypatch.setattr(requests, "post", fake_post)
-    with pytest.raises(RuntimeError):
+    class FailingSession:
+        def post(self, url, json, timeout):
+            raise requests.RequestException("boom")
+
+    monkeypatch.setattr(embeddings, "_session", FailingSession())
+    with pytest.raises(requests.RequestException):
         embed_texts(["hi"])
