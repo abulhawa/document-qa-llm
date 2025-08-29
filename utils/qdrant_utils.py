@@ -5,8 +5,15 @@ from qdrant_client.http.models import (
     VectorParams,
     Distance,
 )
-from config import QDRANT_URL, QDRANT_COLLECTION, EMBEDDING_SIZE, logger
-from typing import Optional, List, Dict, Any, Iterable, Tuple
+from config import (
+    QDRANT_URL,
+    QDRANT_COLLECTION,
+    EMBEDDING_SIZE,
+    EMBEDDING_REQ_MAX_CHUNKS,
+    EMBEDDING_BATCH_SIZE,
+    logger,
+)
+from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable
 
 from core.embeddings import embed_texts
 
@@ -26,13 +33,18 @@ def ensure_collection_exists() -> None:
     )
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
+def _payload_without_text(chunk: Dict[str, Any]) -> Dict[str, Any]:
+    # copy to avoid mutating the original
+    p = dict(chunk)
+    p.pop("text", None)   # <- drop the heavy field
+    return p
 
 def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
     points = [
         PointStruct(
             id=chunk["id"],
             vector=vec,
-            payload=chunk,
+            payload={k: val for k, val in chunk.items() if k != "text"},
         )
         for chunk, vec in zip(chunks, vectors)
     ]
@@ -40,10 +52,31 @@ def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
     return True
 
 
-def index_chunks(chunks: List[Dict[str, Any]]) -> bool:
-    texts = [c["text"] for c in chunks]
-    embeddings = embed_texts(texts)
-    return upsert_vectors(chunks, embeddings)
+def _batches_by_budget(
+    chunks: Sequence[Dict[str, Any]],
+    max_chunks: int,
+) -> Iterable[Sequence[Dict[str, Any]]]:
+    """Yield fixed-size groups of chunks (no char budget, no splitting logic)."""
+    for i in range(0, len(chunks), max_chunks):
+        yield chunks[i : i + max_chunks]
+
+def index_chunks_in_batches(
+    chunks: List[Dict[str, Any]],
+    os_index_batch: Callable[[Sequence[Dict[str, Any]]], None] | None = None,
+) -> bool:
+    """
+    Vectors-first per batch:
+      1) embed a batch
+      2) upsert to Qdrant (wait=True)
+      3) optionally index the same batch in OpenSearch
+    """
+    for group in _batches_by_budget(chunks, EMBEDDING_REQ_MAX_CHUNKS):
+        texts = [c["text"] for c in group]
+        vectors = embed_texts(texts, batch_size=EMBEDDING_BATCH_SIZE)
+        upsert_vectors(list(group), vectors)        # blocks until persisted
+        if os_index_batch:
+            os_index_batch(group)                   # OS never outruns vectors
+    return True
 
 
 def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
