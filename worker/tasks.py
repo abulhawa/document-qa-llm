@@ -2,6 +2,7 @@ import os
 from worker.celery_worker import app as celery_app
 from celery.signals import task_prerun, task_postrun, task_failure
 from worker.audit import log_task
+from requests.exceptions import ReadTimeout, ConnectionError
 
 
 @task_prerun.connect
@@ -45,9 +46,12 @@ def host_to_container_path(host_path: str) -> str:
 @celery_app.task(
     name="tasks.ingest_document",
     acks_late=True,
-    autoretry_for=(Exception,),
+    queue="ingest",
+    autoretry_for=(ReadTimeout, ConnectionError, RuntimeError),
     retry_backoff=True,
-    retry_kwargs={"max_retries": 5},
+    retry_backoff_max=120,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 8},
 )
 def ingest_document(host_path: str, mode: str = "ingest") -> dict:
     """
