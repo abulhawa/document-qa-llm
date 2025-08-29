@@ -15,6 +15,11 @@ services:
     env_file: ./embedder_api_multilingual/.env
     volumes:
       - hf_cache:/root/.cache/huggingface
+    environment:
+      - EMBEDDING_BATCH_SIZE=96
+      - EMBEDDING_DEVICE=cuda
+      - EMBEDDING_FP16=true
+      - UVICORN_WORKERS=1
     deploy:
       resources:
         reservations:
@@ -89,6 +94,9 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - DOC_PATH_MAP=C:/=>/host-c
       - EMBEDDING_API_URL=http://embedder-api:8000/embed
+      # Larger request groups + batch size to push more work per API call
+      - EMBEDDING_REQ_MAX_CHUNKS=192
+      - EMBEDDING_BATCH_SIZE=96
       - QDRANT_URL=http://qdrant:6333
       - OPENSEARCH_URL=http://opensearch:9200
     volumes:
@@ -96,8 +104,8 @@ services:
     networks: [appnet]
     command: >
       celery -A worker.celery_worker:app worker
-      -c 8
       -Ofair
+      --autoscale=16,8
       --prefetch-multiplier=1
       --max-tasks-per-child=200
       -l INFO

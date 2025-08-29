@@ -9,8 +9,8 @@ _session = requests.Session()
 _session.mount(
     "http://",
     HTTPAdapter(
-        pool_connections=10,
-        pool_maxsize=10,
+        pool_connections=16,
+        pool_maxsize=16,
         max_retries=Retry(connect=3, read=0, total=0, backoff_factor=0.5),
     ),
 )
