@@ -21,7 +21,10 @@ def test_ingest_one_returns_normalized_path(tmp_path, monkeypatch):
         "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr(
+        "utils.qdrant_utils.index_chunks_in_batches",
+        lambda chunks, os_index_batch=None: True,
+    )
     monkeypatch.setattr(
         "core.ingestion.is_file_up_to_date", lambda checksum, path: False
     )

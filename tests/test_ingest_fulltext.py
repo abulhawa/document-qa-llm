@@ -50,7 +50,7 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("core.ingestion.split_documents", lambda docs: [{"text": "chunk"}])
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: False)
 
     called = {}
 

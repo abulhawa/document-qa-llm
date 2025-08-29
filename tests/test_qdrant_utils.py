@@ -62,7 +62,7 @@ def test_index_chunks_success(monkeypatch):
         {"id": 2, "text": "b"},
     ]
 
-    assert qdu.index_chunks(chunks) is True
+    assert qdu.index_chunks_in_batches(chunks) is True
     mock_client.upsert.assert_called_once()
     points = mock_client.upsert.call_args.kwargs["points"]
     assert len(points) == 2
@@ -80,7 +80,7 @@ def test_index_chunks_embedding_failure(monkeypatch):
     chunks = [{"id": 1, "text": "a"}]
 
     with pytest.raises(RuntimeError):
-        qdu.index_chunks(chunks)
+        qdu.index_chunks_in_batches(chunks)
     mock_client.upsert.assert_not_called()
 
 
@@ -93,7 +93,7 @@ def test_index_chunks_upsert_failure(monkeypatch):
     chunks = [{"id": 1, "text": "a"}]
 
     with pytest.raises(Exception):
-        qdu.index_chunks(chunks)
+        qdu.index_chunks_in_batches(chunks)
 
 
 def test_count_qdrant_chunks_by_path(monkeypatch):

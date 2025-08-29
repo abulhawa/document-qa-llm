@@ -59,7 +59,7 @@ def test_duplicate_files_are_indexed_and_logged(monkeypatch, tmp_path):
         "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
 
     result = ingestion.ingest_one(str(file_path))
