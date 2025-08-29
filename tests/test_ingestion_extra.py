@@ -75,7 +75,7 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
 
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: False)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: False)
 
     with pytest.raises(RuntimeError):
         ingest_one(str(f))
@@ -109,7 +109,7 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
         captured["count"] = len(chunks)
 
     monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
 
     result = ingest_one(str(f))
@@ -138,7 +138,7 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
         "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
     )
     monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
 
     result = ingest_one(str(f), total_files=2)

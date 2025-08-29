@@ -101,7 +101,7 @@ def make_chunk(text, idx, checksum=None):
 
 def test_vector_index_and_retrieve(setup_fake_qdrant):
     chunks = [make_chunk("a", 0), make_chunk("b", 1), make_chunk("c", 2)]
-    assert qdrant_utils.index_chunks(chunks) is True
+    assert qdrant_utils.index_chunks_in_batches(chunks) is True
     # lower threshold so second vector is included
     vector_store.CHUNK_SCORE_THRESHOLD = 0.0
     results = vector_store.retrieve_top_k("q", top_k=2)
@@ -112,7 +112,7 @@ def test_vector_index_and_retrieve(setup_fake_qdrant):
 
 def test_vector_score_order(setup_fake_qdrant):
     chunks = [make_chunk("a", 0), make_chunk("b", 1)]
-    qdrant_utils.index_chunks(chunks)
+    qdrant_utils.index_chunks_in_batches(chunks)
     results = vector_store.retrieve_top_k("q", top_k=2)
     scores = [r["score"] for r in results]
     assert scores == sorted(scores, reverse=True)
@@ -122,7 +122,7 @@ def test_vector_score_order(setup_fake_qdrant):
 
 def test_vector_threshold_filter(monkeypatch, setup_fake_qdrant):
     chunks = [make_chunk("a", 0), make_chunk("b", 1)]
-    qdrant_utils.index_chunks(chunks)
+    qdrant_utils.index_chunks_in_batches(chunks)
     vector_store.CHUNK_SCORE_THRESHOLD = 0.9
     results = vector_store.retrieve_top_k("q", top_k=5)
     # Only exact match 'a' should remain
@@ -133,7 +133,7 @@ def test_vector_threshold_filter(monkeypatch, setup_fake_qdrant):
 
 def test_vector_delete_by_ids(setup_fake_qdrant):
     chunks = [make_chunk("a", 0), make_chunk("b", 1)]
-    qdrant_utils.index_chunks(chunks)
+    qdrant_utils.index_chunks_in_batches(chunks)
     qdrant_utils.delete_vectors_by_ids(["id0", "id1"])
     results = vector_store.retrieve_top_k("q", top_k=5)
     assert results == []

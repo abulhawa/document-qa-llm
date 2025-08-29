@@ -29,7 +29,7 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
         "core.ingestion.split_documents", lambda docs: [{"text": content}]
     )
     monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks", lambda chunks: True)
+    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: True)
     monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
     monkeypatch.setattr(
         "core.ingestion.is_duplicate_checksum", lambda c, p: False
