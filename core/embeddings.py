@@ -1,32 +1,31 @@
+import os
+from config import EMBEDDING_API_URL, EMBEDDING_BATCH_SIZE, logger
 from typing import List
 import requests
-from config import EMBEDDING_API_URL, logger
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
+_session = requests.Session()
+_session.mount(
+    "http://",
+    HTTPAdapter(
+        pool_connections=10,
+        pool_maxsize=10,
+        max_retries=Retry(connect=3, read=0, total=0, backoff_factor=0.5),
+    ),
+)
+_session.mount("https://", HTTPAdapter())
 
-def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
-    """
-    Send a batch of texts to the embedding API and return their embeddings.
-    """
-    logger.info(f"batch_size={batch_size}")
-
-    try:
-        logger.info(f"total_chars={sum(len(t) for t in texts)}")
-        logger.info(f"total_words={sum(len(t.split()) for t in texts)}")
-        logger.info(f"Embedding {len(texts)} texts via API...")
-
-        response = requests.post(
-            EMBEDDING_API_URL,
-            json={"texts": texts, "batch_size": batch_size},
-            timeout=(3, 120),
-        )
-        response.raise_for_status()
-
-        embeddings = response.json()["embeddings"]
-        if embeddings:
-            logger.info(f"vector_size={len(embeddings[0])}")
-
-        return embeddings
-
-    except requests.RequestException as e:
-        logger.error("Embedding API request failed: %s", str(e))
-        raise RuntimeError(f"Embedding API error: {e}")
+def embed_texts(texts: List[str], batch_size: int | None = None) -> List[List[float]]:
+    bs = batch_size or EMBEDDING_BATCH_SIZE
+    logger.info(
+        f"Embedding API: batch_size={bs} total_texts={len(texts)} total_chars={sum(len(t) for t in texts)}"
+    )
+    resp = _session.post(
+        EMBEDDING_API_URL,
+        json={"texts": texts, "batch_size": bs},
+        timeout=(3, 120),
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["embeddings"]

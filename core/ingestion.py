@@ -4,7 +4,7 @@ import time
 import threading
 from contextlib import contextmanager
 from datetime import datetime
-from typing import List, Dict, Any, Callable, Optional, Iterable, Union
+from typing import Sequence, Dict, Any, Optional
 from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
 from core.file_loader import load_documents
 from core.chunking import split_documents
@@ -221,30 +221,26 @@ def ingest_one(
             logger.warning(
                 f"OpenSearch full-text delete failed for {normalized_path}: {e}"
             )
+            
+    os_acc: Dict[str, Any] = {"indexed": 0, "errors": []}
 
-    # --- VECTORS FIRST: embed + upsert to Qdrant and BLOCK until persisted ---
+    def _os_index_batch(group: Sequence[Dict[str, Any]]) -> None:
+        n, errs = index_documents(list(group))  # whatever your indexer returns
+        os_acc["indexed"] += int(n)
+        if errs:
+            os_acc["errors"].extend(errs)
+
+    # --- VECTORS FIRST (batched): embed + upsert, then OS per batch ---
     try:
-        logger.info(
-            f"Embedding + upserting {len(chunks)} chunks to Qdrant (wait=True)."
-        )
-        ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts, durable
+        logger.info(f"Embedding + upserting {len(chunks)} chunks to Qdrant in batches (wait=True).")
+        ok = qdrant_utils.index_chunks_in_batches(chunks, os_index_batch=_os_index_batch)
+
         if not ok:
             raise RuntimeError("Qdrant upsert returned falsy")
     except Exception as e:
         logger.error(f"❌ Vector indexing failed: {e}")
         log.fail(stage="index_vec", error_type=e.__class__.__name__, reason=str(e))
         raise RuntimeError(f"Vector indexing failed for {normalized_path}: {e}") from e
-
-    # --- ONLY AFTER VECTORS SUCCEED: write chunks + full text to OpenSearch ---
-    try:
-        logger.info(f"Indexing {len(chunks)} chunks to OpenSearch.")
-        index_documents(chunks)
-    except Exception as e:
-        logger.error(f"❌ OpenSearch chunk indexing failed: {e}")
-        log.fail(stage="index_os", error_type=e.__class__.__name__, reason=str(e))
-        raise RuntimeError(
-            f"OpenSearch chunk indexing failed for {normalized_path}: {e}"
-        ) from e
 
     try:
         index_fulltext_document(full_doc)
