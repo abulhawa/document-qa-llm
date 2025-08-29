@@ -20,6 +20,22 @@ app.conf.update(
 )
 
 
+# Recycle worker processes to avoid memory creep during long runs
+app.conf.worker_max_tasks_per_child = int(
+    os.getenv("WORKER_MAX_TASKS_PER_CHILD", "200")
+)
+
+# Rate-limit heavy tasks cluster-wide (adjust via env if needed)
+app.conf.task_annotations = {
+    "tasks.ingest_document": {"rate_limit": os.getenv("INGEST_RATE_LIMIT", "24/m")},
+    "tasks.delete_document": {"rate_limit": "60/m"},
+}
+
+app.conf.task_routes = {
+    "tasks.ingest_document": {"queue": "ingest"},
+}
+
+
 @worker_ready.connect
 def _warmup(**_):
     from utils.opensearch_utils import (

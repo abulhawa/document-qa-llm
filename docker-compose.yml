@@ -94,6 +94,13 @@ services:
     volumes:
       - "C:/:/host-c:ro"
     networks: [appnet]
+    command: >
+      celery -A worker.celery_worker:app worker
+      -c 8
+      -Ofair
+      --prefetch-multiplier=1
+      --max-tasks-per-child=200
+      -l INFO
 
   flower:
     image: mher/flower:latest

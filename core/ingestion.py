@@ -56,7 +56,7 @@ def ingest_one(
     Ingest a single file path:
       1) load + split locally
       2) build chunk metadata (UUIDv5 ids)
-      3) workload -> queue to Celery (OS + full text + embed + Qdrant)
+      3) vectors first (embed + Qdrant), then OpenSearch (chunks + full text)
 
     Returns:
       dict with keys: success, status, path, and optionally num_chunks
@@ -222,16 +222,26 @@ def ingest_one(
                 f"OpenSearch full-text delete failed for {normalized_path}: {e}"
             )
 
+    # --- VECTORS FIRST: embed + upsert to Qdrant and BLOCK until persisted ---
+    try:
+        logger.info(
+            f"Embedding + upserting {len(chunks)} chunks to Qdrant (wait=True)."
+        )
+        ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts, durable
+        if not ok:
+            raise RuntimeError("Qdrant upsert returned falsy")
+    except Exception as e:
+        logger.error(f"❌ Vector indexing failed: {e}")
+        log.fail(stage="index_vec", error_type=e.__class__.__name__, reason=str(e))
+        raise RuntimeError(f"Vector indexing failed for {normalized_path}: {e}") from e
+
+    # --- ONLY AFTER VECTORS SUCCEED: write chunks + full text to OpenSearch ---
     try:
         logger.info(f"Indexing {len(chunks)} chunks to OpenSearch.")
         index_documents(chunks)
     except Exception as e:
         logger.error(f"❌ OpenSearch chunk indexing failed: {e}")
-        log.fail(
-            stage="index_os",
-            error_type=e.__class__.__name__,
-            reason=str(e),
-        )
+        log.fail(stage="index_os", error_type=e.__class__.__name__, reason=str(e))
         raise RuntimeError(
             f"OpenSearch chunk indexing failed for {normalized_path}: {e}"
         ) from e
@@ -240,25 +250,10 @@ def ingest_one(
         index_fulltext_document(full_doc)
     except Exception as e:
         logger.warning(f"OpenSearch full-text indexing failed: {e}")
-        log.fail(
-            stage="index_fulltext",
-            error_type=e.__class__.__name__,
-            reason=str(e),
-        )
+        log.fail(stage="index_fulltext", error_type=e.__class__.__name__, reason=str(e))
         raise RuntimeError(
             f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
         ) from e
-
-    try:
-        logger.info(f"Embedding + upserting {len(chunks)} chunks to Qdrant.")
-        ok = qdrant_utils.index_chunks(chunks)  # embeds + upserts
-        if not ok:
-            raise RuntimeError("Qdrant upsert returned falsy")
-    except Exception as e:
-        logger.error(f"❌ Vector indexing failed: {e}")
-        stage = "index_vec"
-        log.fail(stage=stage, error_type=e.__class__.__name__, reason=str(e))
-        raise RuntimeError(f"Vector indexing failed for {normalized_path}: {e}") from e
 
     final_status = "Duplicate & Indexed" if is_dup else "Success"
     log.done(status=final_status)

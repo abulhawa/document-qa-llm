@@ -17,7 +17,7 @@ def embed_texts(texts: List[str], batch_size: int = 32) -> List[List[float]]:
         response = requests.post(
             EMBEDDING_API_URL,
             json={"texts": texts, "batch_size": batch_size},
-            timeout=30,
+            timeout=(3, 120),
         )
         response.raise_for_status()
 
