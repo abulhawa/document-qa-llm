@@ -52,7 +52,7 @@ def test_index_chunks_success(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    def fake_embed(texts):
+    def fake_embed(texts, batch_size=None):
         return [[i, i + 1, i + 2] for i, _ in enumerate(texts)]
 
     monkeypatch.setattr(qdu, "embed_texts", fake_embed)
@@ -72,7 +72,7 @@ def test_index_chunks_embedding_failure(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    def fail_embed(texts):
+    def fail_embed(texts, batch_size=None):
         raise RuntimeError("fail")
 
     monkeypatch.setattr(qdu, "embed_texts", fail_embed)
@@ -88,7 +88,11 @@ def test_index_chunks_upsert_failure(monkeypatch):
     mock_client = MagicMock()
     mock_client.upsert.side_effect = Exception("boom")
     monkeypatch.setattr(qdu, "client", mock_client)
-    monkeypatch.setattr(qdu, "embed_texts", lambda texts: [[0, 0, 0] for _ in texts])
+    monkeypatch.setattr(
+        qdu,
+        "embed_texts",
+        lambda texts, batch_size=None: [[0, 0, 0] for _ in texts],
+    )
 
     chunks = [{"id": 1, "text": "a"}]
 

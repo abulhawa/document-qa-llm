@@ -16,6 +16,7 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
     def fake_index_documents(chunks):
         for c in chunks:
             captured.setdefault(c["path"], []).append(c["id"])
+        return len(chunks), []
 
     monkeypatch.setattr(
         "core.ingestion.load_documents",
@@ -29,7 +30,14 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
         "core.ingestion.split_documents", lambda docs: [{"text": content}]
     )
     monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
-    monkeypatch.setattr("utils.qdrant_utils.index_chunks_in_batches", lambda chunks: True)
+    def fake_index_chunks(chunks, os_index_batch=None):
+        if os_index_batch:
+            os_index_batch(chunks)
+        return True
+
+    monkeypatch.setattr(
+        "utils.qdrant_utils.index_chunks_in_batches", fake_index_chunks
+    )
     monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
     monkeypatch.setattr(
         "core.ingestion.is_duplicate_checksum", lambda c, p: False

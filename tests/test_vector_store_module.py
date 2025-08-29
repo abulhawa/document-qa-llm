@@ -76,11 +76,22 @@ def setup_fake_qdrant(monkeypatch):
         "q": [1.0, 0.0],
     }
 
-    def fake_embed(texts):
+    def fake_embed(texts, batch_size=None):
         return [mapping.get(t[0].lower(), [0.0, 0.0]) for t in texts]
 
     monkeypatch.setattr(qdrant_utils, "embed_texts", fake_embed)
     monkeypatch.setattr(vector_store, "embed_texts", fake_embed)
+
+    def fake_upsert_vectors(chunks, vectors):
+        points = [qdrant_utils.PointStruct(id=c["id"], vector=v, payload=c) for c, v in zip(chunks, vectors)]
+        qdrant_utils.client.upsert(
+            collection_name=qdrant_utils.QDRANT_COLLECTION,
+            points=points,
+            wait=True,
+        )
+        return True
+
+    monkeypatch.setattr(qdrant_utils, "upsert_vectors", fake_upsert_vectors)
     yield fake
 
 
