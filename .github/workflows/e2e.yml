@@ -115,7 +115,7 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install -U pip
-          pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt
+          pip install -r requirements/shared.txt -r requirements/dev.txt -r requirements/app.txt -r requirements/worker.txt
           pip install pytest pytest-playwright fastapi uvicorn pydantic python-dotenv
 
       - name: Determine Playwright Python version
