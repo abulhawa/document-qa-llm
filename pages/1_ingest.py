@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 
 from ui.ingest_client import enqueue_paths
+from utils.inventory import upsert_watch_inventory_for_paths
 from ui.ingestion_ui import run_file_picker, run_folder_picker
 from ui.task_status import add_records
 from components.task_panel import render_task_panel
@@ -33,19 +34,6 @@ if selected_files:
     df = pd.DataFrame({"Selected Path": [p.replace("\\", "/") for p in selected_files]})
     status_table.dataframe(df, height=300)
 
-    def update_progress(done: int, total: int, elapsed: float):
-        # Foreground progress: files loaded/split/enqueued (no Celery polling)
-        progress_bar.progress(done / max(total, 1))
-        if done:
-            eta = (elapsed / done) * (total - done)
-            eta_display.text(
-                f"{done}/{total} files processed… (elapsed: {elapsed:.1f}s, ETA: {eta:.1f}s)"
-            )
-        else:
-            eta_display.text(
-                f"{done}/{total} files processed… (elapsed: {elapsed:.1f}s)"
-            )
-
     with start_span("Ingestion chain", CHAIN) as span:
         if len(selected_files) > 5:
             preview = selected_files[:5] + [
@@ -55,6 +43,12 @@ if selected_files:
             preview = selected_files
 
         span.set_attribute(INPUT_VALUE, preview)
+
+        # Upsert selection into the watch inventory (exists_now/first_seen/last_seen)
+        try:
+            upsert_watch_inventory_for_paths(selected_files)
+        except Exception:
+            pass
 
         # Enqueue ingestion to the worker; progress bar shows "queued" state only.
         task_ids = enqueue_paths(selected_files, mode="ingest")

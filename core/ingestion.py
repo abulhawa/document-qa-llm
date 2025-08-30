@@ -1,3 +1,5 @@
+from utils.opensearch.fulltext import index_fulltext_document, delete_fulltext_by_path
+from utils.inventory import set_inventory_number_of_chunks
 import os
 import uuid
 import time
@@ -18,11 +20,12 @@ from utils.file_utils import (
     format_file_size,
 )
 from utils import qdrant_utils
-from utils.opensearch_utils import (
+from utils.opensearch.chunks import (
     is_file_up_to_date,
     is_duplicate_checksum,
     index_documents,
-    index_fulltext_document,
+    get_chunk_ids_by_path,
+    delete_chunks_by_path,
 )
 from utils.ingest_logging import IngestLogEmitter
 
@@ -184,11 +187,6 @@ def ingest_one(
 
     # Optional: on force+replace, purge existing entries
     if force and replace:
-        from utils.opensearch_utils import (
-            delete_chunks_by_path,
-            delete_fulltext_by_path,
-            get_chunk_ids_by_path,
-        )
         from utils.qdrant_utils import delete_vectors_by_ids
 
         logger.info(
@@ -251,6 +249,11 @@ def ingest_one(
             f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
         ) from e
 
+    try:
+        set_inventory_number_of_chunks(normalized_path, len(chunks))
+    except Exception:
+        pass
+
     final_status = "Duplicate & Indexed" if is_dup else "Success"
     log.done(status=final_status)
     return {
@@ -259,3 +262,7 @@ def ingest_one(
         "path": normalized_path,
         "status": final_status,
     }
+
+
+
+
