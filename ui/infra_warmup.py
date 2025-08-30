@@ -8,7 +8,7 @@ def warmup_infra_once() -> bool:
         CHUNKS_INDEX,
         FULLTEXT_INDEX,
         INGEST_LOG_INDEX,
-        WATCH_INVENTORY_INDEX,
+        WATCHLIST_INDEX,
     )
     from utils.opensearch.indexes import ensure_index_exists
     from utils.qdrant_utils import ensure_collection_exists
@@ -16,7 +16,7 @@ def warmup_infra_once() -> bool:
     ensure_index_exists(CHUNKS_INDEX)
     ensure_index_exists(FULLTEXT_INDEX)
     ensure_index_exists(INGEST_LOG_INDEX)
-    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    ensure_index_exists(WATCHLIST_INDEX)
     ensure_collection_exists()
     return True
 
