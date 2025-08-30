@@ -16,9 +16,7 @@ def test_logs_emitted_for_up_to_date(monkeypatch, tmp_path):
 
     client = DummyClient()
     monkeypatch.setattr("utils.ingest_logging.get_client", lambda: client)
-    monkeypatch.setattr(
-        "utils.ingest_logging.ensure_ingest_log_index_exists", lambda: None
-    )
+    # Index creation is handled in warmup; no per-write ensure required
     monkeypatch.setattr(
         "core.ingestion.is_file_up_to_date", lambda checksum, path: True
     )
@@ -38,9 +36,7 @@ def test_duplicate_files_are_indexed_and_logged(monkeypatch, tmp_path):
 
     client = DummyClient()
     monkeypatch.setattr("utils.ingest_logging.get_client", lambda: client)
-    monkeypatch.setattr(
-        "utils.ingest_logging.ensure_ingest_log_index_exists", lambda: None
-    )
+    # Index creation is handled in warmup; no per-write ensure required
     monkeypatch.setattr(
         "core.ingestion.is_file_up_to_date", lambda checksum, path: False
     )
