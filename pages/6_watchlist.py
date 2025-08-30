@@ -4,6 +4,7 @@ from utils.inventory import (
     seed_watch_inventory_from_fulltext,
     seed_inventory_indexed_chunked_count,
     count_watch_inventory_remaining,
+    list_watch_inventory_unindexed_paths,
 )
 from utils.opensearch.indexes import ensure_index_exists
 from utils.watchlist import (
@@ -42,6 +43,27 @@ with st.container(border=True):
 
 st.divider()
 
+# Batch actions for all watched folders
+if watched:
+    with st.container(border=True):
+        st.subheader("All Watched Folders")
+        if st.button(
+            "Refresh all",
+            help="Import known files and chunk counts for every watched folder, then update counts.",
+            key="seed-all",
+        ):
+            total_fulltext = 0
+            total_chunks = 0
+            for pref in list(watched):
+                try:
+                    total_fulltext += seed_watch_inventory_from_fulltext(pref)
+                    total_chunks += seed_inventory_indexed_chunked_count(pref)
+                except Exception:
+                    pass
+            st.success(
+                f"Refreshed all. Imported known files: {total_fulltext}, updated chunk counts: {total_chunks}."
+            )
+
 if not watched:
     st.info("No tracked folders yet. Add one above.")
 else:
@@ -52,6 +74,14 @@ else:
             try:
                 remaining_now = count_watch_inventory_remaining(pref)
                 st.metric("Unindexed files", remaining_now)
+            except Exception:
+                pass
+            # Preview a few unindexed file paths
+            try:
+                preview = list_watch_inventory_unindexed_paths(pref, size=10)
+                if preview:
+                    st.caption("Sample of unindexed files")
+                    st.table({"Path": preview})
             except Exception:
                 pass
             c0, c1, c2, c3, c4 = st.columns([1, 1, 1, 1, 1])
@@ -104,4 +134,3 @@ else:
                         st.warning("Folder removed from watchlist.")
                     else:
                         st.warning("Failed to remove. Try again.")
-
