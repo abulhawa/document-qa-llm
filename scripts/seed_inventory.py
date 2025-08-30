@@ -5,15 +5,16 @@ import argparse
 from typing import Optional
 
 from utils.inventory import (
-    ensure_watch_inventory_index_exists,
     seed_watch_inventory_from_fulltext,
     seed_inventory_indexed_chunked_count,
     count_watch_inventory_remaining,
 )
+from utils.opensearch.indexes import ensure_index_exists
+from config import WATCH_INVENTORY_INDEX
 
 
 def main(prefix: str, do_fulltext: bool, do_chunks: bool) -> None:
-    ensure_watch_inventory_index_exists()
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
     if do_fulltext:
         n = seed_watch_inventory_from_fulltext(prefix)
         print(f"Seeded from full-text: {n} entry(ies)")
@@ -34,4 +35,3 @@ if __name__ == "__main__":
     do_fulltext = args.fulltext or (not args.fulltext and not args.chunks)
     do_chunks = args.chunks or (not args.fulltext and not args.chunks)
     main(args.prefix, do_fulltext, do_chunks)
-
