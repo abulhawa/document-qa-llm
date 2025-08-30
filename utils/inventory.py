@@ -176,6 +176,61 @@ def list_watch_inventory_unindexed_paths(path_prefix: str, size: int = 10) -> Li
     return out
 
 
+def list_watch_inventory_unindexed_paths_all(
+    path_prefix: str, *, limit: int = 2000, page_size: int = 500
+) -> List[str]:
+    """Return up to `limit` unindexed file paths under prefix using scroll.
+
+    Uses exists_now=True and must_not last_indexed, filtered by path prefix.
+    """
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}},
+    ]
+    body: Dict[str, Any] = {
+        "size": max(1, int(page_size)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    out: List[str] = []
+    try:
+        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        scroll_id = resp.get("_scroll_id")
+        hits = resp.get("hits", {}).get("hits", [])
+        while hits and len(out) < limit:
+            for h in hits:
+                p = (h.get("_source", {}) or {}).get("path")
+                if p:
+                    out.append(p)
+                    if len(out) >= limit:
+                        break
+            if len(out) >= limit:
+                break
+            if not scroll_id:
+                break
+            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            scroll_id = resp.get("_scroll_id")
+            hits = resp.get("hits", {}).get("hits", [])
+    except Exception:
+        return out
+    finally:
+        try:
+            if 'scroll_id' in locals() and scroll_id:
+                client.clear_scroll(scroll_id=scroll_id)
+        except Exception:
+            pass
+    return out
+
+
 def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) -> int:
     """Populate indexed_chunked_count from the documents index by counting chunks per path.
 

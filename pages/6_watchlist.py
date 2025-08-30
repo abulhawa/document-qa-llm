@@ -5,7 +5,11 @@ from utils.inventory import (
     seed_inventory_indexed_chunked_count,
     count_watch_inventory_remaining,
     list_watch_inventory_unindexed_paths,
+    list_watch_inventory_unindexed_paths_all,
 )
+from ui.ingest_client import enqueue_paths
+from ui.task_status import add_records
+from components.task_panel import render_task_panel
 from utils.opensearch.indexes import ensure_index_exists
 from utils.watchlist import (
     get_watchlist_prefixes,
@@ -21,6 +25,7 @@ st.caption("Track folders and see how many files still need indexing. Use the ac
 # Load persisted watchlist prefixes
 ensure_index_exists(index=WATCHLIST_INDEX)
 watched = st.session_state.setdefault("watched_prefixes", get_watchlist_prefixes())
+st.session_state.setdefault("ingest_tasks", [])
 
 with st.container(border=True):
     st.subheader("Add Tracked Folder")
@@ -84,7 +89,7 @@ else:
                     st.table({"Path": preview})
             except Exception:
                 pass
-            c0, c1, c2, c3, c4 = st.columns([1, 1, 1, 1, 1])
+            c0, c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1, 1])
             with c0:
                 if st.button(
                     "Refresh folder status",
@@ -134,3 +139,29 @@ else:
                         st.warning("Folder removed from watchlist.")
                     else:
                         st.warning("Failed to remove. Try again.")
+            with c5:
+                if st.button(
+                    "Ingest remaining",
+                    key=f"ingest-{pref}",
+                    help="Queue ingestion jobs for unindexed files under this folder (up to 2000).",
+                ):
+                    with st.spinner("Collecting unindexed files ..."):
+                        paths = list_watch_inventory_unindexed_paths_all(pref, limit=2000)
+                    if not paths:
+                        st.info("No unindexed files found under this folder.")
+                    else:
+                        with st.spinner(f"Queuing {len(paths)} files for ingestion ..."):
+                            task_ids = enqueue_paths(paths, mode="ingest")
+                            st.session_state["ingest_tasks"] = add_records(
+                                st.session_state.get("ingest_tasks"),
+                                paths,
+                                task_ids,
+                                action="ingest",
+                            )
+                        st.success(f"Queued {len(task_ids)} file(s) for ingestion.")
+
+# Small task panel to track queued work from this page
+should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
+if should_rerun:
+    st.session_state["ingest_tasks"] = updated
+    st.rerun()
