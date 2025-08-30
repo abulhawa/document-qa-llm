@@ -146,6 +146,36 @@ def count_watch_inventory_remaining(path_prefix: Optional[str] = None) -> int:
     return int(resp.get("hits", {}).get("total", {}).get("value", 0))
 
 
+def list_watch_inventory_unindexed_paths(path_prefix: str, size: int = 10) -> List[str]:
+    """Return up to `size` file paths under prefix that are exists_now and missing last_indexed."""
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}},
+    ]
+    body: Dict[str, Any] = {
+        "size": max(1, int(size)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    hits = resp.get("hits", {}).get("hits", [])
+    out: List[str] = []
+    for h in hits:
+        p = (h.get("_source", {}) or {}).get("path")
+        if p:
+            out.append(p)
+    return out
+
+
 def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) -> int:
     """Populate indexed_chunked_count from the documents index by counting chunks per path.
 
