@@ -75,9 +75,13 @@ FULLTEXT_INDEX_BASE = _env_str(
 )
 FULLTEXT_INDEX = _namespaced(FULLTEXT_INDEX_BASE)
 
-# Inventory of watched folders (file presence + flags)
+# Inventory of files (per-path facts)
 WATCH_INVENTORY_INDEX_BASE = _env_str("WATCH_INVENTORY_INDEX_BASE", "watch_inventory")
 WATCH_INVENTORY_INDEX = _namespaced(WATCH_INVENTORY_INDEX_BASE)
+
+# Watchlist of tracked prefixes/folders (configuration)
+WATCHLIST_INDEX_BASE = _env_str("WATCHLIST_INDEX_BASE", "watchlists")
+WATCHLIST_INDEX = _namespaced(WATCHLIST_INDEX_BASE)
 
 # ── LLM API (text-generation-webui compatible)
 LLM_BASE_URL            = _env_str("LLM_BASE_URL", "http://localhost:5000").rstrip("/")
@@ -107,6 +111,7 @@ def dump_config_for_debug() -> None:
         "OPENSEARCH_URL": OPENSEARCH_URL, "CHUNKS_INDEX": CHUNKS_INDEX,
         "FULLTEXT_INDEX": FULLTEXT_INDEX,
         "WATCH_INVENTORY_INDEX": WATCH_INVENTORY_INDEX,
+        "WATCHLIST_INDEX": WATCHLIST_INDEX,
         "INGEST_LOG_INDEX": INGEST_LOG_INDEX, "QDRANT_URL": QDRANT_URL,
         "QDRANT_COLLECTION": QDRANT_COLLECTION, "USE_STUB_EMBEDDER": USE_STUB_EMBEDDER,
         "USE_STUB_LLM": USE_STUB_LLM, "EMBEDDING_SIZE": EMBEDDING_SIZE,

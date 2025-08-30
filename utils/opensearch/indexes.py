@@ -4,6 +4,7 @@ from config import (
     FULLTEXT_INDEX,
     INGEST_LOG_INDEX,
     WATCH_INVENTORY_INDEX,
+    WATCHLIST_INDEX,
     logger,
 )
 from utils.opensearch_utils import (
@@ -24,6 +25,9 @@ def ensure_index_exists(index: str) -> None:
     elif index == WATCH_INVENTORY_INDEX:
         from utils.inventory import INVENTORY_INDEX_SETTINGS  # lazy import
         body = INVENTORY_INDEX_SETTINGS
+    elif index == WATCHLIST_INDEX:
+        from utils.watchlist import WATCHLIST_INDEX_SETTINGS  # lazy import
+        body = WATCHLIST_INDEX_SETTINGS
     else:
         body = None
     if body is None:
