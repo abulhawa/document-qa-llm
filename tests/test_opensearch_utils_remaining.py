@@ -3,30 +3,6 @@ import os
 import utils.opensearch_utils as osu
 
 
-def test_ensure_ingest_log_index_exists(monkeypatch):
-    class FakeIndices:
-        def __init__(self):
-            self.exists_called_with = None
-            self.create_called_with = []
-
-        def exists(self, index):
-            self.exists_called_with = index
-            return False
-
-        def create(self, index, body, params=None):
-            self.create_called_with.append((index, body))
-
-    class FakeClient:
-        def __init__(self):
-            self.indices = FakeIndices()
-
-    client = FakeClient()
-    monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: client)
-    osu.ensure_ingest_log_index_exists()
-    assert client.indices.exists_called_with == osu.INGEST_LOG_INDEX
-    assert client.indices.create_called_with[0][0] == osu.INGEST_LOG_INDEX
-
-
 def test_list_files_from_opensearch(monkeypatch):
     class FakeClient:
         def search(self, index, body):

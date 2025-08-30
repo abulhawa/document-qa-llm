@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from core.opensearch_client import get_client
-from config import OPENSEARCH_FULLTEXT_INDEX, logger
+from config import FULLTEXT_INDEX, logger
 import html
 
 
@@ -174,7 +174,7 @@ def search_documents(
     )
 
     logger.info("Searching full-text index with query: %s", q)
-    resp = client.search(index=OPENSEARCH_FULLTEXT_INDEX, body=body)
+    resp = client.search(index=FULLTEXT_INDEX, body=body)
     hits = resp.get("hits", {})
     results: List[Dict[str, Any]] = []
     for hit in hits.get("hits", []):

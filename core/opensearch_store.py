@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from core.opensearch_client import get_client
-from config import logger, OPENSEARCH_INDEX
+from config import logger, CHUNKS_INDEX
 from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 
 
@@ -12,7 +12,7 @@ def search(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
 
         client = get_client()
         response = client.search(
-            index=OPENSEARCH_INDEX,
+            index=CHUNKS_INDEX,
             body={
                 "size": top_k * 3,  # fetch extra for dedup
                 "query": {"match": {"text": {"query": query, "operator": "or"}}},

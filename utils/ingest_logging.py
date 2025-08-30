@@ -5,7 +5,6 @@ from typing import Any
 from config import logger, INGEST_LOG_INDEX
 from core.opensearch_client import get_client
 from opensearchpy import exceptions
-from utils.opensearch_utils import ensure_ingest_log_index_exists
 
 
 class IngestLogEmitter:

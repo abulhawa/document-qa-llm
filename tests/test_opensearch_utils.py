@@ -31,26 +31,6 @@ def test_is_file_up_to_date_does_not_match_similar_paths(monkeypatch):
     assert osu.is_file_up_to_date(checksum, "/foo/bar.txt") is False
 
 
-def test_ensure_index_exists_creates_mapping(monkeypatch):
-    created = {}
-
-    class FakeIndices:
-        def exists(self, index):
-            return False
-
-        def create(self, index, body, params=None):
-            created["index"] = index
-            created["body"] = body
-
-    class FakeClient:
-        indices = FakeIndices()
-
-    monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
-    osu.ensure_index_exists()
-    assert created["index"] == osu.OPENSEARCH_INDEX
-    assert "mappings" in created["body"]
-
-
 def test_index_documents_bulk(monkeypatch):
     recorded = {}
 
@@ -63,7 +43,6 @@ def test_index_documents_bulk(monkeypatch):
 
     monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
     monkeypatch.setattr(osu, "helpers", types.SimpleNamespace(bulk=fake_bulk))
-    monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
 
     chunks = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}]
     osu.index_documents(chunks)
@@ -83,7 +62,6 @@ def test_index_documents_update(monkeypatch):
 
     monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
     monkeypatch.setattr(osu, "helpers", types.SimpleNamespace(bulk=fake_bulk))
-    monkeypatch.setattr(osu, "ensure_index_exists", lambda: None)
 
     chunks = [{"id": "1", "text": "a", "op_type": "update"}]
     osu.index_documents(chunks)

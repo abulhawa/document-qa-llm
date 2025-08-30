@@ -28,6 +28,11 @@ pages = [
         icon="🔎",
     ),
     st.Page(
+        "pages/6_watchlist.py",
+        title="Watchlist",
+        icon="👀",
+    ),
+    st.Page(
         "pages/30_running_tasks.py",
         title="Running Tasks",
         icon="🧵",
