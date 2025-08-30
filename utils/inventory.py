@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
+
+from core.opensearch_client import get_client
+from opensearchpy import helpers
+
+from config import (
+    WATCH_INVENTORY_INDEX,
+    CHUNKS_INDEX,
+    FULLTEXT_INDEX,
+    logger,
+)
+from utils.file_utils import normalize_path
+from utils.opensearch.indexes import ensure_index_exists
+
+
+INVENTORY_INDEX_SETTINGS: Dict[str, Any] = {
+    "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+    "mappings": {
+        "properties": {
+            "path": {"type": "keyword"},
+            "size": {"type": "long"},
+            "mtime_iso": {"type": "date", "format": "strict_date_time"},
+            "checksum": {"type": "keyword"},
+            "first_seen": {"type": "date"},
+            "last_seen": {"type": "date"},
+            "exists_now": {"type": "boolean"},
+            "last_indexed": {"type": "date"},
+            "number_of_chunks": {"type": "integer"},
+            "indexed_chunked_count": {"type": "integer"},
+        }
+    },
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def upsert_watch_inventory_for_paths(paths: List[str]) -> int:
+    """Bulk upsert inventory docs for given paths.
+
+    Sets exists_now=True and updates last_seen. If a doc does not exist, initializes first_seen.
+    Use last_indexed presence as the source of truth for indexing status.
+    """
+    if not paths:
+        return 0
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    actions: List[Dict[str, Any]] = []
+    now = _now_iso()
+    for p in paths:
+        np = normalize_path(p)
+        doc = {"path": np, "exists_now": True, "last_seen": now}
+        actions.append(
+            {
+                "_op_type": "update",
+                "_index": WATCH_INVENTORY_INDEX,
+                "_id": np,
+                "doc": doc,
+                "doc_as_upsert": True,
+                "upsert": {**doc, "first_seen": now},
+            }
+        )
+    helpers.bulk(client, actions)
+    return len(actions)
+
+
+def seed_watch_inventory_from_fulltext(path_prefix: str, size: int = 10000) -> int:
+    """Populate watch inventory from already-indexed full-text docs.
+
+    Uses the full-text index (1 doc per file) to upsert inventory entries setting
+    last_indexed from indexed_at. Also sets exists_now=True and first_seen/last_seen.
+    """
+    ensure_watch_inventory_index_exists()
+    client = get_client()
+    n_pref = normalize_path(path_prefix)
+    body: Dict[str, Any] = {
+        "track_total_hits": True,
+        "query": {"prefix": {"path": n_pref}},
+        "_source": ["path", "checksum", "indexed_at", "modified_at", "size_bytes"],
+        "size": size,
+        "sort": [{"path": "asc"}],
+    }
+    resp = client.search(index=FULLTEXT_INDEX, body=body)
+    hits = resp.get("hits", {}).get("hits", [])
+    if not hits:
+        return 0
+    actions: List[Dict[str, Any]] = []
+    for h in hits:
+        s = h.get("_source", {})
+        p = normalize_path(s.get("path", ""))
+        if not p:
+            continue
+        indexed_at = s.get("indexed_at") or _now_iso()
+        modified_at = s.get("modified_at")
+        size_bytes = s.get("size_bytes")
+        checksum = s.get("checksum")
+        doc = {
+            "path": p,
+            "size": size_bytes,
+            "mtime_iso": modified_at,
+            "checksum": checksum,
+            "exists_now": True,
+            "first_seen": indexed_at,
+            "last_seen": indexed_at,
+            "last_indexed": indexed_at,
+        }
+        actions.append(
+            {
+                "_op_type": "update",
+                "_index": WATCH_INVENTORY_INDEX,
+                "_id": p,
+                "doc": doc,
+                "doc_as_upsert": True,
+                "upsert": doc,
+            }
+        )
+    if actions:
+        helpers.bulk(client, actions)
+    return len(actions)
+
+
+def count_watch_inventory_remaining(path_prefix: Optional[str] = None) -> int:
+    """Count files that exist now but are not yet indexed.
+
+    If path_prefix is provided, restrict to entries whose path starts with it.
+    """
+    client = get_client()
+    filters: List[Dict[str, Any]] = [{"term": {"exists_now": True}}]
+    if path_prefix:
+        filters.append({"prefix": {"path": normalize_path(path_prefix)}})
+    body: Dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+    }
+    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    return int(resp.get("hits", {}).get("total", {}).get("value", 0))
+
+
+def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) -> int:
+    """Populate indexed_chunked_count from the documents index by counting chunks per path.
+
+    Filters by path prefix using wildcard query on path.keyword.
+    """
+    ensure_watch_inventory_index_exists()
+    client = get_client()
+    n_pref = normalize_path(path_prefix)
+    body: Dict[str, Any] = {
+        "size": 0,
+        "query": {"wildcard": {"path.keyword": f"{n_pref}*"}},
+        "aggs": {"by_path": {"terms": {"field": "path.keyword", "size": size}}},
+    }
+    resp = client.search(index=CHUNKS_INDEX, body=body)
+    buckets = resp.get("aggregations", {}).get("by_path", {}).get("buckets", [])
+    if not buckets:
+        return 0
+    actions: List[Dict[str, Any]] = []
+    now = _now_iso()
+    for b in buckets:
+        p = b.get("key")
+        if not p:
+            continue
+        cnt = int(b.get("doc_count", 0))
+        doc = {"path": p, "exists_now": True, "last_seen": now, "indexed_chunked_count": cnt}
+        actions.append(
+            {
+                "_op_type": "update",
+                "_index": WATCH_INVENTORY_INDEX,
+                "_id": p,
+                "doc": doc,
+                "doc_as_upsert": True,
+                "upsert": {**doc, "first_seen": now, "last_indexed": now},
+            }
+        )
+    if actions:
+        helpers.bulk(client, actions)
+    return len(actions)
+
+
+def set_inventory_number_of_chunks(path: str, number_of_chunks: int) -> None:
+    """Update inventory.number_of_chunks for entries matching the exact path."""
+    ensure_watch_inventory_index_exists()
+    client = get_client()
+    try:
+        client.update_by_query(
+            index=WATCH_INVENTORY_INDEX,
+            body={
+                "script": {
+                    "source": "ctx._source.number_of_chunks = params.n; ctx._source.last_seen = params.t; ctx._source.exists_now = true",
+                    "lang": "painless",
+                    "params": {"n": int(number_of_chunks), "t": _now_iso()},
+                },
+                "query": {"term": {"path": normalize_path(path)}},
+            },
+            refresh=False, # type: ignore
+        )
+    except Exception:
+        pass
+
