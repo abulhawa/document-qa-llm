@@ -28,7 +28,9 @@ def _env_bool(name: str, default: bool = False) -> bool:
 # ── Global mode & namespacing (for CI/e2e)
 CI: bool = _env_bool("CI", False)
 TEST_MODE: str = _env_str("TEST_MODE", "off")  # off|e2e|integration|ui_only
-NAMESPACE: str = _env_str("NAMESPACE", "ci" if CI else "")
+# Default namespace: 'ci' on CI, 'test' when TEST_MODE is active, otherwise empty
+_default_ns = "ci" if CI else ("test" if TEST_MODE in ("e2e", "integration", "ui_only") else "")
+NAMESPACE: str = _env_str("NAMESPACE", _default_ns)
 INDEX_PREFIX: str = _env_str("INDEX_PREFIX", "")
 _default_sha = os.getenv("GITHUB_SHA", "")[:7]
 INDEX_SUFFIX: str = _env_str("INDEX_SUFFIX", f"sha{_default_sha}" if CI and _default_sha else "")
@@ -64,14 +66,18 @@ CHUNK_SCORE_THRESHOLD  = float(_env_str("CHUNK_SCORE_THRESHOLD", "0.75"))
 
 # ── OpenSearch
 OPENSEARCH_URL         = _env_str("OPENSEARCH_URL", "http://localhost:9200")
-OPENSEARCH_INDEX_BASE  = _env_str("OPENSEARCH_INDEX_BASE", "documents")
+CHUNKS_INDEX_BASE  = _env_str("CHUNKS_INDEX_BASE", "documents")
 INGEST_LOG_INDEX_BASE  = _env_str("INGEST_LOG_INDEX_BASE", "ingest_logs")
-OPENSEARCH_INDEX       = _namespaced(OPENSEARCH_INDEX_BASE)
+CHUNKS_INDEX       = _namespaced(CHUNKS_INDEX_BASE)
 INGEST_LOG_INDEX       = _namespaced(INGEST_LOG_INDEX_BASE)
-OPENSEARCH_FULLTEXT_INDEX_BASE = _env_str(
-    "OPENSEARCH_FULLTEXT_INDEX_BASE", "documents_full_text"
+FULLTEXT_INDEX_BASE = _env_str(
+    "FULLTEXT_INDEX_BASE", "documents_full_text"
 )
-OPENSEARCH_FULLTEXT_INDEX = _namespaced(OPENSEARCH_FULLTEXT_INDEX_BASE)
+FULLTEXT_INDEX = _namespaced(FULLTEXT_INDEX_BASE)
+
+# Inventory of watched folders (file presence + flags)
+WATCH_INVENTORY_INDEX_BASE = _env_str("WATCH_INVENTORY_INDEX_BASE", "watch_inventory")
+WATCH_INVENTORY_INDEX = _namespaced(WATCH_INVENTORY_INDEX_BASE)
 
 # ── LLM API (text-generation-webui compatible)
 LLM_BASE_URL            = _env_str("LLM_BASE_URL", "http://localhost:5000").rstrip("/")
@@ -98,8 +104,9 @@ if not logger.handlers:
 def dump_config_for_debug() -> None:
     safe = {
         "CI": CI, "TEST_MODE": TEST_MODE, "NAMESPACE": NAMESPACE,
-        "OPENSEARCH_URL": OPENSEARCH_URL, "OPENSEARCH_INDEX": OPENSEARCH_INDEX,
-        "OPENSEARCH_FULLTEXT_INDEX": OPENSEARCH_FULLTEXT_INDEX,
+        "OPENSEARCH_URL": OPENSEARCH_URL, "CHUNKS_INDEX": CHUNKS_INDEX,
+        "FULLTEXT_INDEX": FULLTEXT_INDEX,
+        "WATCH_INVENTORY_INDEX": WATCH_INVENTORY_INDEX,
         "INGEST_LOG_INDEX": INGEST_LOG_INDEX, "QDRANT_URL": QDRANT_URL,
         "QDRANT_COLLECTION": QDRANT_COLLECTION, "USE_STUB_EMBEDDER": USE_STUB_EMBEDDER,
         "USE_STUB_LLM": USE_STUB_LLM, "EMBEDDING_SIZE": EMBEDDING_SIZE,
