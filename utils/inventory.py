@@ -74,7 +74,7 @@ def seed_watch_inventory_from_fulltext(path_prefix: str, size: int = 10000) -> i
     Uses the full-text index (1 doc per file) to upsert inventory entries setting
     last_indexed from indexed_at. Also sets exists_now=True and first_seen/last_seen.
     """
-    ensure_watch_inventory_index_exists()
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
     client = get_client()
     n_pref = normalize_path(path_prefix)
     body: Dict[str, Any] = {
@@ -151,7 +151,7 @@ def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) ->
 
     Filters by path prefix using wildcard query on path.keyword.
     """
-    ensure_watch_inventory_index_exists()
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
     client = get_client()
     n_pref = normalize_path(path_prefix)
     body: Dict[str, Any] = {
@@ -188,7 +188,7 @@ def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) ->
 
 def set_inventory_number_of_chunks(path: str, number_of_chunks: int) -> None:
     """Update inventory.number_of_chunks for entries matching the exact path."""
-    ensure_watch_inventory_index_exists()
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
     client = get_client()
     try:
         client.update_by_query(
@@ -205,4 +205,3 @@ def set_inventory_number_of_chunks(path: str, number_of_chunks: int) -> None:
         )
     except Exception:
         pass
-
