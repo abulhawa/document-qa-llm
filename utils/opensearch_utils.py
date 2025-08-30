@@ -5,8 +5,8 @@ from opensearchpy import helpers, exceptions
 
 
 from config import (
-    OPENSEARCH_INDEX,
-    OPENSEARCH_FULLTEXT_INDEX,
+    CHUNKS_INDEX,
+    FULLTEXT_INDEX,
     OPENSEARCH_DELETE_BATCH,
     OPENSEARCH_REQUEST_TIMEOUT,
     INGEST_LOG_INDEX,
@@ -19,9 +19,10 @@ from utils.file_utils import (
     get_file_timestamps,
     get_file_size,
 )
+from utils.file_utils import normalize_path
 
 # Analyzer/mapping config
-INDEX_SETTINGS = {
+CHUNKS_INDEX_SETTINGS = {
     "settings": {
         "analysis": {
             "analyzer": {
@@ -111,7 +112,8 @@ FULLTEXT_INDEX_SETTINGS = {
     },
 }
 
-INGEST_LOGS_SETTINGS = {
+
+INGEST_LOGS_INDEX_SETTINGS = {
     "settings": {"index": {"number_of_shards": 1}},
     "mappings": {
         "properties": {
@@ -135,39 +137,6 @@ INGEST_LOGS_SETTINGS = {
 }
 
 
-def ensure_index_exists():
-    client = get_client()
-    if not client.indices.exists(index=OPENSEARCH_INDEX):
-        logger.info(f"Creating OpenSearch index: {OPENSEARCH_INDEX}")
-        client.indices.create(
-            index=OPENSEARCH_INDEX,
-            body=INDEX_SETTINGS,
-            params={"wait_for_active_shards": "1"},
-        )
-
-
-def ensure_fulltext_index_exists():
-    client = get_client()
-    if not client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
-        logger.info(f"Creating OpenSearch index: {OPENSEARCH_FULLTEXT_INDEX}")
-        client.indices.create(
-            index=OPENSEARCH_FULLTEXT_INDEX,
-            body=FULLTEXT_INDEX_SETTINGS,
-            params={"wait_for_active_shards": "1"},
-        )
-
-
-def ensure_ingest_log_index_exists():
-    client = get_client()
-    if not client.indices.exists(index=INGEST_LOG_INDEX):
-        logger.info(f"Creating OpenSearch index: {INGEST_LOG_INDEX}")
-        client.indices.create(
-            index=INGEST_LOG_INDEX,
-            body=INGEST_LOGS_SETTINGS,
-            params={"wait_for_active_shards": "1"},
-        )
-
-
 def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     """Index a list of chunks into OpenSearch using bulk API.
 
@@ -181,7 +150,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     for chunk in chunks:
         op_type = chunk.get("op_type", "create")
         action: Dict[str, Any] = {
-            "_index": OPENSEARCH_INDEX,
+            "_index": CHUNKS_INDEX,
             "_id": chunk["id"],
             "_op_type": op_type,
         }
@@ -204,7 +173,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch bulk index timeout.",
-            extra={"index": OPENSEARCH_INDEX},
+            extra={"index": CHUNKS_INDEX},
         )
         raise
     except transport_exc as e:  # type: ignore[misc]
@@ -212,25 +181,25 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
         info = getattr(e, "info", None)
         logger.exception(
             "OpenSearch transport error during bulk indexing.",
-            extra={"index": OPENSEARCH_INDEX, "status": status, "info": info},
+            extra={"index": CHUNKS_INDEX, "status": status, "info": info},
         )
         raise
     except Exception:
         logger.exception(
             "Unexpected error during chunk indexing.",
-            extra={"index": OPENSEARCH_INDEX},
+            extra={"index": CHUNKS_INDEX},
         )
         raise
 
     if errors:
         logger.error(
             f"❌ OpenSearch indexing failed for {len(errors)} chunks",
-            extra={"index": OPENSEARCH_INDEX, "errors": errors},
+            extra={"index": CHUNKS_INDEX, "errors": errors},
         )
     else:
         logger.info(
             f"✅ OpenSearch successfully indexed {success_count} chunks",
-            extra={"index": OPENSEARCH_INDEX},
+            extra={"index": CHUNKS_INDEX},
         )
 
     return success_count, errors
@@ -250,7 +219,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
 
     try:
         resp = client.index(
-            index=OPENSEARCH_FULLTEXT_INDEX,
+            index=FULLTEXT_INDEX,
             id=doc_id,
             body=payload,
             op_type="create",  # pyright: ignore[reportCallIssue]
@@ -261,13 +230,13 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         # Document already exists (expected with op_type=create)
         logger.info(
             "Full-text indexing skipped (already exists).",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
+            extra={"index": FULLTEXT_INDEX, "doc_id": doc_id},
         )
         return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch index timeout.",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
+            extra={"index": FULLTEXT_INDEX, "doc_id": doc_id},
         )
         raise
     except transport_exc as e:  # type: ignore[misc]
@@ -277,7 +246,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         logger.exception(
             "OpenSearch transport error during indexing.",
             extra={
-                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "index": FULLTEXT_INDEX,
                 "doc_id": doc_id,
                 "status": status,
                 "info": info,
@@ -287,7 +256,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         logger.exception(
             "Unexpected error during full-text indexing.",
-            extra={"index": OPENSEARCH_FULLTEXT_INDEX, "doc_id": doc_id},
+            extra={"index": FULLTEXT_INDEX, "doc_id": doc_id},
         )
         raise
 
@@ -302,7 +271,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         logger.warning(
             "Indexing completed with non-ideal outcome.",
             extra={
-                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "index": FULLTEXT_INDEX,
                 "doc_id": doc_id,
                 "result": result,
                 "version": version,
@@ -315,7 +284,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(
             "Indexed full-text doc.",
             extra={
-                "index": OPENSEARCH_FULLTEXT_INDEX,
+                "index": FULLTEXT_INDEX,
                 "doc_id": doc_id,
                 "result": result,
                 "version": version,
@@ -342,7 +311,7 @@ def list_files_from_opensearch(
     """
     client = get_client()
     response = client.search(
-        index=OPENSEARCH_INDEX,
+        index=CHUNKS_INDEX,
         body={
             "size": 0,
             "aggs": {
@@ -399,7 +368,7 @@ def get_chunk_ids_by_path(path: str, size: int = 10000) -> list[str]:
     """Fetch chunk IDs for a file path from the documents index."""
     client = get_client()
     resp = client.search(
-        index=OPENSEARCH_INDEX,
+        index=CHUNKS_INDEX,
         body={
             "size": size,
             "_source": False,
@@ -413,7 +382,7 @@ def delete_chunks_by_path(path: str) -> int:
     """Delete all chunk docs for a file from the documents index."""
     client = get_client()
     resp = client.delete_by_query(
-        index=OPENSEARCH_INDEX,
+        index=CHUNKS_INDEX,
         body={"query": {"term": {"path.keyword": path}}},
         params={
             "refresh": "true",
@@ -428,7 +397,7 @@ def delete_fulltext_by_path(path: str) -> int:
     """Delete full-text doc(s) for a file from the full_text index."""
     client = get_client()
     resp = client.delete_by_query(
-        index=OPENSEARCH_FULLTEXT_INDEX,
+        index=FULLTEXT_INDEX,
         body={"query": {"term": {"path.keyword": path}}},
         params={
             "refresh": "true",
@@ -444,7 +413,7 @@ def list_fulltext_paths(size: int = 1000) -> List[str]:
 
     client = get_client()
     resp = client.search(
-        index=OPENSEARCH_FULLTEXT_INDEX,
+        index=FULLTEXT_INDEX,
         body={"size": size, "query": {"match_all": {}}, "_source": ["path"]},
     )
     hits = resp.get("hits", {}).get("hits", [])
@@ -488,7 +457,7 @@ def get_chunks_by_paths(
             }
             if after:
                 body["search_after"] = after
-            resp = client.search(index=OPENSEARCH_INDEX, body=body)
+            resp = client.search(index=CHUNKS_INDEX, body=body)
             hits = resp.get("hits", {}).get("hits", [])
             if not hits:
                 break
@@ -500,7 +469,9 @@ def get_chunks_by_paths(
     return results
 
 
-def get_duplicate_checksums(page_size: int = 1000, max_results: int | None = None) -> list[str]:
+def get_duplicate_checksums(
+    page_size: int = 1000, max_results: int | None = None
+) -> list[str]:
     """
     Scan for all checksums that appear under >1 distinct path.
     Uses composite agg for deterministic paging (no 'top N' bias).
@@ -528,7 +499,7 @@ def get_duplicate_checksums(page_size: int = 1000, max_results: int | None = Non
                 }
             },
         }
-        resp = client.search(index=OPENSEARCH_INDEX, body=body)
+        resp = client.search(index=CHUNKS_INDEX, body=body)
         agg = resp["aggregations"]["by_checksum"]
         for b in agg["buckets"]:
             if len(b["paths"]["buckets"]) >= 2:
@@ -546,7 +517,7 @@ def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
     """Return a list of files (unique paths) associated with a checksum."""
     client = get_client()
     resp = client.search(
-        index=OPENSEARCH_INDEX,
+        index=CHUNKS_INDEX,
         body={"size": 10000, "query": {"term": {"checksum": checksum}}},
     )
     hits = resp.get("hits", {}).get("hits", [])
@@ -579,7 +550,7 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
     try:
         client = get_client()
         response = client.count(
-            index=OPENSEARCH_INDEX,
+            index=CHUNKS_INDEX,
             body={
                 "query": {
                     "bool": {
@@ -602,7 +573,7 @@ def is_duplicate_checksum(checksum: str, path: str) -> bool:
     try:
         client = get_client()
         response = client.count(
-            index=OPENSEARCH_INDEX,
+            index=CHUNKS_INDEX,
             body={
                 "query": {
                     "bool": {

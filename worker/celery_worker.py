@@ -38,14 +38,11 @@ app.conf.task_routes = {
 
 @worker_ready.connect
 def _warmup(**_):
-    from utils.opensearch_utils import (
-        ensure_index_exists,
-        ensure_fulltext_index_exists,
-        ensure_ingest_log_index_exists,
-    )
+    from utils.opensearch.indexes import ensure_index_exists
     from utils.qdrant_utils import ensure_collection_exists
+    from config import CHUNKS_INDEX, FULLTEXT_INDEX, INGEST_LOG_INDEX
 
-    ensure_index_exists()
-    ensure_fulltext_index_exists()
-    ensure_ingest_log_index_exists()
+    ensure_index_exists(CHUNKS_INDEX)
+    ensure_index_exists(FULLTEXT_INDEX)
+    ensure_index_exists(INGEST_LOG_INDEX)
     ensure_collection_exists()
