@@ -2,28 +2,34 @@ import os
 import pytest
 
 pytestmark = pytest.mark.e2e
-
+print('AAAAAAAAAAAAAA', os.getenv("TEST_MODE", "off"))
+from config import OPENSEARCH_URL, FULLTEXT_INDEX
+print('sdddddddddddddddddddddd', FULLTEXT_INDEX)
 if os.getenv("TEST_MODE", "off") != "e2e":
     pytest.skip("e2e-only smoke test (requires OpenSearch)", allow_module_level=True)
 
 from opensearchpy import OpenSearch, helpers
-from config import OPENSEARCH_URL, OPENSEARCH_FULLTEXT_INDEX
+from config import OPENSEARCH_URL, FULLTEXT_INDEX
 from utils.opensearch_utils import FULLTEXT_INDEX_SETTINGS
 from utils.fulltext_search import search_documents
 
 
 def setup_module(module):
+    if "test" not in FULLTEXT_INDEX:
+        pytest.skip("e2e-only smoke test (requires OpenSearch)", allow_module_level=True)
     client = OpenSearch(hosts=[OPENSEARCH_URL], timeout=30)
+    print(FULLTEXT_INDEX)
+    
 
     # Recreate index with the app's mapping so aggs on filetype/path work
-    if client.indices.exists(index=OPENSEARCH_FULLTEXT_INDEX):
-        client.indices.delete(index=OPENSEARCH_FULLTEXT_INDEX)
-    client.indices.create(index=OPENSEARCH_FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS)
+    if client.indices.exists(index=FULLTEXT_INDEX):
+        client.indices.delete(index=FULLTEXT_INDEX)
+    client.indices.create(index=FULLTEXT_INDEX, body=FULLTEXT_INDEX_SETTINGS)
 
     # Two small docs in different filetypes
     docs = [
         {
-            "_index": OPENSEARCH_FULLTEXT_INDEX,
+            "_index": FULLTEXT_INDEX,
             "_id": "1",
             "_source": {
                 "text_full": "hello world",
@@ -37,7 +43,7 @@ def setup_module(module):
             },
         },
         {
-            "_index": OPENSEARCH_FULLTEXT_INDEX,
+            "_index": FULLTEXT_INDEX,
             "_id": "2",
             "_source": {
                 "text_full": "another hello planet",
@@ -52,7 +58,7 @@ def setup_module(module):
         },
     ]
     helpers.bulk(client, docs)
-    client.indices.refresh(index=OPENSEARCH_FULLTEXT_INDEX)
+    client.indices.refresh(index=FULLTEXT_INDEX)
 
 
 def test_search_documents_smoke():

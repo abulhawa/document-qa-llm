@@ -2,7 +2,7 @@ from datetime import datetime
 from opensearchpy import OpenSearch, helpers
 from qdrant_client import QdrantClient, models
 from config import (
-    OPENSEARCH_URL, OPENSEARCH_INDEX,
+    OPENSEARCH_URL, CHUNKS_INDEX,
     QDRANT_URL, QDRANT_COLLECTION,
     EMBEDDING_SIZE
 )
@@ -10,7 +10,7 @@ from config import (
 # ---- OpenSearch
 os_client = OpenSearch(hosts=[OPENSEARCH_URL])
 os_client.indices.create(
-    index=OPENSEARCH_INDEX,
+    index=CHUNKS_INDEX,
     body={
         "settings": {"index": {"refresh_interval": "1s"}},
         "mappings": {
@@ -27,13 +27,13 @@ os_client.indices.create(
 )
 
 docs = [
-    {"_index": OPENSEARCH_INDEX, "_id": "1", "_op_type": "create",
+    {"_index": CHUNKS_INDEX, "_id": "1", "_op_type": "create",
      "_source": {"text":"Sample sentence about a PhD.",
                  "path":"C:/docs/doc1.txt",
                  "modified_at":"2024-01-01T00:00:00Z",
                  "indexed_at":"2024-01-01T00:00:00Z",
                  "checksum":"chk-1","chunk_index":0}},
-    {"_index": OPENSEARCH_INDEX, "_id": "2", "_op_type": "create",
+    {"_index": CHUNKS_INDEX, "_id": "2", "_op_type": "create",
      "_source": {"text":"Another sentence mentioning a city.",
                  "path":"C:/docs/doc2.txt",
                  "modified_at": datetime.now().astimezone().isoformat(),
@@ -41,7 +41,7 @@ docs = [
                  "checksum":"chk-2","chunk_index":0}}
 ]
 helpers.bulk(os_client, docs)
-os_client.indices.refresh(index=OPENSEARCH_INDEX)
+os_client.indices.refresh(index=CHUNKS_INDEX)
 
 # ---- Qdrant
 qd = QdrantClient(url=QDRANT_URL)

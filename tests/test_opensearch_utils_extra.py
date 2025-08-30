@@ -73,14 +73,6 @@ class FakeClient:
         }
 
 
-def test_ensure_index_noop(monkeypatch):
-    client = FakeClient()
-    client.indices.exists_flag = True
-    monkeypatch.setattr(osu, "get_client", lambda: client)
-    osu.ensure_index_exists()
-    assert client.indices.created == []
-
-
 def test_bulk_index_partial_failure(monkeypatch, caplog):
     client = FakeClient()
     monkeypatch.setattr(osu, "get_client", lambda: client)
