@@ -1,3 +1,30 @@
+import os
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path for direct test runs
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+
+def pytest_configure(config):
+    """Set safe default env for all tests so data isn't clobbered.
+
+    - When running with -m e2e, set TEST_MODE=e2e so e2e tests run.
+    - Otherwise, set TEST_MODE=test so e2e tests are skipped.
+    - Always default NAMESPACE to 'test' if not provided, isolating indices.
+    """
+    try:
+        markexpr = config.getoption("-m") or ""
+    except Exception:
+        markexpr = ""
+
+    if "e2e" in markexpr:
+        os.environ.setdefault("TEST_MODE", "e2e")
+    else:
+        os.environ.setdefault("TEST_MODE", "test")
+    os.environ.setdefault("NAMESPACE", "test")
 import types
 import sys
 from contextlib import contextmanager
