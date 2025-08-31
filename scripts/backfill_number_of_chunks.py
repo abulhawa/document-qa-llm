@@ -3,19 +3,26 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Tuple
 
-from config import WATCH_INVENTORY_INDEX
-from core.opensearch_client import get_client
-from utils.opensearch.indexes import ensure_index_exists
-from utils.file_utils import normalize_path
-from utils.inventory import set_inventory_number_of_chunks
+# Ensure project root is on sys.path when running as a script
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from config import WATCH_INVENTORY_INDEX  # noqa: E402
+from core.opensearch_client import get_client  # noqa: E402
+from utils.opensearch.indexes import ensure_index_exists  # noqa: E402
+from utils.file_utils import normalize_path  # noqa: E402
+from utils.inventory import set_inventory_number_of_chunks  # noqa: E402
 
 # Use the same pipeline pieces as ingest to compute the true, expected chunk count
-from core.file_loader import load_documents
-from core.document_preprocessor import preprocess_to_documents, PreprocessConfig
-from core.chunking import split_documents
+from core.file_loader import load_documents  # noqa: E402
+from core.document_preprocessor import preprocess_to_documents, PreprocessConfig  # noqa: E402
+from core.chunking import split_documents  # noqa: E402
 
 
 def _search_missing_number_of_chunks(prefix: str, batch: int = 500) -> Tuple[str, List[str]]:
@@ -160,8 +167,8 @@ def main() -> None:
     ap.add_argument(
         "--workers",
         type=int,
-        default=4,
-        help="Parallel workers for local file loading (default 4)",
+        default=8,
+        help="Parallel workers for local file loading (default 8)",
     )
     ap.add_argument(
         "--dry-run",
@@ -183,4 +190,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
