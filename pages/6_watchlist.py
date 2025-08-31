@@ -4,6 +4,7 @@ from utils.inventory import (
     seed_watch_inventory_from_fulltext,
     seed_inventory_indexed_chunked_count,
     count_watch_inventory_remaining,
+    count_watch_inventory_total,
     list_watch_inventory_unindexed_paths,
     list_watch_inventory_unindexed_paths_all,
 )
@@ -15,6 +16,8 @@ from utils.watchlist import (
     get_watchlist_prefixes,
     add_watchlist_prefix,
     remove_watchlist_prefix,
+    get_watchlist_meta,
+    update_watchlist_stats,
 )
 
 ensure_index_exists(index=WATCH_INVENTORY_INDEX)
@@ -81,6 +84,21 @@ else:
                 st.metric("Unindexed files", remaining_now)
             except Exception:
                 pass
+            # Bold summaries and progress
+            try:
+                total_now = count_watch_inventory_total(pref)
+                indexed_now = max(0, total_now - remaining_now)
+                pct = (indexed_now / total_now) if total_now else 0
+                st.progress(pct, text=f"Indexed {indexed_now} / {total_now}")
+                meta = get_watchlist_meta(pref)
+                last_idx = int(meta.get("last_indexed", 0) or 0)
+                last_tot = int(meta.get("last_total", 0) or 0)
+                last_ref = meta.get("last_refreshed") or ""
+                delta = indexed_now - last_idx
+                if last_ref:
+                    st.caption(f"Last refreshed: {last_ref}  •  Indexed Δ: {delta:+}")
+            except Exception:
+                pass
             # Preview a few unindexed file paths
             try:
                 preview = list_watch_inventory_unindexed_paths(pref, size=10)
@@ -99,7 +117,10 @@ else:
                     with st.spinner("Refreshing status ..."):
                         n1 = seed_watch_inventory_from_fulltext(pref)
                         n2 = seed_inventory_indexed_chunked_count(pref)
+                        total_now = count_watch_inventory_total(pref)
                         r = count_watch_inventory_remaining(pref)
+                        indexed_now = max(0, total_now - r)
+                        update_watchlist_stats(pref, total_now, indexed_now, r)
                     st.success(f"Imported known files: {n1}, updated chunk counts: {n2}. Unindexed now: {r}")
             with c1:
                 if st.button(
@@ -159,6 +180,29 @@ else:
                                 action="ingest",
                             )
                         st.success(f"Queued {len(task_ids)} file(s) for ingestion.")
+
+            # Smart re-ingest (changed files)
+            with st.expander("Smart re-ingest (changed files)", expanded=False):
+                if st.button(
+                    "Find and re-ingest changed",
+                    key=f"reingest-{pref}",
+                    help="Re-ingest files whose modified time is newer than last indexed, or whose chunk counts drifted.",
+                ):
+                    from utils.inventory import list_inventory_paths_needing_reingest
+                    with st.spinner("Finding changed files ..."):
+                        re_files = list_inventory_paths_needing_reingest(pref, limit=2000)
+                    if not re_files:
+                        st.info("No changed files found under this folder.")
+                    else:
+                        with st.spinner(f"Queuing {len(re_files)} files for re-ingest ..."):
+                            task_ids = enqueue_paths(re_files, mode="reingest")
+                            st.session_state["ingest_tasks"] = add_records(
+                                st.session_state.get("ingest_tasks"),
+                                re_files,
+                                task_ids,
+                                action="reingest",
+                            )
+                        st.success(f"Queued {len(task_ids)} file(s) for re-ingestion.")
 
 # Small task panel to track queued work from this page
 should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
