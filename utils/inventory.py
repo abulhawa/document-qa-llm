@@ -248,7 +248,7 @@ def list_watch_inventory_unindexed_paths_all(
 
 
 def count_watch_inventory_unindexed_quick_wins(
-    path_prefix: str, max_size_bytes: int = 1_048_576
+    path_prefix: str, max_size_bytes: int = 102_400
 ) -> int:
     """Count unindexed files under prefix with size <= max_size_bytes."""
     ensure_index_exists(WATCH_INVENTORY_INDEX)
@@ -265,6 +265,31 @@ def count_watch_inventory_unindexed_quick_wins(
             "bool": {
                 "filter": filters,
                 "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+    }
+    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    return int(resp.get("hits", {}).get("total", {}).get("value", 0))
+
+
+def count_watch_inventory_unindexed_missing_size(path_prefix: str) -> int:
+    """Count unindexed entries under prefix where size is missing (to hint scanning)."""
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}}
+    ]
+    body: Dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [
+                    {"exists": {"field": "last_indexed"}},
+                    {"exists": {"field": "size"}}
+                ],
             }
         },
     }

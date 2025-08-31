@@ -278,21 +278,30 @@ else:
                             st.success(f"Queued {len(task_ids)} file(s) for ingestion.")
                 with cC:
                     if st.button(
-                        "Preview quick wins (<=1MB)",
+                        "Preview quick wins (<=100KB)",
                         key=f"preview-quick-{pref}",
-                        help="Count unindexed files up to 1 MB; respects the cap in the next step.",
+                        help="Count unindexed files up to 100 KB; respects the cap in the next step.",
                     ):
-                        cnt = count_watch_inventory_unindexed_quick_wins(pref, 1_048_576)
-                        st.info(f"Quick wins total (<=1MB): {cnt}. Cap will queue up to {min(cap, cnt)}.")
+                        cnt = count_watch_inventory_unindexed_quick_wins(pref, 102_400)
+                        missing_sz = count_watch_inventory_unindexed_missing_size(pref)
+                        if missing_sz:
+                            st.info(
+                                f"Quick wins total (<=100KB): {cnt}. Cap will queue up to {min(cap, cnt)}. "
+                                f"Note: {missing_sz} unindexed file(s) missing size; run 'Scan disk for changes' to populate sizes."
+                            )
+                        else:
+                            st.info(
+                                f"Quick wins total (<=100KB): {cnt}. Cap will queue up to {min(cap, cnt)}."
+                            )
                 with cD:
                     if st.button(
-                        "Queue quick wins (<=1MB)",
+                        "Queue quick wins (<=100KB)",
                         key=f"queue-quick-{pref}",
-                        help="Enqueue up to the cap of small unindexed files (<= 1 MB).",
+                        help="Enqueue up to the cap of small unindexed files (<= 100 KB).",
                     ):
                         with st.spinner("Collecting small unindexed files ..."):
                             paths = list_watch_inventory_unindexed_paths_filtered(
-                                pref, limit=cap, max_size_bytes=1_048_576
+                                pref, limit=cap, max_size_bytes=102_400
                             )
                         if not paths:
                             st.info("No small unindexed files found.")
