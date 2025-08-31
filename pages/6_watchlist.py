@@ -7,6 +7,7 @@ from utils.inventory import (
     count_watch_inventory_total,
     list_watch_inventory_unindexed_paths,
     list_watch_inventory_unindexed_paths_all,
+    list_watch_inventory_unindexed_paths_simple,
     scan_watch_inventory_for_prefix,
     count_watch_inventory_unindexed_quick_wins,
     count_watch_inventory_unindexed_missing_size,

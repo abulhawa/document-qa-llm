@@ -63,11 +63,11 @@ def _compute_expected_chunks(path: str) -> int:
     io_path = normalize_path(path)
     # Bail if not present locally
     if not os.path.exists(io_path):
-        return 0
+        return -1  # signal missing
     try:
         docs = load_documents(io_path)
     except Exception:
-        return 0
+        return -1  # load error
     try:
         ext = os.path.splitext(io_path)[1].lower().lstrip(".")
         docs_list = preprocess_to_documents(
@@ -79,7 +79,7 @@ def _compute_expected_chunks(path: str) -> int:
         chunks = split_documents(docs_list)
         return int(len(chunks))
     except Exception:
-        return 0
+        return -1  # split error
 
 
 def backfill(prefix: str, *, limit: int, max_workers: int, dry_run: bool) -> Dict[str, int]:
@@ -106,10 +106,12 @@ def backfill(prefix: str, *, limit: int, max_workers: int, dry_run: bool) -> Dic
                     errors += 1
                     continue
                 attempted += 1
-                if n <= 0:
-                    # 0 either means no chunks or file not accessible
+                if n < 0:
+                    # negative means missing/unreadable
                     if not os.path.exists(normalize_path(p)):
                         missing_local += 1
+                    else:
+                        errors += 1
                     continue
                 if not dry_run:
                     try:
