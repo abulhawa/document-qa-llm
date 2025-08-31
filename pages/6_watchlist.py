@@ -205,8 +205,22 @@ else:
                     key=f"ingest-{pref}",
                     help="Queue ingestion jobs for unindexed files under this folder (up to 2000).",
                 ):
+                    # Auto-sync from indices so we don't queue already-indexed files
+                    with st.spinner("Syncing status from indices ..."):
+                        try:
+                            seed_watch_inventory_from_fulltext(pref)
+                            seed_inventory_indexed_chunked_count(pref)
+                        except Exception:
+                            pass
                     with st.spinner("Collecting unindexed files ..."):
-                        paths = list_watch_inventory_unindexed_paths_all(pref, limit=2000)
+                        # Prefer simple fetch; fallback to scroll if needed
+                        paths = list_watch_inventory_unindexed_paths_simple(
+                            pref, limit=2000
+                        )
+                        if not paths:
+                            paths = list_watch_inventory_unindexed_paths_all(
+                                pref, limit=2000
+                            )
                     if not paths:
                         st.info("No unindexed files found under this folder.")
                     else:
