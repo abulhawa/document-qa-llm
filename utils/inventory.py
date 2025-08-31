@@ -146,6 +146,21 @@ def count_watch_inventory_remaining(path_prefix: Optional[str] = None) -> int:
     return int(resp.get("hits", {}).get("total", {}).get("value", 0))
 
 
+def count_watch_inventory_total(path_prefix: Optional[str] = None) -> int:
+    """Count files that currently exist (exists_now=True), optionally under a prefix."""
+    client = get_client()
+    filters: List[Dict[str, Any]] = [{"term": {"exists_now": True}}]
+    if path_prefix:
+        filters.append({"prefix": {"path": normalize_path(path_prefix)}})
+    body: Dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {"bool": {"filter": filters}},
+    }
+    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    return int(resp.get("hits", {}).get("total", {}).get("value", 0))
+
+
 def list_watch_inventory_unindexed_paths(path_prefix: str, size: int = 10) -> List[str]:
     """Return up to `size` file paths under prefix that are exists_now and missing last_indexed."""
     ensure_index_exists(WATCH_INVENTORY_INDEX)
@@ -196,6 +211,81 @@ def list_watch_inventory_unindexed_paths_all(
             "bool": {
                 "filter": filters,
                 "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    out: List[str] = []
+    try:
+        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        scroll_id = resp.get("_scroll_id")
+        hits = resp.get("hits", {}).get("hits", [])
+        while hits and len(out) < limit:
+            for h in hits:
+                p = (h.get("_source", {}) or {}).get("path")
+                if p:
+                    out.append(p)
+                    if len(out) >= limit:
+                        break
+            if len(out) >= limit:
+                break
+            if not scroll_id:
+                break
+            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            scroll_id = resp.get("_scroll_id")
+            hits = resp.get("hits", {}).get("hits", [])
+    except Exception:
+        return out
+    finally:
+        try:
+            if 'scroll_id' in locals() and scroll_id:
+                client.clear_scroll(scroll_id=scroll_id)
+        except Exception:
+            pass
+    return out
+
+
+def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, page_size: int = 500) -> List[str]:
+    """Heuristically find files that likely changed since last indexing.
+
+    Criteria (any):
+    - mtime_iso > last_indexed (both present)
+    - indexed_chunked_count != number_of_chunks (both present)
+    Only considers exists_now=True under the given path prefix.
+    """
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    n_pref = normalize_path(path_prefix)
+    body: Dict[str, Any] = {
+        "size": max(1, int(page_size)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"term": {"exists_now": True}},
+                    {"prefix": {"path": n_pref}},
+                ],
+                "must": [{"exists": {"field": "last_indexed"}}],
+                "should": [
+                    {
+                        "script": {
+                            "script": {
+                                "source": "doc.containsKey('mtime_iso') && doc.containsKey('last_indexed') && doc['mtime_iso'].size()!=0 && doc['last_indexed'].size()!=0 && doc['mtime_iso'].value.toInstant().isAfter(doc['last_indexed'].value.toInstant())",
+                                "lang": "painless",
+                            }
+                        }
+                    },
+                    {
+                        "script": {
+                            "script": {
+                                "source": "doc.containsKey('indexed_chunked_count') && doc.containsKey('number_of_chunks') && doc['indexed_chunked_count'].size()!=0 && doc['number_of_chunks'].size()!=0 && doc['indexed_chunked_count'].value != doc['number_of_chunks'].value",
+                                "lang": "painless",
+                            }
+                        }
+                    },
+                ],
+                "minimum_should_match": 1,
             }
         },
         "_source": ["path"],

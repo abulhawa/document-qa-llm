@@ -17,6 +17,10 @@ WATCHLIST_INDEX_SETTINGS: Dict[str, Any] = {
             "added_at": {"type": "date"},
             "active": {"type": "boolean"},
             "note": {"type": "text"},
+            "last_refreshed": {"type": "date"},
+            "last_total": {"type": "integer"},
+            "last_indexed": {"type": "integer"},
+            "last_unindexed": {"type": "integer"},
         }
     },
 }
@@ -69,6 +73,37 @@ def remove_watchlist_prefix(prefix: str) -> bool:
     p = (prefix or "").strip()
     if not p:
         return False
+
+
+def get_watchlist_meta(prefix: str) -> Dict[str, Any]:
+    """Return watchlist metadata for a prefix (may be empty)."""
+    ensure_index_exists(WATCHLIST_INDEX)
+    client = get_client()
+    np = normalize_path(prefix)
+    try:
+        resp = client.get(index=WATCHLIST_INDEX, id=np)
+        return resp.get("_source", {}) or {}
+    except Exception:
+        return {}
+
+
+def update_watchlist_stats(prefix: str, total: int, indexed: int, unindexed: int) -> None:
+    """Persist last_refreshed and last_* counters for a prefix."""
+    ensure_index_exists(WATCHLIST_INDEX)
+    client = get_client()
+    np = normalize_path(prefix)
+    doc = {
+        "last_refreshed": _now_iso(),
+        "last_total": int(total),
+        "last_indexed": int(indexed),
+        "last_unindexed": int(unindexed),
+    }
+    client.update(
+        index=WATCHLIST_INDEX,
+        id=np,
+        body={"doc": doc, "doc_as_upsert": True},
+        refresh=False,  # type: ignore
+    )
     np = normalize_path(p)
     ensure_index_exists(WATCHLIST_INDEX)
     client = get_client()
@@ -82,4 +117,3 @@ def remove_watchlist_prefix(prefix: str) -> bool:
         return True
     except Exception:
         return False
-
