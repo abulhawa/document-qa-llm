@@ -73,6 +73,19 @@ def remove_watchlist_prefix(prefix: str) -> bool:
     p = (prefix or "").strip()
     if not p:
         return False
+    np = normalize_path(p)
+    ensure_index_exists(WATCHLIST_INDEX)
+    client = get_client()
+    try:
+        client.update(
+            index=WATCHLIST_INDEX,
+            id=np,
+            body={"doc": {"active": False}},
+            refresh=False,  # type: ignore
+        )
+        return True
+    except Exception:
+        return False
 
 
 def get_watchlist_meta(prefix: str) -> Dict[str, Any]:
@@ -104,16 +117,3 @@ def update_watchlist_stats(prefix: str, total: int, indexed: int, unindexed: int
         body={"doc": doc, "doc_as_upsert": True},
         refresh=False,  # type: ignore
     )
-    np = normalize_path(p)
-    ensure_index_exists(WATCHLIST_INDEX)
-    client = get_client()
-    try:
-        client.update(
-            index=WATCHLIST_INDEX,
-            id=np,
-            body={"doc": {"active": False}},
-            refresh=False,  # type: ignore
-        )
-        return True
-    except Exception:
-        return False
