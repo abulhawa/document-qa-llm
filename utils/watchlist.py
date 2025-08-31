@@ -21,6 +21,9 @@ WATCHLIST_INDEX_SETTINGS: Dict[str, Any] = {
             "last_total": {"type": "integer"},
             "last_indexed": {"type": "integer"},
             "last_unindexed": {"type": "integer"},
+            "last_scanned": {"type": "date"},
+            "last_scan_found": {"type": "integer"},
+            "last_scan_marked_missing": {"type": "integer"},
         }
     },
 }
@@ -110,6 +113,24 @@ def update_watchlist_stats(prefix: str, total: int, indexed: int, unindexed: int
         "last_total": int(total),
         "last_indexed": int(indexed),
         "last_unindexed": int(unindexed),
+    }
+    client.update(
+        index=WATCHLIST_INDEX,
+        id=np,
+        body={"doc": doc, "doc_as_upsert": True},
+        refresh=False,  # type: ignore
+    )
+
+
+def update_watchlist_scan_stats(prefix: str, *, found: int, marked_missing: int) -> None:
+    """Persist last scan summary for a prefix."""
+    ensure_index_exists(WATCHLIST_INDEX)
+    client = get_client()
+    np = normalize_path(prefix)
+    doc = {
+        "last_scanned": _now_iso(),
+        "last_scan_found": int(found),
+        "last_scan_marked_missing": int(marked_missing),
     }
     client.update(
         index=WATCHLIST_INDEX,

@@ -14,6 +14,7 @@ from config import (
 )
 from utils.file_utils import normalize_path
 from utils.opensearch.indexes import ensure_index_exists
+import os
 
 
 INVENTORY_INDEX_SETTINGS: Dict[str, Any] = {
@@ -319,6 +320,102 @@ def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, p
         except Exception:
             pass
     return out
+
+
+def scan_watch_inventory_for_prefix(
+    path_prefix: str,
+    *,
+    include_checksum: bool = False,
+) -> Dict[str, Any]:
+    """Scan the local filesystem under a prefix and reconcile inventory.
+
+    - Upserts/updates entries for files found (exists_now=True, size, mtime_iso, checksum optional, last_seen=now).
+    - Marks entries as exists_now=False if they were not seen in this scan (based on last_seen < now) under the same prefix.
+
+    Returns a summary dict: {"found": int, "upserts": int, "marked_missing": int}.
+    """
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    n_pref = normalize_path(path_prefix)
+    now = _now_iso()
+
+    found_paths: List[str] = []
+    actions: List[Dict[str, Any]] = []
+
+    # Walk filesystem
+    try:
+        for root, _, files in os.walk(n_pref):
+            for name in files:
+                p = normalize_path(os.path.join(root, name))
+                try:
+                    size = os.path.getsize(p)
+                except Exception:
+                    size = None
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(p), tz=timezone.utc).isoformat()
+                except Exception:
+                    mtime = None
+                doc: Dict[str, Any] = {
+                    "path": p,
+                    "exists_now": True,
+                    "last_seen": now,
+                }
+                if size is not None:
+                    doc["size"] = int(size)
+                if mtime is not None:
+                    doc["mtime_iso"] = mtime
+                # Skip checksum for performance unless requested
+                if include_checksum:
+                    try:
+                        from utils.file_utils import compute_checksum
+                        doc["checksum"] = compute_checksum(p)
+                    except Exception:
+                        pass
+
+                actions.append(
+                    {
+                        "_op_type": "update",
+                        "_index": WATCH_INVENTORY_INDEX,
+                        "_id": p,
+                        "doc": doc,
+                        "doc_as_upsert": True,
+                        "upsert": {**doc, "first_seen": now},
+                    }
+                )
+                found_paths.append(p)
+    except Exception:
+        # If walk fails entirely, return zeros
+        found_paths = []
+
+    upserts = 0
+    if actions:
+        helpers.bulk(client, actions)
+        upserts = len(actions)
+
+    # Mark missing: any exists_now=True under prefix whose last_seen < now
+    marked_missing = 0
+    try:
+        resp = client.update_by_query(
+            index=WATCH_INVENTORY_INDEX,
+            body={
+                "script": {"source": "ctx._source.exists_now = false", "lang": "painless"},
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"exists_now": True}},
+                            {"prefix": {"path": n_pref}},
+                        ],
+                        "must": [{"range": {"last_seen": {"lt": now}}}],
+                    }
+                },
+            },
+            refresh=False,  # type: ignore
+        )
+        marked_missing = int(resp.get("updated", 0))
+    except Exception:
+        pass
+
+    return {"found": len(found_paths), "upserts": upserts, "marked_missing": marked_missing}
 
 
 def seed_inventory_indexed_chunked_count(path_prefix: str, size: int = 10000) -> int:

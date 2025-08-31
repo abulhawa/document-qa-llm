@@ -7,6 +7,7 @@ from utils.inventory import (
     count_watch_inventory_total,
     list_watch_inventory_unindexed_paths,
     list_watch_inventory_unindexed_paths_all,
+    scan_watch_inventory_for_prefix,
 )
 from ui.ingest_client import enqueue_paths
 from ui.task_status import add_records
@@ -18,6 +19,7 @@ from utils.watchlist import (
     remove_watchlist_prefix,
     get_watchlist_meta,
     update_watchlist_stats,
+    update_watchlist_scan_stats,
 )
 
 ensure_index_exists(index=WATCH_INVENTORY_INDEX)
@@ -97,6 +99,11 @@ else:
                 delta = indexed_now - last_idx
                 if last_ref:
                     st.caption(f"Last refreshed: {last_ref}  •  Indexed Δ: {delta:+}")
+                last_scan = meta.get("last_scanned") or ""
+                if last_scan:
+                    found = int(meta.get("last_scan_found", 0) or 0)
+                    missing = int(meta.get("last_scan_marked_missing", 0) or 0)
+                    st.caption(f"Last scan: {last_scan}  •  Found: {found}  •  Marked missing: {missing}")
             except Exception:
                 pass
             # Preview a few unindexed file paths
@@ -122,6 +129,27 @@ else:
                         indexed_now = max(0, total_now - r)
                         update_watchlist_stats(pref, total_now, indexed_now, r)
                     st.success(f"Imported known files: {n1}, updated chunk counts: {n2}. Unindexed now: {r}")
+            with c1:
+                if st.button(
+                    "Scan disk for changes",
+                    key=f"scan-{pref}",
+                    help="Walk the folder on disk to detect new/removed files and update inventory.",
+                ):
+                    with st.spinner("Scanning disk ..."):
+                        summary = scan_watch_inventory_for_prefix(pref)
+                        # Update stats after scan
+                        total_now = count_watch_inventory_total(pref)
+                        r = count_watch_inventory_remaining(pref)
+                        indexed_now = max(0, total_now - r)
+                        update_watchlist_stats(pref, total_now, indexed_now, r)
+                        update_watchlist_scan_stats(
+                            pref,
+                            found=int(summary.get("found", 0)),
+                            marked_missing=int(summary.get("marked_missing", 0)),
+                        )
+                    st.success(
+                        f"Scan complete. Found: {summary.get('found',0)}, marked missing: {summary.get('marked_missing',0)}."
+                    )
             with c1:
                 if st.button(
                     "Check unindexed",
