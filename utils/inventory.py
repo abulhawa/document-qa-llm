@@ -326,6 +326,7 @@ def scan_watch_inventory_for_prefix(
     path_prefix: str,
     *,
     include_checksum: bool = False,
+    allowed_suffixes: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Scan the local filesystem under a prefix and reconcile inventory.
 
@@ -344,8 +345,18 @@ def scan_watch_inventory_for_prefix(
 
     # Walk filesystem
     try:
+        # Normalize allowed suffix set (default: pdf/docx/txt)
+        if allowed_suffixes is None:
+            allowed_set = {".pdf", ".docx", ".txt"}
+        else:
+            allowed_set = set(
+                [(s if s.startswith(".") else f".{s}").lower() for s in allowed_suffixes]
+            )
         for root, _, files in os.walk(n_pref):
             for name in files:
+                ext = os.path.splitext(name)[1].lower()
+                if allowed_set and ext not in allowed_set:
+                    continue
                 p = normalize_path(os.path.join(root, name))
                 try:
                     size = os.path.getsize(p)
@@ -392,9 +403,12 @@ def scan_watch_inventory_for_prefix(
         helpers.bulk(client, actions)
         upserts = len(actions)
 
-    # Mark missing: any exists_now=True under prefix whose last_seen < now
+    # Mark missing: any exists_now=True under prefix whose last_seen < now (same allowed suffixes)
     marked_missing = 0
     try:
+        should_suffix = [
+            {"wildcard": {"path.keyword": f"*{s}"}} for s in (allowed_set or [])
+        ]
         resp = client.update_by_query(
             index=WATCH_INVENTORY_INDEX,
             body={
@@ -406,6 +420,7 @@ def scan_watch_inventory_for_prefix(
                             {"prefix": {"path": n_pref}},
                         ],
                         "must": [{"range": {"last_seen": {"lt": now}}}],
+                        **({"should": should_suffix, "minimum_should_match": 1} if should_suffix else {}),
                     }
                 },
             },

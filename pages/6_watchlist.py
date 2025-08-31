@@ -133,7 +133,7 @@ else:
                 if st.button(
                     "Scan disk for changes",
                     key=f"scan-{pref}",
-                    help="Walk the folder on disk to detect new/removed files and update inventory.",
+                    help="Walk the folder on disk to detect new/removed PDF, DOCX and TXT files and update inventory.",
                 ):
                     with st.spinner("Scanning disk ..."):
                         summary = scan_watch_inventory_for_prefix(pref)
