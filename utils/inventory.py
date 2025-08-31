@@ -355,6 +355,42 @@ def list_watch_inventory_unindexed_paths_filtered(
     return out
 
 
+def list_watch_inventory_unindexed_quick_wins(
+    path_prefix: str, *, limit: int = 2000, max_size_bytes: int = 102_400
+) -> List[str]:
+    """List up to `limit` unindexed quick-win file paths (size <= threshold)."""
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}},
+        {"range": {"size": {"lte": int(max_size_bytes)}}},
+    ]
+    body: Dict[str, Any] = {
+        "size": max(1, int(limit)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    try:
+        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    except Exception:
+        return []
+    hits = resp.get("hits", {}).get("hits", [])
+    out: List[str] = []
+    for h in hits:
+        p = (h.get("_source", {}) or {}).get("path")
+        if p:
+            out.append(p)
+    return out
+
+
 def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, page_size: int = 500) -> List[str]:
     """Heuristically find files that likely changed since last indexing.
 

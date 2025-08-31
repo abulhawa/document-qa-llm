@@ -11,6 +11,7 @@ from utils.inventory import (
     count_watch_inventory_unindexed_quick_wins,
     count_watch_inventory_unindexed_missing_size,
     list_watch_inventory_unindexed_paths_filtered,
+    list_watch_inventory_unindexed_quick_wins,
 )
 from ui.ingest_client import enqueue_paths
 from ui.task_status import add_records
@@ -87,6 +88,12 @@ else:
             try:
                 remaining_now = count_watch_inventory_remaining(pref)
                 st.metric("Unindexed files", remaining_now)
+            except Exception:
+                pass
+            # Inline quick-win count for clarity
+            try:
+                qw = count_watch_inventory_unindexed_quick_wins(pref, 102_400)
+                st.caption(f"Quick wins (<=100KB): {qw}")
             except Exception:
                 pass
             # Bold summaries and progress
@@ -301,7 +308,7 @@ else:
                         help="Enqueue up to the cap of small unindexed files (<= 100 KB).",
                     ):
                         with st.spinner("Collecting small unindexed files ..."):
-                            paths = list_watch_inventory_unindexed_paths_filtered(
+                            paths = list_watch_inventory_unindexed_quick_wins(
                                 pref, limit=cap, max_size_bytes=102_400
                             )
                         if not paths:
