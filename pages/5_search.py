@@ -9,6 +9,8 @@ from utils.opensearch_utils import (
 )
 from ui.ingest_client import enqueue_paths
 from ui.task_status import add_records
+from core.opensearch_client import get_client
+from config import CHUNKS_INDEX, FULLTEXT_INDEX
 
 @st.cache_data(ttl=180, show_spinner=False)
 def cached_search_documents(**params):
@@ -81,8 +83,22 @@ params = current_params()
 res = cached_search_documents(**params) if params else None
 
 
+# Optional: force refresh + clear cache button
+refresh_col, _ = st.columns([1, 3])
+with refresh_col:
+    if st.button("Refresh indices and cache", help="Refresh OpenSearch indices and clear cached search results"):
+        try:
+            get_client().indices.refresh(index=",".join([CHUNKS_INDEX, FULLTEXT_INDEX]))
+        except Exception:
+            pass
+        try:
+            cached_search_documents.clear()
+        except Exception:
+            pass
+        st.rerun()
+
 if st.checkbox("Show files missing from full-text index"):
-    missing_files = list_files_missing_fulltext()
+    missing_files = list_files_missing_fulltext(size=10000)
     if not missing_files:
         st.success("All indexed files are present in the full-text index.")
     else:
