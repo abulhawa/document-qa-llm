@@ -269,9 +269,13 @@ else:
                         help="Enqueue up to the cap of unindexed files under this folder.",
                     ):
                         with st.spinner("Collecting unindexed files ..."):
-                            paths = list_watch_inventory_unindexed_paths_filtered(
+                            paths = list_watch_inventory_unindexed_paths_simple(
                                 pref, limit=cap
                             )
+                            if not paths:
+                                paths = list_watch_inventory_unindexed_paths_all(
+                                    pref, limit=cap
+                                )
                         if not paths:
                             st.info("No unindexed files found under this folder.")
                         else:
