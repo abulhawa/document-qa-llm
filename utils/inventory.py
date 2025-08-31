@@ -636,3 +636,32 @@ def set_inventory_number_of_chunks(path: str, number_of_chunks: int) -> None:
         )
     except Exception:
         pass
+
+
+def set_inventory_last_indexed(path: str, indexed_at: Optional[str] = None) -> None:
+    """Set last_indexed for the given path (upsert-safe).
+
+    - If `indexed_at` is None, uses current UTC time.
+    - Also refreshes last_seen and ensures exists_now=True.
+    """
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    np = normalize_path(path)
+    ts = indexed_at or _now_iso()
+    try:
+        client.update(
+            index=WATCH_INVENTORY_INDEX,
+            id=np,
+            body={
+                "doc": {
+                    "last_indexed": ts,
+                    "last_seen": _now_iso(),
+                    "exists_now": True,
+                    "path": np,
+                },
+                "doc_as_upsert": True,
+            },
+            refresh=False,  # type: ignore
+        )
+    except Exception:
+        pass

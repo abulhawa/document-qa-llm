@@ -1,5 +1,5 @@
 from utils.opensearch.fulltext import index_fulltext_document, delete_fulltext_by_path
-from utils.inventory import set_inventory_number_of_chunks
+from utils.inventory import set_inventory_number_of_chunks, set_inventory_last_indexed
 import os
 import uuid
 import time
@@ -251,6 +251,12 @@ def ingest_one(
 
     try:
         set_inventory_number_of_chunks(normalized_path, len(chunks))
+    except Exception:
+        pass
+
+    # Mark last_indexed so the watch inventory immediately reflects indexing
+    try:
+        set_inventory_last_indexed(normalized_path, indexed_at)
     except Exception:
         pass
 
