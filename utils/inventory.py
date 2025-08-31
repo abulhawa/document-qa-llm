@@ -247,6 +247,89 @@ def list_watch_inventory_unindexed_paths_all(
     return out
 
 
+def count_watch_inventory_unindexed_quick_wins(
+    path_prefix: str, max_size_bytes: int = 1_048_576
+) -> int:
+    """Count unindexed files under prefix with size <= max_size_bytes."""
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}},
+        {"range": {"size": {"lte": int(max_size_bytes)}}},
+    ]
+    body: Dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+    }
+    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    return int(resp.get("hits", {}).get("total", {}).get("value", 0))
+
+
+def list_watch_inventory_unindexed_paths_filtered(
+    path_prefix: str,
+    *,
+    limit: int = 2000,
+    page_size: int = 500,
+    max_size_bytes: Optional[int] = None,
+) -> List[str]:
+    """List unindexed file paths under prefix with optional size filter, up to limit."""
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    filters: List[Dict[str, Any]] = [
+        {"term": {"exists_now": True}},
+        {"prefix": {"path": normalize_path(path_prefix)}},
+    ]
+    if max_size_bytes is not None:
+        filters.append({"range": {"size": {"lte": int(max_size_bytes)}}})
+    body: Dict[str, Any] = {
+        "size": max(1, int(page_size)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": filters,
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    out: List[str] = []
+    try:
+        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        scroll_id = resp.get("_scroll_id")
+        hits = resp.get("hits", {}).get("hits", [])
+        while hits and len(out) < limit:
+            for h in hits:
+                p = (h.get("_source", {}) or {}).get("path")
+                if p:
+                    out.append(p)
+                    if len(out) >= limit:
+                        break
+            if len(out) >= limit:
+                break
+            if not scroll_id:
+                break
+            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            scroll_id = resp.get("_scroll_id")
+            hits = resp.get("hits", {}).get("hits", [])
+    except Exception:
+        return out
+    finally:
+        try:
+            if 'scroll_id' in locals() and scroll_id:
+                client.clear_scroll(scroll_id=scroll_id)
+        except Exception:
+            pass
+    return out
+
+
 def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, page_size: int = 500) -> List[str]:
     """Heuristically find files that likely changed since last indexing.
 
