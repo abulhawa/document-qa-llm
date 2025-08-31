@@ -8,6 +8,8 @@ from utils.inventory import (
     list_watch_inventory_unindexed_paths,
     list_watch_inventory_unindexed_paths_all,
     scan_watch_inventory_for_prefix,
+    count_watch_inventory_unindexed_quick_wins,
+    list_watch_inventory_unindexed_paths_filtered,
 )
 from ui.ingest_client import enqueue_paths
 from ui.task_status import add_records
@@ -231,6 +233,79 @@ else:
                                 action="reingest",
                             )
                         st.success(f"Queued {len(task_ids)} file(s) for re-ingestion.")
+
+            # Ingest controls
+            with st.expander("Ingest controls", expanded=False):
+                cap = st.slider(
+                    "Max files to queue",
+                    min_value=500,
+                    max_value=5000,
+                    value=2000,
+                    step=100,
+                    help="Upper bound for how many files to enqueue in one go.",
+                    key=f"cap-{pref}",
+                )
+                cA, cB, cC, cD = st.columns(4)
+                with cA:
+                    if st.button(
+                        "Preview unindexed",
+                        key=f"preview-unindexed-{pref}",
+                        help="Show how many unindexed files exist; respects the cap in the next step.",
+                    ):
+                        total_unidx = count_watch_inventory_remaining(pref)
+                        st.info(f"Unindexed total: {total_unidx}. Cap will queue up to {min(cap, total_unidx)}.")
+                with cB:
+                    if st.button(
+                        "Queue unindexed",
+                        key=f"queue-unindexed-{pref}",
+                        help="Enqueue up to the cap of unindexed files under this folder.",
+                    ):
+                        with st.spinner("Collecting unindexed files ..."):
+                            paths = list_watch_inventory_unindexed_paths_filtered(
+                                pref, limit=cap
+                            )
+                        if not paths:
+                            st.info("No unindexed files found under this folder.")
+                        else:
+                            with st.spinner(f"Queuing {len(paths)} files for ingestion ..."):
+                                task_ids = enqueue_paths(paths, mode="ingest")
+                                st.session_state["ingest_tasks"] = add_records(
+                                    st.session_state.get("ingest_tasks"),
+                                    paths,
+                                    task_ids,
+                                    action="ingest",
+                                )
+                            st.success(f"Queued {len(task_ids)} file(s) for ingestion.")
+                with cC:
+                    if st.button(
+                        "Preview quick wins (<=1MB)",
+                        key=f"preview-quick-{pref}",
+                        help="Count unindexed files up to 1 MB; respects the cap in the next step.",
+                    ):
+                        cnt = count_watch_inventory_unindexed_quick_wins(pref, 1_048_576)
+                        st.info(f"Quick wins total (<=1MB): {cnt}. Cap will queue up to {min(cap, cnt)}.")
+                with cD:
+                    if st.button(
+                        "Queue quick wins (<=1MB)",
+                        key=f"queue-quick-{pref}",
+                        help="Enqueue up to the cap of small unindexed files (<= 1 MB).",
+                    ):
+                        with st.spinner("Collecting small unindexed files ..."):
+                            paths = list_watch_inventory_unindexed_paths_filtered(
+                                pref, limit=cap, max_size_bytes=1_048_576
+                            )
+                        if not paths:
+                            st.info("No small unindexed files found.")
+                        else:
+                            with st.spinner(f"Queuing {len(paths)} files for ingestion ..."):
+                                task_ids = enqueue_paths(paths, mode="ingest")
+                                st.session_state["ingest_tasks"] = add_records(
+                                    st.session_state.get("ingest_tasks"),
+                                    paths,
+                                    task_ids,
+                                    action="ingest",
+                                )
+                            st.success(f"Queued {len(task_ids)} quick-win file(s) for ingestion.")
 
 # Small task panel to track queued work from this page
 should_rerun, updated = render_task_panel(st.session_state.get("ingest_tasks", []))
