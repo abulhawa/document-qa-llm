@@ -40,6 +40,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _to_utc_iso(value: Optional[str]) -> Optional[str]:
+    """Convert an ISO-like datetime string to strict UTC ISO8601.
+
+    Accepts values with 'Z' or timezone offsets. If parsing fails, returns the original value.
+    Naive datetimes are assumed to be UTC.
+    """
+    if not value:
+        return None
+    v = str(value).strip()
+    if not v:
+        return None
+    if v.endswith("Z"):
+        v = v[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(v)
+    except Exception:
+        return value
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
 def upsert_watch_inventory_for_paths(paths: List[str]) -> int:
     """Bulk upsert inventory docs for given paths.
 
@@ -95,8 +117,8 @@ def seed_watch_inventory_from_fulltext(path_prefix: str, size: int = 10000) -> i
         p = normalize_path(s.get("path", ""))
         if not p:
             continue
-        indexed_at = s.get("indexed_at") or _now_iso()
-        modified_at = s.get("modified_at")
+        indexed_at = _to_utc_iso(s.get("indexed_at")) or _now_iso()
+        modified_at = _to_utc_iso(s.get("modified_at"))
         size_bytes = s.get("size_bytes")
         checksum = s.get("checksum")
         doc = {
@@ -244,6 +266,43 @@ def list_watch_inventory_unindexed_paths_all(
                 client.clear_scroll(scroll_id=scroll_id)
         except Exception:
             pass
+    return out
+
+
+def list_watch_inventory_unindexed_paths_simple(
+    path_prefix: str, *, limit: int = 2000
+) -> List[str]:
+    """Return up to `limit` unindexed paths using a single search (no scroll).
+
+    This is a simpler and often faster path for modest limits (<= 2k).
+    """
+    ensure_index_exists(WATCH_INVENTORY_INDEX)
+    client = get_client()
+    body: Dict[str, Any] = {
+        "size": max(1, int(limit)),
+        "track_total_hits": False,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"term": {"exists_now": True}},
+                    {"prefix": {"path": normalize_path(path_prefix)}},
+                ],
+                "must_not": [{"exists": {"field": "last_indexed"}}],
+            }
+        },
+        "_source": ["path"],
+        "sort": [{"path": "asc"}],
+    }
+    try:
+        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body)
+    except Exception:
+        return []
+    hits = resp.get("hits", {}).get("hits", [])
+    out: List[str] = []
+    for h in hits:
+        p = (h.get("_source", {}) or {}).get("path")
+        if p:
+            out.append(p)
     return out
 
 
