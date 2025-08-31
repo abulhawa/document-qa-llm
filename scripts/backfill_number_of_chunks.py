@@ -1,5 +1,23 @@
 #!/usr/bin/env python
 from __future__ import annotations
+"""
+Backfill number_of_chunks by actually loading and splitting files.
+
+What it does
+- Finds inventory entries under a prefix that are missing number_of_chunks
+- Loads each file locally, preprocesses and splits using the same pipeline as ingest
+- Writes the resulting chunk count to WATCH_INVENTORY_INDEX (upserts), including 0 when the file has no valid content
+
+Notes
+- Requires local access to the files at their stored paths
+- Does NOT delete any data
+
+Usage examples
+- Dry run (preview only):
+    python scripts/backfill_number_of_chunks.py "C:/data/folder" --dry-run
+- Backfill up to 5000 entries with 8 workers:
+    python scripts/backfill_number_of_chunks.py "C:/data/folder" --limit 5000 --workers 8
+"""
 
 import argparse
 import os

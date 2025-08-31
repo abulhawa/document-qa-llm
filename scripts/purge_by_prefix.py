@@ -1,5 +1,27 @@
 #!/usr/bin/env python
 from __future__ import annotations
+"""
+Purge OpenSearch docs and Qdrant vectors for files under a path prefix.
+
+WARNING: This is a destructive operation. Use --dry-run first.
+
+What it does (per matching file path)
+- Deletes vectors from Qdrant by chunk IDs (batched)
+- Deletes chunk docs from CHUNKS_INDEX
+- Deletes full-text doc from FULLTEXT_INDEX (1 per file)
+- Deletes WATCH_INVENTORY_INDEX doc (unless --keep-inventory)
+- Optionally deletes entries from INGEST_LOG_INDEX (--also-logs)
+
+Usage examples
+- Preview only (no deletions):
+    python scripts/purge_by_prefix.py "C:/data/folder/" --dry-run
+- Purge everything for the prefix:
+    python scripts/purge_by_prefix.py "C:/data/folder/"
+- Keep inventory docs:
+    python scripts/purge_by_prefix.py "C:/data/folder/" --keep-inventory
+- Increase Qdrant batch size and cap to first 10k files:
+    python scripts/purge_by_prefix.py "C:/data/folder/" --batch-ids 5000 --cap-paths 10000
+"""
 
 import argparse
 import sys
@@ -173,4 +195,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

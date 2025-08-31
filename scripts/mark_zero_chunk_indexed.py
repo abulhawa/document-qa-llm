@@ -1,5 +1,23 @@
 #!/usr/bin/env python
 from __future__ import annotations
+"""
+Mark zero‑chunk files as indexed in the inventory.
+
+What it does
+- Finds WATCH_INVENTORY_INDEX docs under a prefix where:
+  exists_now == true AND number_of_chunks == 0 AND last_indexed is missing
+- Sets last_indexed and last_seen to now (UTC), ensuring exists_now == true
+
+Notes
+- Does NOT delete any data
+- Use this after backfilling number_of_chunks so zero‑content files don’t show up as “remaining”
+
+Usage
+- Preview only:
+    python scripts/mark_zero_chunk_indexed.py "C:/data/folder" --dry-run
+- Apply updates:
+    python scripts/mark_zero_chunk_indexed.py "C:/data/folder"
+"""
 
 import argparse
 import sys
@@ -83,4 +101,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
