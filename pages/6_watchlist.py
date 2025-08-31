@@ -9,6 +9,7 @@ from utils.inventory import (
     list_watch_inventory_unindexed_paths_all,
     scan_watch_inventory_for_prefix,
     count_watch_inventory_unindexed_quick_wins,
+    count_watch_inventory_unindexed_missing_size,
     list_watch_inventory_unindexed_paths_filtered,
 )
 from ui.ingest_client import enqueue_paths
