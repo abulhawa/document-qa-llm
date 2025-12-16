@@ -9,7 +9,8 @@ from tracing import (
     STATUS_OK,
 )
 
-from core.hybrid_search import retrieve_hybrid
+# from core.hybrid_search import retrieve_hybrid
+from core.hybrid.pipeline import retrieve_hybrid
 from core.llm import ask_llm
 from config import logger
 from core.query_rewriter import rewrite_query
