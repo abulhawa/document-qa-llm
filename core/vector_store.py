@@ -33,10 +33,17 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
     if not chunk_ids:
         return {}
 
-    os_client = get_client()
-    response = os_client.mget(
-        index=CHUNKS_INDEX, body={"ids": list(chunk_ids)}, _source=["text"]
-    )
+    try:
+        os_client = get_client()
+        response = os_client.mget(
+            index=CHUNKS_INDEX, body={"ids": list(chunk_ids)}, _source=["text"]
+        )
+    except Exception as e:
+        logger.warning(
+            "❌ OpenSearch unavailable while fetching chunk text; proceeding with Qdrant payloads."
+        )
+        logger.debug(e, exc_info=True)
+        return {}
 
     texts: Dict[str, str] = {}
     for doc in response.get("docs", []):
