@@ -1,4 +1,5 @@
-from core import ingestion
+from ingestion import orchestrator
+from ingestion import io_loader, preprocess, storage
 from langchain_core.documents import Document
 
 
@@ -16,12 +17,11 @@ def test_logs_emitted_for_up_to_date(monkeypatch, tmp_path):
 
     client = DummyClient()
     monkeypatch.setattr("utils.ingest_logging.get_client", lambda: client)
-    # Index creation is handled in warmup; no per-write ensure required
     monkeypatch.setattr(
-        "core.ingestion.is_file_up_to_date", lambda checksum, path: True
+        "ingestion.storage.is_file_up_to_date", lambda checksum, path: True
     )
 
-    ingestion.ingest_one(str(file_path))
+    orchestrator.ingest_one(str(file_path))
 
     assert client.docs, "expected a log document to be written"
     doc = client.docs[0]
@@ -36,32 +36,33 @@ def test_duplicate_files_are_indexed_and_logged(monkeypatch, tmp_path):
 
     client = DummyClient()
     monkeypatch.setattr("utils.ingest_logging.get_client", lambda: client)
-    # Index creation is handled in warmup; no per-write ensure required
     monkeypatch.setattr(
-        "core.ingestion.is_file_up_to_date", lambda checksum, path: False
+        "ingestion.storage.is_file_up_to_date", lambda checksum, path: False
     )
     monkeypatch.setattr(
-        "core.ingestion.is_duplicate_checksum", lambda checksum, path: True
+        "ingestion.storage.is_duplicate_checksum", lambda checksum, path: True
     )
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "ingestion.io_loader.load_file_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
-        lambda docs_like, source_path, cfg, doc_type: docs_like,
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "hello"}]
     )
-    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr(
-        "utils.qdrant_utils.index_chunks_in_batches",
+        "ingestion.storage.index_chunk_batch", lambda chunks: (len(chunks), [])
+    )
+    monkeypatch.setattr(
+        "ingestion.storage.embed_and_store",
         lambda chunks, os_index_batch=None: True,
     )
-    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr("ingestion.storage.index_fulltext", lambda doc: None)
 
-    result = ingestion.ingest_one(str(file_path))
+    result = orchestrator.ingest_one(str(file_path))
 
     assert result["success"] is True
     assert result["status"] == "Duplicate & Indexed"
