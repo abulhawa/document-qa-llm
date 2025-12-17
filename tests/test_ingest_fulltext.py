@@ -30,7 +30,8 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
-    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    # Patch the compute_checksum reference used by file_fingerprint inside ingest_one
+    monkeypatch.setattr("ingestion.io_loader.compute_checksum", lambda p: "abc")
     monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
     monkeypatch.setattr(
         "ingestion.storage.is_duplicate_checksum", lambda c, p: False
