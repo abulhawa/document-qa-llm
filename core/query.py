@@ -1,41 +1,26 @@
-from typing import List, Union, Dict, Optional, Tuple
+from typing import List, Optional
+
+from config import logger
 from tracing import (
     start_span,
+    record_span_error,
+    STATUS_OK,
     RETRIEVER,
     LLM,
     INPUT_VALUE,
     OUTPUT_VALUE,
-    record_span_error,
-    STATUS_OK,
+    CHAIN,
+    TOOL,
 )
 
-# from core.hybrid_search import retrieve_hybrid
-from core.hybrid.pipeline import retrieve_hybrid
-from core.llm import ask_llm
-from config import logger
-from core.query_rewriter import rewrite_query
+from qa_pipeline.llm_client import generate_answer
+from qa_pipeline.prompt_builder import build_prompt
+from qa_pipeline.retrieve import retrieve_context
+from qa_pipeline.rewrite import rewrite_question
+from qa_pipeline.types import AnswerContext
 
 
-def build_prompt(
-    context_chunks: List[str], question: str, mode: str = "completion"
-) -> Union[str, List[Dict[str, str]]]:
-    context_text = "\n\n".join(context_chunks)
-
-    if mode == "chat":
-        system_msg = (
-            "You are a helpful and fact-based assistant. Only answer the specific question asked, using only the provided documents. "
-            "Do not answer related questions, and do not include extra information that was not explicitly requested. "
-            "If the answer is not clearly present, say 'I don't know.' Avoid assumptions, commentary, or elaboration. "
-            "Keep your response concise and directly focused on the user's question."
-        )
-        user_msg = f"Context:\n{context_text}\n\nQuestion: {question}"
-        return [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_msg},
-        ]
-    else:
-        return f"Context:\n{context_text}\n\nQuestion: {question}\nAnswer:"
-
+# Coordinator function that orchestrates the QA pipeline
 
 def answer_question(
     question: str,
@@ -43,112 +28,103 @@ def answer_question(
     mode: str = "completion",
     temperature: float = 0.7,
     model: Optional[str] = None,
-    chat_history: Optional[List[Dict[str, str]]] = None,
-) -> Tuple[str, List[str]]:
+    chat_history: Optional[List[dict]] = None,
+) -> AnswerContext:
+    context = AnswerContext(
+        question=question,
+        mode=mode,
+        temperature=temperature,
+        model=model,
+        chat_history=chat_history or [],
+    )
 
-    rewritten_query = rewrite_query(question, temperature=0.15)
-    logger.info(f"Rewritten query: {rewritten_query}")
+    with start_span("QA chain", CHAIN) as chain_span:
+        chain_span.set_attribute(INPUT_VALUE, question)
+        chain_span.set_attribute("mode", mode)
+        chain_span.set_attribute("top_k", top_k)
+        chain_span.set_attribute("temperature", temperature)
+        chain_span.set_attribute("model", model or "unknown")
 
-    if "clarify" in rewritten_query:
-        # Early exit - clarification needed
-        return (
-            f'**Clarify**:  \n   -  {rewritten_query["clarify"]}.  \n\nTry again!',
-            [],
+        # Step 1: Rewrite query or request clarification
+        try:
+            with start_span("Rewrite Query", TOOL) as rewrite_span:
+                rewrite_span.set_attribute(INPUT_VALUE, question)
+                rewrite_result = rewrite_question(question, temperature=0.15)
+                context.rewritten_question = rewrite_result.rewritten
+                context.clarification = rewrite_result.clarify
+                rewrite_span.set_attribute(OUTPUT_VALUE, rewrite_result.raw)
+                rewrite_span.set_status(STATUS_OK)
+
+            if context.clarification:
+                context.answer = (
+                    f"**Clarify**:  \n   -  {context.clarification}.  \n\nTry again!"
+                )
+                chain_span.set_attribute(OUTPUT_VALUE, context.answer)
+                chain_span.set_status(STATUS_OK)
+                return context
+
+            if not context.rewritten_question:
+                context.answer = "❌ Unexpected error occurred... ERR-QRWR"
+                chain_span.set_attribute(OUTPUT_VALUE, context.answer)
+                return context
+        except Exception as exc:  # noqa: BLE001
+            record_span_error(chain_span, exc)
+            context.answer = "❌ Unexpected error occurred... ERR-QRWR"
+            return context
+
+        # Step 2: Retrieve context
+        try:
+            with start_span("Retriever", RETRIEVER) as retrieval_span:
+                retrieval_span.set_attribute(INPUT_VALUE, context.rewritten_question)
+                retrieval = retrieve_context(context.rewritten_question, top_k)
+                context.retrieval = retrieval
+                retrieval_span.set_attribute("top_k", top_k)
+                retrieval_span.set_attribute("results_found", len(retrieval.documents))
+                retrieval_span.set_attribute(OUTPUT_VALUE, retrieval.summary)
+                retrieval_span.set_status(STATUS_OK)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("❌ Retrieval failed: %s", exc)
+            record_span_error(chain_span, exc)
+            context.answer = "❌ Retrieval failed."
+            return context
+
+        if not context.retrieval or not context.retrieval.documents:
+            logger.warning("⚠️ No relevant results found.")
+            context.answer = "No relevant context found to answer the question."
+            chain_span.set_attribute(OUTPUT_VALUE, context.answer)
+            chain_span.set_status(STATUS_OK)
+            return context
+
+        # Step 3: Build prompt
+        context.prompt_request = build_prompt(
+            context.retrieval, question, mode=mode, chat_history=context.chat_history
         )
-    elif "rewritten" in rewritten_query:
-        rewritten_query = rewritten_query["rewritten"]
-        # Proceed to embed and search...
-    else:
-        return "❌ Unexpected error occurred... ERR-QRWR", []
 
-    logger.info("🔍 Running semantic search for user question...")
-
-    with start_span("Retriever", RETRIEVER) as span:
+        # Step 4: Ask the LLM
         try:
-            span.set_attribute(INPUT_VALUE, rewritten_query)
-            top_results = retrieve_hybrid(
-                rewritten_query, top_k_each=20, final_k=top_k
-            )
-            span.set_attribute("top_k", top_k)
-            span.set_attribute("results_found", len(top_results))
-
-            retrieved_summary = [
-                f"{result.get('path', '')} | idx={result.get('chunk_index')} | "
-                f"score={result.get('score'):.4f} | page={result.get('page')} | ~{result.get('location_percent')}%"
-                for result in top_results
-            ]
-            span.set_attribute("retrieved_summary", retrieved_summary)
-            span.set_attribute(OUTPUT_VALUE, retrieved_summary)
-            span.set_status(STATUS_OK)
-
-        except Exception as e:
-            logger.error(f"❌ Retrieval failed: {e}")
-            record_span_error(span, e)
-            return "❌ Retrieval failed.", []
-
-    if not top_results:
-        logger.warning("⚠️ No relevant results found.")
-        return "No relevant context found to answer the question.", []
-
-    context = [result["text"] for result in top_results]
-
-    seen = set()
-    sources = []
-    for result in top_results:
-        path = result.get("path", "")
-        if "page" in result and result["page"] is not None:
-            label = f"{path} (Page {result['page']})"
-        elif "location_percent" in result:
-            label = f"{path} (~{result['location_percent']}%)"
-        else:
-            label = path
-        if label not in seen:
-            sources.append(label)
-            seen.add(label)
-
-    with start_span("LLM", LLM) as span:
-        try:
-            span.set_attribute("model", model or "unknown")
-            span.set_attribute("temperature", temperature)
-            span.set_attribute("mode", mode)
-
-            if mode == "chat":
-                # Use original query
-                new_turn = build_prompt(context, question, mode="chat")
-                full_history = [
-                    {"role": "system", "content": "You are a helpful assistant."}
-                ]
-                if chat_history:
-                    full_history.extend(chat_history)
-                if isinstance(new_turn, list):
-                    full_history.extend(new_turn[1:])
-                else:
-                    raise ValueError("Invalid chat prompt format")
-
-                span.set_attribute(INPUT_VALUE, str(full_history)[:2000])
-                answer = ask_llm(
-                    prompt=full_history,
-                    mode="chat",
-                    temperature=temperature,
-                    model=model,
+            with start_span("LLM", LLM) as llm_span:
+                llm_span.set_attribute("model", model or "unknown")
+                llm_span.set_attribute("temperature", temperature)
+                llm_span.set_attribute("mode", mode)
+                llm_span.set_attribute(
+                    INPUT_VALUE, str(context.prompt_request.prompt)[:2000]
                 )
-            else:
-                # Use original query
-                prompt = build_prompt(context, question, mode="completion")
-                span.set_attribute(INPUT_VALUE, str(prompt[:2000]))
-                answer = ask_llm(
-                    prompt=prompt,
-                    mode="completion",
+
+                context.answer = generate_answer(
+                    prompt_request=context.prompt_request,
                     temperature=temperature,
                     model=model,
                 )
 
-            span.set_attribute(OUTPUT_VALUE, answer[:1000])
-            span.set_status(STATUS_OK)
-            logger.info("✅ LLM answered the question.")
-            return answer, sources
+                llm_span.set_attribute(OUTPUT_VALUE, (context.answer or "")[:1000])
+                llm_span.set_status(STATUS_OK)
+                logger.info("✅ LLM answered the question.")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("❌ LLM call failed: %s", exc)
+            record_span_error(chain_span, exc)
+            context.answer = "❌ LLM call failed."
+            return context
 
-        except Exception as e:
-            logger.error(f"❌ LLM call failed: {e}")
-            record_span_error(span, e)
-            return "❌ LLM call failed.", []
+        chain_span.set_attribute(OUTPUT_VALUE, context.answer or "")
+        chain_span.set_status(STATUS_OK)
+        return context

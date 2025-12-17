@@ -1,15 +1,18 @@
+import json
+from typing import Dict
+
 from config import logger
 from core.llm import ask_llm
-import json
+from qa_pipeline.types import QueryRewrite
 
 
-def rewrite_query(original_query: str, temperature: float = 0.2) -> dict:
+def rewrite_question(original_query: str, temperature: float = 0.2) -> QueryRewrite:
     system_prompt = """
     You are an assistant that processes user queries into structured JSON output.
-    
-    The user query may be lowercase, lack punctuation, contain typos, or have formatting errors.  
-    It may also contain typos or spelling errors.  
-    Do not treat these formatting issues as vagueness, instead, try to fix these errors.  
+
+    The user query may be lowercase, lack punctuation, contain typos, or have formatting errors.
+    It may also contain typos or spelling errors.
+    Do not treat these formatting issues as vagueness, instead, try to fix these errors.
     Evaluate the meaning of the query - not how it's typed.
 
     Instructions:
@@ -29,42 +32,34 @@ def rewrite_query(original_query: str, temperature: float = 0.2) -> dict:
     6. If there are typos or malformed errors, correct these but do not guess the user intent.
     7. Keep clarification questions brief and user-friendly.
     8. Output must be valid JSON only.
-
-    Examples:
-    User: where did ali do his bsc studies  
-    → { "rewritten": "Ali BSc study location" }
-
-    User: where did he do his bsc studies  
-    → { "clarify": "Who are you referring to with 'he'?" }
-
-    User: what about kuwait  
-    → { "clarify": "What exactly would you like to know about Kuwait?" }
-
-    User: best time to visit paris  
-    → { "rewritten": "best time travel Paris" }
-    
-    User: what did he say about that topic in that article  
-    → { "clarify": "Who is 'he'? And which article or topic are you referring to?" }
-
-    Now process the next user query.
     """
 
-    messages = [
+    messages: list[Dict[str, str]] = [
         {"role": "system", "content": system_prompt.strip()},
         {"role": "user", "content": original_query.strip()},
     ]
 
     try:
-        rewritten = ask_llm(
+        rewritten_raw = ask_llm(
             prompt=messages,
             temperature=temperature,
             mode="chat",
             max_tokens=256,
         ).strip()
+        rewritten_data = json.loads(rewritten_raw)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Query rewriting failed", exc_info=exc)
+        return QueryRewrite(raw={"Error": "Query rewriting failed."})
 
-        rewritten = json.loads(rewritten)
-        return rewritten
+    query_rewrite = QueryRewrite(raw=rewritten_data)
+    if isinstance(rewritten_data, dict):
+        if "clarify" in rewritten_data:
+            query_rewrite.clarify = rewritten_data["clarify"]
+        elif "rewritten" in rewritten_data:
+            query_rewrite.rewritten = rewritten_data["rewritten"]
+        else:
+            logger.warning("Unexpected rewrite format: %s", rewritten_data)
+    else:
+        logger.warning("Rewrite result was not a dict: %s", rewritten_data)
 
-    except Exception:
-        logger.exception("Query rewriting failed")
-        return {"Error": "Query rewriting failed. Please try again or rephrase."}
+    return query_rewrite
