@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+from core.opensearch_client import get_client
 from utils.qdrant_utils import ensure_collection_exists
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
@@ -8,6 +9,7 @@ from config import (
     QDRANT_URL,
     QDRANT_COLLECTION,
     CHUNK_SCORE_THRESHOLD,
+    CHUNKS_INDEX,
     logger,
 )
 from core.embeddings import embed_texts
@@ -23,6 +25,27 @@ from tracing import (
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
+
+
+def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
+    """Fetch chunk text from OpenSearch given chunk IDs stored in Qdrant payloads."""
+
+    if not chunk_ids:
+        return {}
+
+    os_client = get_client()
+    response = os_client.mget(
+        index=CHUNKS_INDEX, body={"ids": list(chunk_ids)}, _source=["text"]
+    )
+
+    texts: Dict[str, str] = {}
+    for doc in response.get("docs", []):
+        if not doc.get("found"):
+            continue
+        chunk_id = doc.get("_id")
+        if chunk_id:
+            texts[chunk_id] = doc.get("_source", {}).get("text", "")
+    return texts
 
 
 def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
@@ -51,6 +74,12 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
                 score_threshold=CHUNK_SCORE_THRESHOLD,
                 with_payload=True,
             )
+            chunk_ids = {
+                r.payload.get("id")
+                for r in results
+                if r.payload and r.payload.get("id")
+            }
+            chunk_texts = _fetch_chunk_texts(chunk_ids)
             retrieved_chunks = []
             seen_checksums = set()
             for r in results:
@@ -59,23 +88,27 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
                 if checksum in seen_checksums:
                     continue
                 seen_checksums.add(checksum)
-                retrieved_chunks.append({**payload, "score": r.score})
+                chunk_id = payload.get("id")
+                text = chunk_texts.get(chunk_id, payload.get("text", ""))
+                retrieved_chunks.append({**payload, "score": r.score, "text": text})
                 if len(retrieved_chunks) >= top_k:
                     break
 
             for i, doc in enumerate(retrieved_chunks):
-                span.set_attribute(f"retrieval.documents.{i}.document.id", doc["path"])
                 span.set_attribute(
-                    f"retrieval.documents.{i}.document.score", doc["score"]
+                    f"retrieval.documents.{i}.document.id", doc.get("path")
                 )
                 span.set_attribute(
-                    f"retrieval.documents.{i}.document.content", doc["text"]
+                    f"retrieval.documents.{i}.document.score", doc.get("score")
+                )
+                span.set_attribute(
+                    f"retrieval.documents.{i}.document.content", doc.get("text", "")
                 )
                 span.set_attribute(
                     f"retrieval.documents.{i}.document.metadata",
                     [
-                        f"Chunk index: {doc['chunk_index']}",
-                        f"Date modified: {doc['modified_at']}",
+                        f"Chunk index: {doc.get('chunk_index', 'N/A')}",
+                        f"Date modified: {doc.get('modified_at', 'N/A')}",
                     ],
                 )
             span.set_status(STATUS_OK)
