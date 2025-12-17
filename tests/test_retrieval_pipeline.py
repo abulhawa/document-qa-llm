@@ -89,19 +89,40 @@ class _Span:
         return None
 
 
-tracing_module = types.ModuleType("tracing")
-tracing_module.start_span = lambda *_, **__: _Span()
-tracing_module.record_span_error = lambda *_, **__: None
-tracing_module.STATUS_OK = "OK"
-tracing_module.EMBEDDING = "EMBEDDING"
-tracing_module.RETRIEVER = "RETRIEVER"
-tracing_module.INPUT_VALUE = "INPUT"
-tracing_module.OUTPUT_VALUE = "OUTPUT"
-tracing_module.LLM = "LLM"
-tracing_module.CHAIN = "CHAIN"
-tracing_module.TOOL = "TOOL"
-tracing_module.get_current_span = lambda *_, **__: _Span()
-sys.modules["tracing"] = tracing_module
+def _build_tracing_module():
+    class _StatusCode:
+        OK = "OK"
+        ERROR = "ERROR"
+
+    class _Status:
+        def __init__(self, status_code, description=""):
+            self.status_code = status_code
+            self.description = description
+
+    tracing_module = types.ModuleType("tracing")
+    tracing_module.start_span = lambda *_, **__: _Span()
+    tracing_module.record_span_error = (
+        lambda span, err: span.set_status(_Status(_StatusCode.ERROR, str(err)))
+    )
+    tracing_module.STATUS_OK = "OK"
+    tracing_module.EMBEDDING = "EMBEDDING"
+    tracing_module.RETRIEVER = "RETRIEVER"
+    tracing_module.INPUT_VALUE = "INPUT"
+    tracing_module.OUTPUT_VALUE = "OUTPUT"
+    tracing_module.LLM = "LLM"
+    tracing_module.CHAIN = "CHAIN"
+    tracing_module.TOOL = "TOOL"
+    tracing_module.get_current_span = lambda *_, **__: _Span()
+    tracing_module.StatusCode = _StatusCode
+    tracing_module.Status = _Status
+    return tracing_module
+
+
+@pytest.fixture(autouse=True)
+def _stub_tracing(monkeypatch):
+    """Provide a scoped tracing stub so other tests can use the real module."""
+
+    monkeypatch.setitem(sys.modules, "tracing", _build_tracing_module())
 
 
 class _DummySession:

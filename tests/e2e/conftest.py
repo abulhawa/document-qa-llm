@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import requests
+pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright
 from playwright._impl._errors import Error as PlaywrightError
 

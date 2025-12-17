@@ -10,7 +10,7 @@ def _core_python_files():
 def test_core_has_no_qa_pipeline_imports():
     offending = []
     for path in _core_python_files():
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
