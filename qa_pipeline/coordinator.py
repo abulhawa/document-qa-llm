@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from config import logger
+from core.retrieval.types import RetrievalConfig
 from tracing import (
     start_span,
     record_span_error,
@@ -27,6 +28,7 @@ def answer_question(
     temperature: float = 0.7,
     model: Optional[str] = None,
     chat_history: Optional[List[dict]] = None,
+    retrieval_cfg: RetrievalConfig | None = None,
 ) -> AnswerContext:
     """Orchestrate the QA pipeline to answer a question."""
 
@@ -76,7 +78,9 @@ def answer_question(
         try:
             with start_span("Retriever", RETRIEVER) as retrieval_span:
                 retrieval_span.set_attribute(INPUT_VALUE, context.rewritten_question)
-                retrieval = retrieve_context(context.rewritten_question, top_k)
+                retrieval = retrieve_context(
+                    context.rewritten_question, top_k, retrieval_cfg=retrieval_cfg
+                )
                 context.retrieval = retrieval
                 retrieval_span.set_attribute("top_k", top_k)
                 retrieval_span.set_attribute("results_found", len(retrieval.documents))

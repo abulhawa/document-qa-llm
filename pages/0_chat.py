@@ -2,7 +2,7 @@ import streamlit as st
 from typing import List, Optional
 from config import logger
 from core.llm import get_available_models, load_model, check_llm_status
-from qa_pipeline import answer_question
+from qa_pipeline import RetrievalConfig, answer_question
 
 st.set_page_config(page_title="Ask a Question", layout="wide")
 st.title("💬 Talk to Your Documents")
@@ -20,6 +20,8 @@ st.markdown("---")
 llm_status = check_llm_status()
 if not llm_status["active"]:
     st.error(llm_status["status_message"], icon="⚠️")
+
+retrieval_cfg = RetrievalConfig()
 # ───────────────────────────────────────
 # 🔸 Sidebar: LLM Settings
 # ───────────────────────────────────────
@@ -128,6 +130,7 @@ with st.container():
                 temperature=temperature,
                 model=loaded_llm_model,
                 chat_history=st.session_state.chat_history,
+                retrieval_cfg=retrieval_cfg,
             )
 
             st.session_state.chat_history.append(
@@ -164,6 +167,7 @@ with st.container():
                     mode="completion",
                     temperature=temperature,
                     model=loaded_llm_model,
+                    retrieval_cfg=retrieval_cfg,
                 )
 
             st.subheader("📝 Answer")
