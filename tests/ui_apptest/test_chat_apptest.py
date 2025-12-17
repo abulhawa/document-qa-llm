@@ -72,7 +72,7 @@ def _get_sources(at):
 
 def test_query_returns_answer_with_dedup_sources(monkeypatch):
     monkeypatch.setattr(
-        "qa_pipeline.coordinator.answer_question",
+        "qa_pipeline.answer_question",
         lambda **_: AnswerContext(
             question="question",
             mode="completion",
@@ -101,7 +101,7 @@ def test_query_returns_answer_with_dedup_sources(monkeypatch):
 
 def test_no_results_shows_message(monkeypatch):
     monkeypatch.setattr(
-        "qa_pipeline.coordinator.answer_question",
+        "qa_pipeline.answer_question",
         lambda **_: AnswerContext(
             question="question",
             mode="completion",
