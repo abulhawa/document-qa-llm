@@ -3,7 +3,10 @@ import sys
 from contextlib import contextmanager
 
 import pytest
+
+pytest.importorskip("streamlit.testing.v1")
 from streamlit.testing.v1 import AppTest
+from qa_pipeline.types import AnswerContext, RetrievalResult, RetrievedDocument
 
 
 @pytest.fixture(autouse=True)
@@ -70,9 +73,19 @@ def _get_sources(at):
 def test_query_returns_answer_with_dedup_sources(monkeypatch):
     monkeypatch.setattr(
         "core.query.answer_question",
-        lambda **_: (
-            "fixed answer",
-            ["doc (Page 1)", "doc (Page 1)", "other (Page 2)"],
+        lambda **_: AnswerContext(
+            question="question",
+            mode="completion",
+            temperature=0.7,
+            answer="fixed answer",
+            retrieval=RetrievalResult(
+                query="question",
+                documents=[
+                    RetrievedDocument(text="doc", path="doc", page=1),
+                    RetrievedDocument(text="doc", path="doc", page=1),
+                    RetrievedDocument(text="other", path="other", page=2),
+                ],
+            ),
         ),
     )
 
@@ -89,7 +102,13 @@ def test_query_returns_answer_with_dedup_sources(monkeypatch):
 def test_no_results_shows_message(monkeypatch):
     monkeypatch.setattr(
         "core.query.answer_question",
-        lambda **_: ("No relevant context found to answer the question.", []),
+        lambda **_: AnswerContext(
+            question="question",
+            mode="completion",
+            temperature=0.7,
+            answer="No relevant context found to answer the question.",
+            retrieval=RetrievalResult(query="question", documents=[]),
+        ),
     )
 
     at = AppTest.from_file("pages/0_chat.py", default_timeout=10)
