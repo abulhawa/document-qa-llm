@@ -37,9 +37,13 @@ def fuse_semantic_and_bm25(
             combined[key] = {**r, "score_vector": 0.0, "score_bm25": s, "source": "keyword"}
 
     for doc in combined.values():
-        doc["hybrid_score"] = w_vec * doc["score_vector"] + w_bm25 * doc["score_bm25"]
+        doc["retrieval_score"] = w_vec * doc["score_vector"] + w_bm25 * doc["score_bm25"]
 
-    return sorted(combined.values(), key=lambda x: (x["hybrid_score"], x.get("modified_at", "")), reverse=True)
+    return sorted(
+        combined.values(),
+        key=lambda x: (x.get("retrieval_score", 0.0), x.get("modified_at", "")),
+        reverse=True,
+    )
 
 def dedup_by_checksum(sorted_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Exact behavior of your checksum dedup step."""
