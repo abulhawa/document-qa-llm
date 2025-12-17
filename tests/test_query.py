@@ -42,7 +42,7 @@ sys.modules.setdefault(
     "core.hybrid.pipeline", types.SimpleNamespace(retrieve_hybrid=lambda *_, **__: [])
 )
 
-from core.query import answer_question
+from qa_pipeline.coordinator import answer_question
 from qa_pipeline.types import QueryRewrite, RetrievalResult, RetrievedDocument
 
 
@@ -93,10 +93,10 @@ def test_retrieval_limit_matches_top_k(monkeypatch):
     def mock_generate(*args, **kwargs):
         return "answer"
 
-    monkeypatch.setattr("core.query.start_span", dummy_start_span)
-    monkeypatch.setattr("core.query.retrieve_context", mock_retrieve)
-    monkeypatch.setattr("core.query.rewrite_question", mock_rewrite)
-    monkeypatch.setattr("core.query.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.start_span", dummy_start_span)
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
 
     result = answer_question("question", top_k=4)
 

@@ -20,8 +20,6 @@ from qa_pipeline.rewrite import rewrite_question
 from qa_pipeline.types import AnswerContext
 
 
-# Coordinator function that orchestrates the QA pipeline
-
 def answer_question(
     question: str,
     top_k: int = 3,
@@ -30,6 +28,8 @@ def answer_question(
     model: Optional[str] = None,
     chat_history: Optional[List[dict]] = None,
 ) -> AnswerContext:
+    """Orchestrate the QA pipeline to answer a question."""
+
     context = AnswerContext(
         question=question,
         mode=mode,
