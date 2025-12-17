@@ -4,7 +4,7 @@ import types
 import pytest
 from langchain_core.documents import Document
 
-from core.ingestion import ingest_one
+from ingestion.orchestrator import ingest_one
 
 
 class DummyLog:
@@ -34,16 +34,15 @@ def test_ingest_one_idempotent_skip(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
-    monkeypatch.setattr("core.ingestion.compute_checksum", lambda p: "abc")
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: True)
-    monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
+    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: True)
+    monkeypatch.setattr("ingestion.storage.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("ingestion.orchestrator.IngestLogEmitter", DummyLog)
 
-    # ensure load_documents not called
     def boom(path):
         raise AssertionError("should not load")
 
-    monkeypatch.setattr("core.ingestion.load_documents", boom)
+    monkeypatch.setattr("ingestion.io_loader.load_file_documents", boom)
 
     result = ingest_one(str(f))
     assert result["status"] == "Already indexed"
@@ -57,23 +56,25 @@ def test_ingest_one_embedder_failure(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
-    monkeypatch.setattr("core.ingestion.compute_checksum", lambda p: "abc")
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
+    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr("ingestion.storage.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("ingestion.orchestrator.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "ingestion.io_loader.load_file_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )  # one doc
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
-        lambda docs_like, source_path, cfg, doc_type: docs_like,
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "hello"}]
     )
-    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
+    monkeypatch.setattr(
+        "ingestion.storage.index_chunk_batch", lambda chunks: (len(chunks), [])
+    )
 
     monkeypatch.setattr(
         "utils.qdrant_utils.index_chunks_in_batches",
@@ -88,21 +89,21 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
-    monkeypatch.setattr("core.ingestion.compute_checksum", lambda p: "abc")
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
+    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr("ingestion.storage.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("ingestion.orchestrator.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "ingestion.io_loader.load_file_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
-        lambda docs_like, source_path, cfg, doc_type: docs_like,
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents",
+        "ingestion.preprocess.chunk_documents",
         lambda docs: [{"text": str(i)} for i in range(5)],
     )
 
@@ -112,7 +113,7 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
         captured["count"] = len(chunks)
         return len(chunks), []
 
-    monkeypatch.setattr("core.ingestion.index_documents", fake_index_documents)
+    monkeypatch.setattr("ingestion.storage.index_chunk_batch", fake_index_documents)
 
     def fake_index_chunks(chunks, os_index_batch=None):
         if os_index_batch:
@@ -122,7 +123,7 @@ def test_ingest_one_handles_multiple_chunks(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "utils.qdrant_utils.index_chunks_in_batches", fake_index_chunks
     )
-    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr("ingestion.storage.index_fulltext", lambda doc: None)
 
     result = ingest_one(str(f))
     assert result["success"] is True
@@ -133,28 +134,30 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
     f = tmp_path / "doc.txt"
     f.write_text("hello")
 
-    monkeypatch.setattr("core.ingestion.compute_checksum", lambda p: "abc")
-    monkeypatch.setattr("core.ingestion.is_file_up_to_date", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.is_duplicate_checksum", lambda c, p: False)
-    monkeypatch.setattr("core.ingestion.IngestLogEmitter", DummyLog)
+    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr("ingestion.storage.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("ingestion.orchestrator.IngestLogEmitter", DummyLog)
 
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "ingestion.io_loader.load_file_documents",
         lambda p: [Document(page_content="doc", metadata={})],
     )
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
-        lambda docs_like, source_path, cfg, doc_type: docs_like,
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "hello"}]
     )
-    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
+    monkeypatch.setattr(
+        "ingestion.storage.index_chunk_batch", lambda chunks: (len(chunks), [])
+    )
     monkeypatch.setattr(
         "utils.qdrant_utils.index_chunks_in_batches",
         lambda chunks, os_index_batch=None: True,
     )
-    monkeypatch.setattr("core.ingestion.index_fulltext_document", lambda doc: None)
+    monkeypatch.setattr("ingestion.storage.index_fulltext", lambda doc: None)
 
     result = ingest_one(str(f), total_files=2)
     assert result["success"] is True

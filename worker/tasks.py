@@ -58,7 +58,7 @@ def ingest_document(host_path: str, mode: str = "ingest") -> dict:
     host_path: Windows host path selected in UI (stored in metadata)
     mode: 'ingest' (default), 'reembed', 'reingest'
     """
-    from core.ingestion import ingest_one
+    from ingestion.orchestrator import ingest_one
     
     fs_path = host_to_container_path(host_path)
     if mode == "ingest":
