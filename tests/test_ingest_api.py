@@ -1,7 +1,7 @@
 import os
 from langchain_core.documents import Document
 
-from core.ingestion import ingest_one
+from ingestion.orchestrator import ingest_one
 
 
 def test_ingest_one_returns_normalized_path(tmp_path, monkeypatch):
@@ -10,30 +10,30 @@ def test_ingest_one_returns_normalized_path(tmp_path, monkeypatch):
 
     # Stub out external dependencies used during ingestion
     monkeypatch.setattr(
-        "core.ingestion.load_documents",
+        "ingestion.io_loader.load_file_documents",
         lambda p: [Document(page_content="hello", metadata={})],
     )
     monkeypatch.setattr(
-        "core.ingestion.preprocess_to_documents",
-        lambda docs_like, source_path, cfg, doc_type: docs_like,
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
     )
     monkeypatch.setattr(
-        "core.ingestion.split_documents", lambda docs: [{"text": "hello"}]
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "hello"}]
     )
-    monkeypatch.setattr("core.ingestion.index_documents", lambda chunks: None)
     monkeypatch.setattr(
-        "utils.qdrant_utils.index_chunks_in_batches",
+        "ingestion.storage.index_chunk_batch", lambda chunks: (len(chunks), [])
+    )
+    monkeypatch.setattr(
+        "ingestion.storage.embed_and_store",
         lambda chunks, os_index_batch=None: True,
     )
     monkeypatch.setattr(
-        "core.ingestion.is_file_up_to_date", lambda checksum, path: False
+        "ingestion.storage.is_file_up_to_date", lambda checksum, path: False
     )
     monkeypatch.setattr(
-        "core.ingestion.is_duplicate_checksum", lambda checksum, path: False
+        "ingestion.storage.is_duplicate_checksum", lambda checksum, path: False
     )
-    monkeypatch.setattr(
-        "core.ingestion.index_fulltext_document", lambda doc: None
-    )
+    monkeypatch.setattr("ingestion.storage.index_fulltext", lambda doc: None)
 
     result = ingest_one(str(sample))
 
