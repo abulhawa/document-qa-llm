@@ -1,4 +1,6 @@
 import pytest
+
+pytest.importorskip("streamlit.testing.v1")
 from streamlit.testing.v1 import AppTest
 
 

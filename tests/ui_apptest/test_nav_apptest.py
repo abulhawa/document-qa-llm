@@ -15,6 +15,7 @@ opensearchpy_stub.helpers = types.SimpleNamespace()
 sys.modules.setdefault("opensearchpy", opensearchpy_stub)
 sys.modules.setdefault("opensearchpy.exceptions", opensearchpy_stub.exceptions)
 
+pytest.importorskip("streamlit.testing.v1")
 from streamlit.testing.v1 import AppTest
 
 # Mapping of page script to expected title text and navigation label
