@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from config import logger
 from core.retrieval.types import RetrievalConfig
@@ -19,6 +19,24 @@ from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
 from qa_pipeline.rewrite import rewrite_question
 from qa_pipeline.types import AnswerContext
+
+
+AttributePrimitive = str | bool | int | float
+SpanAttributeValue = AttributePrimitive | list[str]
+
+
+def _as_span_value(value: Any) -> SpanAttributeValue:
+    """
+    Coerce arbitrary values into the limited set of types
+    allowed by OpenTelemetry span attributes.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (str, bool, int, float)):
+        return value
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return str(value)
 
 
 def answer_question(
@@ -54,7 +72,9 @@ def answer_question(
                 rewrite_result = rewrite_question(question, temperature=0.15)
                 context.rewritten_question = rewrite_result.rewritten
                 context.clarification = rewrite_result.clarify
-                rewrite_span.set_attribute(OUTPUT_VALUE, rewrite_result.raw)
+                rewrite_span.set_attribute(
+                    OUTPUT_VALUE, _as_span_value(rewrite_result.raw)
+                )
                 rewrite_span.set_status(STATUS_OK)
 
             if context.clarification:
@@ -84,7 +104,9 @@ def answer_question(
                 context.retrieval = retrieval
                 retrieval_span.set_attribute("top_k", top_k)
                 retrieval_span.set_attribute("results_found", len(retrieval.documents))
-                retrieval_span.set_attribute(OUTPUT_VALUE, retrieval.summary)
+                retrieval_span.set_attribute(
+                    OUTPUT_VALUE, _as_span_value(retrieval.summary)
+                )
                 retrieval_span.set_status(STATUS_OK)
         except Exception as exc:  # noqa: BLE001
             logger.error("❌ Retrieval failed: %s", exc)
