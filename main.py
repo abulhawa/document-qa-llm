@@ -33,6 +33,11 @@ pages = [
         icon="👀",
     ),
     st.Page(
+        "pages/7_file_resync.py",
+        title="File Path Re-Sync",
+        icon="🔁",
+    ),
+    st.Page(
         "pages/30_running_tasks.py",
         title="Running Tasks",
         icon="🧵",
