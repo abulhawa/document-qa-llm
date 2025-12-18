@@ -9,3 +9,4 @@ qdrant_threshold_eval.py
 .coverage
 artifacts/
 *.ipynb
+opensearch-backups/

@@ -48,12 +48,14 @@ services:
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
+      - path.repo=/mnt/opensearch-backups
     ulimits:
       memlock:
         soft: -1
         hard: -1
     volumes:
       - opensearch-data:/usr/share/opensearch/data
+      - ./opensearch-backups:/mnt/opensearch-backups
     ports:
       - "9200:9200"
       - "9600:9600"
