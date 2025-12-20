@@ -72,6 +72,9 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
     expected_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "abc123:0"))
     assert set(captured[canonical_path]) == {expected_id}
     full_doc = stored_fulltext["abc123"]
-    assert full_doc["path"] == canonical_path
-    assert set(full_doc["aliases"]) == {str(file_a), str(file_b)} - {canonical_path}
-    assert canonical_path not in full_doc["aliases"]
+    assert os.path.normpath(full_doc["path"]) == os.path.normpath(canonical_path)
+    normalized_aliases = {os.path.normpath(p) for p in full_doc["aliases"]}
+    expected_aliases = {os.path.normpath(str(file_a)), os.path.normpath(str(file_b))}
+    expected_aliases.discard(os.path.normpath(canonical_path))
+    assert normalized_aliases == expected_aliases
+    assert os.path.normpath(canonical_path) not in normalized_aliases

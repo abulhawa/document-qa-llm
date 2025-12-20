@@ -141,8 +141,15 @@ def test_ingest_preserves_legacy_fulltext_id(tmp_path, monkeypatch):
 
     assert recorded["doc"]["id"] == "legacy123"
     assert recorded["doc"]["checksum"] == "abc"
-    assert recorded["doc"]["path"] == legacy_doc["path"]
-    assert set(recorded["doc"]["aliases"]) == {
-        str(new_path),
-        *legacy_doc["aliases"],
-    } - {legacy_doc["path"]}
+    assert os.path.normpath(recorded["doc"]["path"]) == os.path.normpath(
+        legacy_doc["path"]
+    )
+    normalized_aliases = {
+        os.path.normpath(p) for p in recorded["doc"]["aliases"]
+    }
+    expected_aliases = {
+        os.path.normpath(str(new_path)),
+        *(os.path.normpath(p) for p in legacy_doc["aliases"]),
+    }
+    expected_aliases.discard(os.path.normpath(legacy_doc["path"]))
+    assert normalized_aliases == expected_aliases
