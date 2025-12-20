@@ -153,7 +153,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     client = get_client()
     actions = []
     for chunk in chunks:
-        op_type = chunk.get("op_type", "create")
+        op_type = chunk.get("op_type", "index")
         action: Dict[str, Any] = {
             "_index": CHUNKS_INDEX,
             "_id": chunk["id"],
@@ -434,15 +434,37 @@ def get_fulltext_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
     client = get_client()
     try:
         resp = client.get(index=FULLTEXT_INDEX, id=checksum)
+        source = resp.get("_source") or {}
+        source["id"] = resp.get("_id") or checksum
+        return source
     except exceptions.NotFoundError:
-        return None
+        # Legacy docs may not use checksum as the document _id; fall back to a
+        # term query on the checksum field.
+        pass
     except Exception:
         logger.warning("Failed to fetch full-text doc for checksum=%s", checksum)
         return None
 
-    source = resp.get("_source") or {}
-    source["id"] = resp.get("_id") or checksum
-    return source
+    try:
+        search = client.search(
+            index=FULLTEXT_INDEX,
+            body={
+                "size": 1,
+                "query": {"term": {"checksum": {"value": checksum}}},
+            },
+        )
+        hits = search.get("hits", {}).get("hits", [])
+        if not hits:
+            return None
+        hit = hits[0]
+        source = hit.get("_source") or {}
+        source["id"] = hit.get("_id") or checksum
+        return source
+    except Exception:
+        logger.warning(
+            "Failed to search full-text doc by checksum=%s", checksum, exc_info=True
+        )
+        return None
 
 
 def get_chunks_by_paths(
