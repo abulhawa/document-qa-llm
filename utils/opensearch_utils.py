@@ -395,7 +395,7 @@ def delete_fulltext_by_path(path: str) -> int:
     client = get_client()
     resp = client.delete_by_query(
         index=FULLTEXT_INDEX,
-        body={"query": {"term": {"path.keyword": path}}},
+        body={"query": {"term": {"path": {"value": path}}}},
         params={
             "refresh": "true",
             "conflicts": "proceed",
@@ -478,8 +478,8 @@ def get_fulltext_by_path_or_alias(path: str) -> Optional[Dict[str, Any]]:
                 "query": {
                     "bool": {
                         "should": [
-                            {"term": {"path.keyword": path}},
-                            {"term": {"aliases.keyword": path}},
+                            {"term": {"path": {"value": path}}},
+                            {"term": {"aliases": {"value": path}}},
                         ],
                         "minimum_should_match": 1,
                     }
