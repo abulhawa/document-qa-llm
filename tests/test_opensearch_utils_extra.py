@@ -20,6 +20,7 @@ class FakeClient:
         self.indices = FakeIndices()
         self.bulk_ops = []
         self.deleted = []
+        self.search_calls = []
 
     def bulk(self, body, params):
         self.bulk_ops.append(body)
@@ -39,37 +40,55 @@ class FakeClient:
         return {"deleted": len(q["bool"]["should"])}
 
     def search(self, index, body):
-        return {
-            "hits": {
-                "hits": [
-                    {
-                        "_id": "1",
-                        "_score": 1.0,
-                        "_source": {
-                            "path": "p",
-                            "checksum": "c",
-                            "text": "t",
-                            "chunk_index": 0,
-                            "modified_at": "2020",
-                            "bytes": 123,
-                            "size": "123 B",
-                        },
-                    },
-                    {
-                        "_id": "2",
-                        "_score": 0.5,
-                        "_source": {
-                            "path": "p2",
-                            "checksum": "c2",
-                            "text": "t2",
-                            "chunk_index": 1,
-                            "modified_at": "2019",
-                            "bytes": 456,
-                            "size": "456 B",
-                        },
-                    },
-                ]
+        self.search_calls.append({"index": index, "body": body})
+        if index == osu.CHUNKS_INDEX:
+            return {
+                "aggregations": {
+                    "by_path": {
+                        "buckets": [
+                            {
+                                "key": "p",
+                                "doc_count": 1,
+                                "sample": {
+                                    "hits": {
+                                        "hits": [
+                                            {
+                                                "_source": {
+                                                    "path": "p",
+                                                    "checksum": "c",
+                                                    "text": "t",
+                                                    "chunk_index": 0,
+                                                    "modified_at": "2020",
+                                                    "created_at": "2019",
+                                                    "indexed_at": "2021",
+                                                    "bytes": 123,
+                                                    "size": "123 B",
+                                                    "filetype": "txt",
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                            }
+                        ]
+                    }
+                }
             }
+        return {"hits": {"hits": []}}
+
+    def get(self, index, id):
+        return {
+            "_id": id,
+            "_source": {
+                "path": "p",
+                "aliases": ["p2", "p3"],
+                "filetype": "txt",
+                "created_at": "2019",
+                "modified_at": "2020",
+                "indexed_at": "2021",
+                "size_bytes": 123,
+                "checksum": id,
+            },
         }
 
 
@@ -90,6 +109,10 @@ def test_get_files_by_checksum(monkeypatch):
     client = FakeClient()
     monkeypatch.setattr(osu, "get_client", lambda: client)
     files = osu.get_files_by_checksum("c")
-    assert files[0]["path"] == "p"
-    assert files[0]["num_chunks"] == 1
-    assert files[0]["bytes"] == 123
+    assert {f["path"] for f in files} == {"p", "p2", "p3"}
+    canonical = [f for f in files if f["location_type"] == "canonical"][0]
+    assert canonical["path"] == "p"
+    assert canonical["num_chunks"] == 1
+    assert canonical["bytes"] == 123
+    alias_paths = {f["path"] for f in files if f["location_type"] == "alias"}
+    assert alias_paths == {"p2", "p3"}
