@@ -153,7 +153,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     client = get_client()
     actions = []
     for chunk in chunks:
-        op_type = chunk.get("op_type", "index")
+        op_type = chunk.get("op_type", "create")
         action: Dict[str, Any] = {
             "_index": CHUNKS_INDEX,
             "_id": chunk["id"],
