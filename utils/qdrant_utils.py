@@ -13,7 +13,8 @@ from config import (
     EMBEDDING_BATCH_SIZE,
     logger,
 )
-from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable, cast
+import math
+from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable, cast, Tuple
 
 from core.embeddings import embed_texts
 
@@ -38,6 +39,43 @@ def _payload_without_text(chunk: Dict[str, Any]) -> Dict[str, Any]:
     p = dict(chunk)
     p.pop("text", None)   # <- drop the heavy field
     return p
+
+
+def _sanitize_vectors(
+    vectors: List[List[float]],
+    *,
+    expected_size: int,
+) -> Tuple[List[List[float]], int]:
+    """
+    Ensure vectors are JSON-safe (finite floats) and correct length.
+
+    Returns (possibly copied vectors, num_replacements).
+    """
+    replacements = 0
+    any_changed = False
+    sanitized: List[List[float]] = []
+
+    for vec in vectors:
+        if len(vec) != expected_size:
+            raise ValueError(
+                f"Embedding size mismatch: expected {expected_size}, got {len(vec)}"
+            )
+        new_vec = []
+        changed = False
+        for val in vec:
+            fval = float(val)
+            if not math.isfinite(fval):
+                fval = 0.0
+                replacements += 1
+                changed = True
+            new_vec.append(fval)
+        if changed:
+            any_changed = True
+        sanitized.append(new_vec)
+
+    if not any_changed:
+        return vectors, 0
+    return sanitized, replacements
 
 def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
     points = [
@@ -73,6 +111,12 @@ def index_chunks_in_batches(
     for group in _batches_by_budget(chunks, EMBEDDING_REQ_MAX_CHUNKS):
         texts = [c["text"] for c in group]
         vectors = embed_texts(texts, batch_size=EMBEDDING_BATCH_SIZE)
+        vectors, replaced = _sanitize_vectors(vectors, expected_size=EMBEDDING_SIZE)
+        if replaced:
+            logger.warning(
+                "Replaced %s non-finite embedding values with 0.0 before Qdrant upsert.",
+                replaced,
+            )
         upsert_vectors(list(group), vectors)        # blocks until persisted
         if os_index_batch:
             os_index_batch(group)                   # OS never outruns vectors
