@@ -159,10 +159,14 @@ def ingest_one(
                 "path": normalized_path,
             }
 
+        full_doc_id = checksum
+        if existing_fulltext and existing_fulltext.get("id"):
+            full_doc_id = existing_fulltext["id"]
+
         full_doc = existing_fulltext or {}
         full_doc.update(
             {
-                "id": checksum,
+                "id": full_doc_id,
                 "path": canonical_path,
                 "aliases": aliases,
                 "filename": os.path.basename(canonical_path),
