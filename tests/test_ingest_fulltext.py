@@ -81,3 +81,68 @@ def test_fulltext_index_called(tmp_path, monkeypatch):
     assert os.path.normpath(called["doc"]["path"]) == os.path.normpath(str(f))
     assert called["doc"]["checksum"] == "abc"
 
+
+def test_ingest_preserves_legacy_fulltext_id(tmp_path, monkeypatch):
+    new_path = tmp_path / "dir" / "doc.txt"
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    new_path.write_text("hello")
+
+    legacy_doc = {
+        "id": "legacy123",
+        "path": str(tmp_path / "doc.txt"),
+        "aliases": [str(tmp_path / "alias.txt")],
+        "checksum": "abc",
+    }
+
+    monkeypatch.setattr("ingestion.io_loader.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr(
+        "ingestion.storage.is_duplicate_checksum", lambda c, p: False
+    )
+    monkeypatch.setattr("ingestion.storage.get_existing_fulltext", lambda checksum: legacy_doc)
+    monkeypatch.setattr(
+        "ingestion.orchestrator.IngestLogEmitter", DummyLog
+    )
+    monkeypatch.setattr("utils.file_utils.get_file_size", lambda p: 10)
+    monkeypatch.setattr(
+        "utils.file_utils.get_file_timestamps",
+        lambda p: {"created": "2023-01-01", "modified": "2023-01-01"},
+    )
+
+    monkeypatch.setattr(
+        "ingestion.io_loader.load_file_documents",
+        lambda p: [Document(page_content="full", metadata={})],
+    )
+    monkeypatch.setattr(
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: [
+            Document(page_content="full", metadata={})
+        ],
+    )
+    monkeypatch.setattr(
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "chunk"}]
+    )
+    monkeypatch.setattr(
+        "ingestion.storage.index_chunk_batch", lambda chunks: (len(chunks), [])
+    )
+    monkeypatch.setattr(
+        "utils.qdrant_utils.index_chunks_in_batches",
+        lambda chunks, os_index_batch=None: True,
+    )
+
+    recorded = {}
+
+    def fake_index_fulltext(doc):
+        recorded["doc"] = doc
+
+    monkeypatch.setattr("ingestion.storage.index_fulltext", fake_index_fulltext)
+
+    ingest_one(str(new_path))
+
+    assert recorded["doc"]["id"] == "legacy123"
+    assert recorded["doc"]["checksum"] == "abc"
+    assert recorded["doc"]["path"] == legacy_doc["path"]
+    assert set(recorded["doc"]["aliases"]) == {
+        str(new_path),
+        *legacy_doc["aliases"],
+    } - {legacy_doc["path"]}
