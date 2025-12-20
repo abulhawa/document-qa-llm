@@ -16,6 +16,41 @@ st.set_page_config(page_title="File Path Re-Sync", layout="wide")
 st.title("🔁 File Path Re-Sync")
 
 DEFAULT_ROOT = os.getenv("LOCAL_SYNC_ROOT", "")
+REASON_ORDER = [
+    "DUPLICATE_INDEX_DOCS",
+    "NOT_INDEXED",
+    "ADD_ALIAS",
+    "REMOVE_ALIAS",
+    "SET_CANONICAL",
+    "CANONICAL_AMBIGUOUS",
+    "ORPHANED_INDEX_CONTENT",
+    "PATH_REPLACED",
+    "MIXED",
+]
+REASON_DETAIL_MAP = {
+    "DUPLICATE_INDEX_DOCS": "Multiple full-text docs share the same checksum.",
+    "NOT_INDEXED": "File exists on disk but is missing from the index.",
+    "ADD_ALIAS": "Disk path exists that is not in aliases yet.",
+    "REMOVE_ALIAS": "Alias path is missing on disk within scanned roots.",
+    "SET_CANONICAL": (
+        "Canonical path missing; auto-selected via shortest path, then newest mtime, then first."
+    ),
+    "CANONICAL_AMBIGUOUS": "Legacy state; canonical selection is now automatic.",
+    "ORPHANED_INDEX_CONTENT": "Indexed content has no disk paths under scanned roots.",
+    "PATH_REPLACED": "Canonical path now points to a different checksum.",
+    "MIXED": "Multiple reasons apply; review actions and details.",
+}
+REASON_ACTION_MAP = {
+    "DUPLICATE_INDEX_DOCS": "Blocked: dedupe full-text docs before applying.",
+    "NOT_INDEXED": "Optional ingest (checkbox in Apply phase).",
+    "ADD_ALIAS": "Apply: add alias path.",
+    "REMOVE_ALIAS": "Apply: remove alias path.",
+    "SET_CANONICAL": "Apply: set canonical using auto-selection rules.",
+    "CANONICAL_AMBIGUOUS": "No longer used; auto-selection applies.",
+    "ORPHANED_INDEX_CONTENT": "Optional delete (Destructive checkbox).",
+    "PATH_REPLACED": "Manual review; optional retire replaced content.",
+    "MIXED": "Review actions list for applyable steps.",
+}
 
 
 def _parse_roots(raw: str) -> List[str]:
@@ -26,6 +61,29 @@ def _parse_exts(raw: str) -> set[str]:
     parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
     exts = {p if p.startswith(".") else f".{p}" for p in parts}
     return exts or set(DEFAULT_ALLOWED_EXTENSIONS)
+
+
+def _split_reasons(reason: str) -> List[str]:
+    if not reason:
+        return []
+    parts = [p.strip() for p in str(reason).split(";") if p.strip()]
+    return parts or []
+
+
+def _map_reason_details(reason: str) -> str:
+    parts = _split_reasons(reason)
+    if not parts:
+        return REASON_DETAIL_MAP["MIXED"]
+    mapped = [REASON_DETAIL_MAP.get(p, f"Unknown reason: {p}") for p in parts]
+    return "; ".join(dict.fromkeys(mapped))
+
+
+def _map_reason_actions(reason: str) -> str:
+    parts = _split_reasons(reason)
+    if not parts:
+        return REASON_ACTION_MAP["MIXED"]
+    mapped = [REASON_ACTION_MAP.get(p, f"Manual review for {p}") for p in parts]
+    return "; ".join(dict.fromkeys(mapped))
 
 
 def _render_summary(counts: dict) -> None:
@@ -52,6 +110,24 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
     if selected:
         df = df[df["bucket"].isin(selected)]
 
+    df = df.copy()
+    df["reason_detail"] = df["reason"].apply(_map_reason_details)
+    df["apply_action"] = df["reason"].apply(_map_reason_actions)
+    preferred_cols = [
+        "bucket",
+        "reason",
+        "reason_detail",
+        "apply_action",
+        "checksum",
+        "content_id",
+        "indexed_paths",
+        "disk_paths",
+        "actions",
+        "new_checksum",
+        "explanation",
+    ]
+    df = df[[c for c in preferred_cols if c in df.columns]]
+
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button("Export CSV", data=csv_data, file_name="file_resync.csv")
@@ -77,6 +153,17 @@ with st.expander("Workflow & Safety", expanded=False):
         *Orphaned content* = indexed content whose canonical path **and** all aliases are missing on disk within scanned roots.
         """
     )
+
+with st.expander("Reason Map (Mismatch -> Apply Action)", expanded=False):
+    mapping_rows = [
+        {
+            "Reason": reason,
+            "Meaning": REASON_DETAIL_MAP.get(reason, ""),
+            "Apply action": REASON_ACTION_MAP.get(reason, ""),
+        }
+        for reason in REASON_ORDER
+    ]
+    st.table(pd.DataFrame(mapping_rows))
 
 roots_input = st.text_area(
     "Sync roots (one per line)",
