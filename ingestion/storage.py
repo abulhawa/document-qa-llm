@@ -12,6 +12,7 @@ from utils.opensearch.chunks import (
 from utils.opensearch.fulltext import (
     delete_fulltext_by_path,
     get_fulltext_by_checksum,
+    get_fulltext_by_path_or_alias,
     index_fulltext_document,
 )
 
@@ -65,6 +66,10 @@ def get_existing_fulltext(checksum: str) -> Dict[str, Any] | None:
     return get_fulltext_by_checksum(checksum)
 
 
+def get_fulltext_for_path(path: str) -> Dict[str, Any] | None:
+    return get_fulltext_by_path_or_alias(path)
+
+
 def index_chunk_batch(group: Sequence[Dict[str, Any]]) -> Tuple[int, Iterable]:
     return index_documents(list(group))
 
@@ -76,6 +81,7 @@ __all__ = [
     "index_chunk_batch",
     "index_fulltext",
     "get_existing_fulltext",
+    "get_fulltext_for_path",
     "is_duplicate_checksum",
     "is_file_up_to_date",
     "replace_existing_artifacts",

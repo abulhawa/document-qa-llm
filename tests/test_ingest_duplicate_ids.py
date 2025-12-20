@@ -59,6 +59,9 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
         "ingestion.storage.get_existing_fulltext",
         lambda checksum: stored_fulltext.get(checksum),
     )
+    monkeypatch.setattr(
+        "ingestion.storage.get_fulltext_for_path", lambda path: None
+    )
 
     ingest_one(str(file_a))
     ingest_one(str(file_b))
