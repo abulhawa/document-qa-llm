@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Set
+from typing import Any, Dict, Iterable, Literal, Optional, Sequence, Set
 
 from config import (
     CHUNKS_INDEX,
@@ -16,7 +16,7 @@ from core.opensearch_client import get_client
 from ingestion.orchestrator import ingest_one
 from opensearchpy import helpers
 from qdrant_client import QdrantClient, models
-from utils.file_utils import choose_canonical_path, compute_checksum, normalize_path
+from utils.file_utils import compute_checksum, normalize_path
 from utils.opensearch_utils import (
     delete_chunks_by_checksum,
     delete_fulltext_by_checksum,
@@ -329,6 +329,7 @@ def build_reconciliation_plan(
         disk_by_path[hit.path] = hit.checksum
 
     items: list[PlanItem] = []
+    blocked_checksums = set(duplicates)
 
     # Duplicate index documents for the same checksum are BLOCKED.
     for checksum, ids in duplicates.items():
@@ -367,6 +368,8 @@ def build_reconciliation_plan(
         )
 
     for checksum, doc in docs.items():
+        if checksum in blocked_checksums:
+            continue
         disk_paths = sorted(disk_by_checksum.get(checksum, []))
         indexed_paths = doc.paths
         actions: list[Action] = []
@@ -502,7 +505,12 @@ def _update_fulltext_paths(content_id: str, canonical_path: Optional[str], alias
             }
         )
     script = {"source": " ".join(script_lines), "lang": "painless", "params": params}
-    resp = client.update(index=FULLTEXT_INDEX, id=content_id, body={"script": script}, refresh=True)
+    resp = client.update(
+        index=FULLTEXT_INDEX,
+        id=content_id,
+        body={"script": script},
+        params={"refresh": "true"},
+    )
     return int(resp.get("_shards", {}).get("successful", 0))
 
 
@@ -518,8 +526,7 @@ def _update_chunk_paths(checksum: str, canonical_path: str) -> int:
     resp = client.update_by_query(
         index=CHUNKS_INDEX,
         body={"script": script, "query": {"term": {"checksum": checksum}}},
-        refresh=True,
-        conflicts="proceed",
+        params={"refresh": "true", "conflicts": "proceed"},
     )
     return int(resp.get("updated", 0))
 
@@ -531,16 +538,18 @@ def _update_qdrant_payload(checksum: str, new_path: str) -> int:
     filename = os.path.basename(new_path)
     result = client.set_payload(
         collection_name=QDRANT_COLLECTION,
-        payload={"path": new_path, "filename": filename},
-        wait=True,
-        filter=models.Filter(
+        points=models.Filter(
             must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
         ),
+        payload={"path": new_path, "filename": filename},
+        wait=True,
     )
-    if isinstance(result, dict):
-        return int(result.get("result", {}).get("count", 0))
-    if hasattr(result, "result") and isinstance(result.result, dict):
-        return int(result.result.get("count", 0))
+    result_any: Any = result
+    if isinstance(result_any, dict):
+        return int(result_any.get("result", {}).get("count", 0))
+    result_dict = getattr(result_any, "result", None)
+    if isinstance(result_dict, dict):
+        return int(result_dict.get("count", 0))
     return 0
 
 
@@ -600,12 +609,16 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
     delete_checksums: list[str] = []
 
     for item in plan.items:
+        if item.bucket == "BLOCKED":
+            continue
         if options.apply_safe_only and item.bucket != "SAFE":
             continue
         for action in item.actions:
             if action.type == "INGEST_NEW":
                 if options.ingest_missing:
-                    ingestion_queue.append(action.payload.get("path"))
+                    payload_path = action.payload.get("path")
+                    if payload_path:
+                        ingestion_queue.append(payload_path)
             elif action.type == "ADD_ALIAS":
                 change = metadata_changes.setdefault(
                     item.checksum, {"add_aliases": set(), "remove_aliases": set()}
