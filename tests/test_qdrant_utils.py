@@ -53,7 +53,7 @@ def test_index_chunks_success(monkeypatch):
     monkeypatch.setattr(qdu, "client", mock_client)
 
     def fake_embed(texts, batch_size=None):
-        return [[i, i + 1, i + 2] for i, _ in enumerate(texts)]
+        return [list(range(qdu.EMBEDDING_SIZE)) for _ in texts]
 
     monkeypatch.setattr(qdu, "embed_texts", fake_embed)
 
@@ -91,7 +91,9 @@ def test_index_chunks_upsert_failure(monkeypatch):
     monkeypatch.setattr(
         qdu,
         "embed_texts",
-        lambda texts, batch_size=None: [[0, 0, 0] for _ in texts],
+        lambda texts, batch_size=None: [
+            list(range(qdu.EMBEDDING_SIZE)) for _ in texts
+        ],
     )
 
     chunks = [{"id": 1, "text": "a"}]

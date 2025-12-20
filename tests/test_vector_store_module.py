@@ -70,14 +70,22 @@ def setup_fake_qdrant(monkeypatch):
     monkeypatch.setattr(qdrant_utils, "PointStruct", P)
 
     mapping = {
-        "a": [1.0, 0.0],
-        "b": [0.0, 1.0],
-        "c": [-1.0, 0.0],
-        "q": [1.0, 0.0],
+        "a": (1.0, 0.0),
+        "b": (0.0, 1.0),
+        "c": (-1.0, 0.0),
+        "q": (1.0, 0.0),
     }
 
     def fake_embed(texts, batch_size=None):
-        return [mapping.get(t[0].lower(), [0.0, 0.0]) for t in texts]
+        size = qdrant_utils.EMBEDDING_SIZE
+        vectors = []
+        for t in texts:
+            x, y = mapping.get(t[0].lower(), (0.0, 0.0))
+            vec = [0.0] * size
+            vec[0] = x
+            vec[1] = y
+            vectors.append(vec)
+        return vectors
 
     monkeypatch.setattr(qdrant_utils, "embed_texts", fake_embed)
     monkeypatch.setattr(vector_store, "embed_texts", fake_embed)
