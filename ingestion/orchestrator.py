@@ -99,7 +99,28 @@ def ingest_one(
 
     with log:
         checksum, size_bytes, timestamps = io_loader.file_fingerprint(io_path)
+        path_fulltext = storage.get_fulltext_for_path(normalized_path)
         existing_fulltext = storage.get_existing_fulltext(checksum)
+
+        if path_fulltext and path_fulltext.get("checksum") != checksum:
+            stale_checksum = path_fulltext.get("checksum")
+            stale_path = path_fulltext.get("path") or normalized_path
+            logger.info(
+                "♻️ Path previously indexed with different checksum. "
+                "Removing stale artifacts for path=%s (old_checksum=%s, new_checksum=%s)",
+                normalized_path,
+                stale_checksum,
+                checksum,
+            )
+            try:
+                storage.replace_existing_artifacts(stale_path)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "Failed to replace artifacts for stale path=%s: %s",
+                    stale_path,
+                    e,
+                )
+
         existing_path = existing_fulltext.get("path") if existing_fulltext else None
         existing_aliases: list[str] = []
         if existing_fulltext:

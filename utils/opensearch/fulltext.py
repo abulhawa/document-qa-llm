@@ -8,6 +8,7 @@ from utils.opensearch_utils import (
     list_fulltext_paths,
     list_files_missing_fulltext,
     get_fulltext_by_checksum,
+    get_fulltext_by_path_or_alias,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "list_fulltext_paths",
     "list_files_missing_fulltext",
     "get_fulltext_by_checksum",
+    "get_fulltext_by_path_or_alias",
 ]
