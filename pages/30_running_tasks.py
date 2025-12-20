@@ -13,7 +13,8 @@ from ui.celery_admin import (
 )
 from ui.task_status import fetch_states, clear_finished
 
-st.set_page_config(page_title="Running Tasks", layout="wide")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Running Tasks", layout="wide")
 st.title("🧵 Running Tasks")
 
 st.session_state.setdefault("ingest_tasks", [])

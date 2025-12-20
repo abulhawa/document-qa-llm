@@ -21,7 +21,8 @@ def cached_search_documents(**params):
     return search_documents(**p)
 
 
-st.set_page_config(page_title="Search", layout="wide")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Search", layout="wide")
 st.title("🔎 Search")
 
 PAGE_SIZE_OPTIONS = [5, 25, 50, 100]

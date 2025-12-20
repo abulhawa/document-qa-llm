@@ -21,7 +21,8 @@ from ui.task_status import add_records
 from components.task_panel import render_task_panel
 from config import logger
 
-st.set_page_config(page_title="File Index Viewer", layout="wide")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="File Index Viewer", layout="wide")
 st.title("📂 File Index Viewer")
 
 

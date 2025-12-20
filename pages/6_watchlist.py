@@ -27,9 +27,12 @@ from utils.watchlist import (
     update_watchlist_scan_stats,
 )
 
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Watchlist", layout="wide")
+
 ensure_index_exists(index=WATCH_INVENTORY_INDEX)
 
-st.title("Watch Inventory")
+st.title("Watchlist")
 st.caption("Track folders and see how many files still need indexing. Use the actions to import known files and update counts.")
 
 # Load persisted watchlist prefixes

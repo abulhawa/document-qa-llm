@@ -4,7 +4,8 @@ from utils.opensearch_utils import get_duplicate_checksums, get_files_by_checksu
 from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 
-st.set_page_config(page_title="Duplicate Files", page_icon="🗂️")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Duplicate Files", page_icon="🗂️")
 
 st.title("Duplicate Files")
 

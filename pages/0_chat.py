@@ -4,8 +4,8 @@ from config import logger
 from core.llm import get_available_models, load_model, check_llm_status
 from qa_pipeline import RetrievalConfig, answer_question
 
-st.set_page_config(page_title="Ask a Question", layout="wide")
-st.title("💬 Talk to Your Documents")
+st.set_page_config(page_title="Ask Your Documents", layout="wide")
+st.title("Ask Your Documents")
 
 st.markdown(
     """
