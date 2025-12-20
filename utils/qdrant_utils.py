@@ -13,7 +13,7 @@ from config import (
     EMBEDDING_BATCH_SIZE,
     logger,
 )
-from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable
+from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable, cast
 
 from core.embeddings import embed_texts
 
@@ -128,8 +128,15 @@ def delete_vectors_by_checksum(checksum: str) -> int:
     except Exception as e:  # noqa: BLE001
         logger.error("Qdrant delete failed for checksum=%s: %s", checksum, e)
         return 0
-    if isinstance(result, dict):
-        return int(result.get("result", {}).get("points_count", 0))
-    if hasattr(result, "result") and isinstance(result.result, dict):
-        return int(result.result.get("points_count", 0))
+    result_any = cast(Any, result)
+    if isinstance(result_any, dict):
+        return int(result_any.get("result", {}).get("points_count", 0))
+    result_payload = getattr(result_any, "result", None)
+    if isinstance(result_payload, dict):
+        return int(result_payload.get("points_count", 0))
+    model_dump = getattr(result_any, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        if isinstance(dumped, dict):
+            return int(dumped.get("result", {}).get("points_count", 0))
     return 0
