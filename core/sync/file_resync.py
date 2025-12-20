@@ -294,6 +294,16 @@ def _paths_within_roots(paths: Iterable[str], roots: Sequence[str]) -> list[str]
     return result
 
 
+def _select_canonical_path(paths: Sequence[str], path_mtime: dict[str, float]) -> str:
+    if not paths:
+        return ""
+    order = {p: idx for idx, p in enumerate(paths)}
+    return min(
+        paths,
+        key=lambda p: (len(p), -float(path_mtime.get(p, 0.0)), order.get(p, 0)),
+    )
+
+
 def _bucket_counts(items: Iterable[PlanItem]) -> Dict[Bucket, int]:
     counts: Dict[Bucket, int] = {"SAFE": 0, "REVIEW": 0, "BLOCKED": 0, "INFO": 0}
     for item in items:
@@ -324,9 +334,11 @@ def build_reconciliation_plan(
 
     disk_by_checksum: dict[str, list[str]] = {}
     disk_by_path: dict[str, str] = {}
+    path_mtime: dict[str, float] = {}
     for hit in hits:
         disk_by_checksum.setdefault(hit.checksum, []).append(hit.path)
         disk_by_path[hit.path] = hit.checksum
+        path_mtime[hit.path] = hit.mtime
 
     items: list[PlanItem] = []
     blocked_checksums = set(duplicates)
@@ -396,16 +408,13 @@ def build_reconciliation_plan(
         # Canonical path handling (see CANONICAL_PATH_RULES above).
         canonical_missing = doc.canonical_path and doc.canonical_path in missing_in_scanned
         if canonical_missing:
-            if len(disk_paths) == 1:
-                new_canonical = disk_paths[0]
+            if disk_paths:
+                new_canonical = _select_canonical_path(disk_paths, path_mtime)
                 actions.append(
                     Action("SET_CANONICAL", {"path": new_canonical, "previous": doc.canonical_path})
                 )
                 reasons.append("SET_CANONICAL")
                 bucket = "SAFE"
-            else:
-                reasons.append("CANONICAL_AMBIGUOUS")
-                bucket = "REVIEW"
 
         # Orphan detection (no disk paths for this checksum under scanned roots).
         if not disk_paths and missing_in_scanned:

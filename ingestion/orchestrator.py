@@ -173,12 +173,42 @@ def ingest_one(
         logger.info("📝 Indexing full document text")
         full_text = preprocess.build_full_text(docs_list)
         if not full_text:
-            logger.warning("⚠️ No valid content found in: %s", normalized_path)
+            full_doc_id = checksum
+            if existing_fulltext and existing_fulltext.get("id"):
+                full_doc_id = existing_fulltext["id"]
+            full_doc = existing_fulltext or {}
+            full_doc.update(
+                {
+                    "id": full_doc_id,
+                    "path": canonical_path,
+                    "aliases": aliases,
+                    "filename": os.path.basename(canonical_path),
+                    "filetype": ext,
+                    "modified_at": modified,
+                    "created_at": created,
+                    "indexed_at": indexed_at,
+                    "size_bytes": size_bytes,
+                    "checksum": checksum,
+                    "text_full": "",
+                }
+            )
+            try:
+                storage.index_fulltext(full_doc)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("OpenSearch full-text indexing failed: %s", e)
+                log.fail(stage="index_fulltext", error_type=e.__class__.__name__, reason=str(e))
+                raise RuntimeError(
+                    f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
+                ) from e
+            inventory_writer.set_number_of_chunks(canonical_path, 0)
+            inventory_writer.set_last_indexed(canonical_path, indexed_at)
+            logger.warning("No valid content found in: %s", normalized_path)
             log.done(status="No valid content found")
             return {
                 "success": True,
                 "status": "No valid content found",
                 "path": normalized_path,
+                "num_chunks": 0,
             }
 
         full_doc_id = checksum
