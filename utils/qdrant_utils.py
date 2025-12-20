@@ -111,3 +111,25 @@ def delete_vectors_by_ids(ids: list[str]) -> int:
         wait=True,
     )
     return len(ids)
+
+
+def delete_vectors_by_checksum(checksum: str) -> int:
+    """Delete Qdrant points by checksum filter."""
+    if not checksum:
+        return 0
+    try:
+        result = client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=models.Filter(
+                must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
+            ),
+            wait=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.error("Qdrant delete failed for checksum=%s: %s", checksum, e)
+        return 0
+    if isinstance(result, dict):
+        return int(result.get("result", {}).get("points_count", 0))
+    if hasattr(result, "result") and isinstance(result.result, dict):
+        return int(result.result.get("points_count", 0))
+    return 0

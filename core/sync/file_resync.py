@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import os
-from collections import Counter
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Set
 
 from config import (
     CHUNKS_INDEX,
@@ -14,242 +13,520 @@ from config import (
     logger,
 )
 from core.opensearch_client import get_client
+from ingestion.orchestrator import ingest_one
+from opensearchpy import helpers
 from qdrant_client import QdrantClient, models
-from utils.file_utils import compute_checksum, normalize_path
+from utils.file_utils import choose_canonical_path, compute_checksum, normalize_path
+from utils.opensearch_utils import (
+    delete_chunks_by_checksum,
+    delete_fulltext_by_checksum,
+    get_fulltext_by_checksum,
+)
+from utils.qdrant_utils import delete_vectors_by_checksum
 
-CHUNK_READ_BYTES = 1024 * 1024  # 1MB slices for quick fingerprinting
 DEFAULT_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+MIN_INGEST_BYTES = 1024  # guardrail against tiny/temp files
+TEMP_PREFIXES = ("~$",)
+TEMP_SUFFIXES = (".tmp", ".temp", ".swp", ".swx", ".part")
+IGNORE_DIR_NAMES = {".git", ".obsidian", ".cache", "node_modules", "__pycache__"}
+CANONICAL_PATH_RULES = """
+1. Canonical path must exist on disk.
+2. Canonical path must be unique per checksum.
+3. Canonical path is auto-changed only when unambiguous (single disk path).
+4. Otherwise, surface for REVIEW.
+"""
 
 
-def _quick_fingerprint(path: str, size_bytes: int) -> Tuple[int, float, str, str]:
-    """Return a lightweight fingerprint using first/last slices plus metadata."""
+# -----------------------------------------------------------------------------
+# Reconciliation algorithm (pseudocode)
+# -----------------------------------------------------------------------------
+# 1. Scan disk
+#    - walk roots, filter allowed extensions
+#    - collect FileHit(path, size, mtime, checksum)
+# 2. Load index snapshot
+#    - fetch full-text docs to map checksum -> (canonical_path, aliases, id)
+#    - build path -> checksum map (canonical + aliases)
+#    - record duplicate index docs per checksum for BLOCKED items
+# 3. Build plan
+#    - group disk hits by checksum and by path
+#    - for each checksum not in index: INFO/NOT_INDEXED (+ INGEST_NEW action)
+#    - for each indexed checksum:
+#        * compare indexed paths vs disk paths
+#        * propose ADD_ALIAS for new disk locations
+#        * propose REMOVE_ALIAS for aliases missing on disk within scanned roots
+#        * if canonical missing and unambiguous replacement: SET_CANONICAL (SAFE)
+#        * if canonical missing but ambiguous: REVIEW
+#        * if no paths remain on disk inside scanned roots: REVIEW/ORPHANED with
+#          optional DELETE_CONTENT action (executed only when delete_orphaned)
+#    - detect path replacement (same path, different checksum) to mark REVIEW and
+#      optionally flag DELETE_CONTENT when retire_replaced_content is enabled and
+#      the old checksum has no other disk paths.
+#    - count bucket totals (SAFE, REVIEW, BLOCKED, INFO) with explanations.
+# 4. Apply plan (dry-run by default)
+#    - gather actions grouped per checksum
+#    - apply aliases/canonical updates via OpenSearch partial updates
+#    - when canonical moves, also update chunk docs + Qdrant payloads
+#    - optionally ingest missing files (ingest_missing)
+#    - optionally delete orphaned/replaced content (delete_orphaned/retire option)
+#    - return summary counts + errors; idempotent so a second run is a no-op.
+# -----------------------------------------------------------------------------
 
-    first_hash = ""
-    last_hash = ""
-    try:
-        with open(path, "rb") as f:
-            first_part = f.read(CHUNK_READ_BYTES)
-            first_hash = hashlib.sha256(first_part).hexdigest()
-            if size_bytes > CHUNK_READ_BYTES:
-                # Seek near the end for the last slice
-                f.seek(max(size_bytes - CHUNK_READ_BYTES, 0))
-                last_part = f.read(CHUNK_READ_BYTES)
-                last_hash = hashlib.sha256(last_part).hexdigest()
-    except Exception as e:
-        logger.debug("Fingerprint failed for %s: %s", path, e)
-    mtime = 0.0
-    try:
-        mtime = os.path.getmtime(path)
-    except Exception:
-        pass
-    return (size_bytes, mtime, first_hash, last_hash)
+
+Bucket = Literal["SAFE", "REVIEW", "BLOCKED", "INFO"]
+ActionType = Literal[
+    "INGEST_NEW",
+    "ADD_ALIAS",
+    "REMOVE_ALIAS",
+    "SET_CANONICAL",
+    "DELETE_CONTENT",
+]
 
 
-def _stat_metadata(path: str) -> Dict[str, Any]:
-    try:
-        st = os.stat(path)
-        modified_dt = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).astimezone()
-        size_bytes = st.st_size
-    except Exception:
-        modified_dt = None
-        size_bytes = 0
-    return {"modified_at": modified_dt, "size_bytes": size_bytes}
+@dataclass
+class FileHit:
+    path: str
+    size: int
+    mtime: float
+    checksum: str
+    ext: str
 
 
-def fetch_index_state() -> Dict[str, Dict[str, Any]]:
-    """Fetch the current indexed state from OpenSearch keyed by checksum."""
+@dataclass
+class IndexedDoc:
+    content_id: str
+    checksum: str
+    canonical_path: Optional[str]
+    aliases: list[str]
 
-    client = get_client()
-    try:
-        resp = client.search(
-            index=CHUNKS_INDEX,
-            body={
-                "size": 0,
-                "aggs": {
-                    "by_checksum": {
-                        "terms": {"field": "checksum.keyword", "size": 10000},
-                        "aggs": {
-                            "top_hit": {
-                                "top_hits": {
-                                    "size": 1,
-                                    "_source": [
-                                        "path",
-                                        "filename",
-                                        "filetype",
-                                        "bytes",
-                                        "size",
-                                        "modified_at",
-                                        "indexed_at",
-                                    ],
-                                }
-                            }
-                        },
-                    }
-                },
-            },
-        )
-    except Exception as e:
-        logger.error("Failed to fetch index state: %s", e)
-        return {}
+    @property
+    def paths(self) -> list[str]:
+        vals = [self.canonical_path] if self.canonical_path else []
+        vals.extend(self.aliases)
+        return [normalize_path(p) for p in vals if p]
 
-    buckets = (
-        resp.get("aggregations", {}).get("by_checksum", {}).get("buckets", [])
-    )
-    index_state: Dict[str, Dict[str, Any]] = {}
-    for bucket in buckets:
-        checksum = bucket.get("key")
-        hits = bucket.get("top_hit", {}).get("hits", {}).get("hits", [])
-        if not checksum or not hits:
-            continue
-        source = hits[0].get("_source", {})
-        path = source.get("path")
-        filename = source.get("filename") or os.path.basename(path or "")
-        index_state[checksum] = {
-            "checksum": checksum,
-            "path": path,
-            "filename": filename,
-            "filetype": source.get("filetype"),
-            "size_bytes": source.get("bytes") or source.get("size"),
-            "modified_at": source.get("modified_at"),
-            "indexed_at": source.get("indexed_at"),
+
+@dataclass
+class Action:
+    type: ActionType
+    payload: Dict[str, Any]
+
+
+@dataclass
+class PlanItem:
+    bucket: Bucket
+    reason: str
+    checksum: str
+    content_id: Optional[str]
+    disk_paths: list[str]
+    indexed_paths: list[str]
+    actions: list[Action] = field(default_factory=list)
+    explanation: str = ""
+    new_checksum: Optional[str] = None
+
+    def as_row(self) -> dict:
+        """Flatten for Streamlit table rendering."""
+        return {
+            "bucket": self.bucket,
+            "reason": self.reason,
+            "checksum": self.checksum,
+            "content_id": self.content_id,
+            "indexed_paths": "; ".join(self.indexed_paths),
+            "disk_paths": "; ".join(self.disk_paths),
+            "actions": ", ".join(sorted({a.type for a in self.actions})),
+            "explanation": self.explanation,
+            "new_checksum": self.new_checksum,
         }
-    return index_state
 
 
-def scan_disk(roots: List[str], allowed_ext: set[str]) -> Dict[str, Any]:
-    """Scan local disk roots and return state keyed by checksum."""
+@dataclass
+class ReconciliationPlan:
+    items: list[PlanItem]
+    counts: Dict[Bucket, int]
+    scanned_roots: list[str]
+    scanned_roots_failed: list[str]
+    generated_at: datetime
 
-    allowed_ext = {e.lower().strip() for e in (allowed_ext or set()) if e}
-    files_by_checksum: Dict[str, Dict[str, Any]] = {}
-    conflicts: Dict[str, List[Dict[str, Any]]] = {}
-    fingerprint_cache: Dict[Tuple[int, float, str, str], str] = {}
+    def as_rows(self) -> list[dict]:
+        return [item.as_row() for item in self.items]
 
-    for root in roots:
+
+@dataclass
+class ApplyOptions:
+    ingest_missing: bool = False
+    apply_safe_only: bool = True
+    delete_orphaned: bool = False
+    retire_replaced_content: bool = False
+
+
+@dataclass
+class ApplyResult:
+    ingested: int = 0
+    updated_fulltext: int = 0
+    updated_chunks: int = 0
+    updated_qdrant: int = 0
+    deleted_checksums: int = 0
+    errors: list[str] = field(default_factory=list)
+    counts_by_bucket: Dict[Bucket, int] = field(default_factory=dict)
+
+
+@dataclass
+class ScanResult:
+    hits: list[FileHit]
+    scanned_roots_successful: list[str]
+    scanned_roots_failed: list[str]
+    ignored_files: int = 0
+
+
+def _should_ignore_file(name: str, dirpath: str) -> bool:
+    if name.startswith(TEMP_PREFIXES):
+        return True
+    lowered = name.lower()
+    if lowered.endswith(TEMP_SUFFIXES):
+        return True
+    parts = normalize_path(dirpath).split("/")
+    return any(part in IGNORE_DIR_NAMES for part in parts if part)
+
+
+def scan_files(roots: Sequence[str], allowed_exts: Iterable[str]) -> ScanResult:
+    """Scan filesystem roots and return discovered FileHit entries."""
+
+    normalized_roots = [normalize_path(r) for r in roots if r]
+    allowed = {e.lower().strip() for e in allowed_exts if e}
+    if not allowed:
+        allowed = set(DEFAULT_ALLOWED_EXTENSIONS)
+
+    hits: list[FileHit] = []
+    ignored_files = 0
+    scanned_success: list[str] = []
+    scanned_failed: list[str] = []
+
+    for root in normalized_roots:
         if not root:
             continue
-        for dirpath, _, filenames in os.walk(root):
+        if not os.path.isdir(root):
+            scanned_failed.append(root)
+            logger.warning("Root not accessible: %s", root)
+            continue
+        scanned_success.append(root)
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+            dirnames[:] = [d for d in dirnames if d not in IGNORE_DIR_NAMES]
             for name in filenames:
                 ext = os.path.splitext(name)[1].lower()
-                if allowed_ext and ext not in allowed_ext:
+                if allowed and ext not in allowed:
                     continue
-                path = normalize_path(os.path.join(dirpath, name))
-                metadata = _stat_metadata(path)
-                size_bytes = metadata.get("size_bytes") or 0
-                fp = _quick_fingerprint(path, size_bytes)
-                checksum = fingerprint_cache.get(fp)
-                if not checksum:
-                    try:
-                        checksum = compute_checksum(path)
-                        fingerprint_cache[fp] = checksum
-                    except Exception as e:
-                        logger.warning("Skipping file due to checksum error %s: %s", path, e)
-                        continue
-                entry = {
-                    "checksum": checksum,
-                    "path": path,
-                    "filename": os.path.basename(path),
-                    "size_bytes": size_bytes,
-                    "modified_at": metadata.get("modified_at"),
-                    "filetype": ext.lstrip("."),
-                }
-                if checksum in files_by_checksum:
-                    conflicts.setdefault(checksum, [files_by_checksum[checksum]]).append(
-                        entry
+                if _should_ignore_file(name, dirpath):
+                    ignored_files += 1
+                    continue
+                abs_path = normalize_path(os.path.join(dirpath, name))
+                try:
+                    st = os.stat(abs_path)
+                except OSError as e:  # noqa: BLE001
+                    logger.warning("Stat failed for %s: %s", abs_path, e)
+                    continue
+                if st.st_size < MIN_INGEST_BYTES:
+                    ignored_files += 1
+                    continue
+                try:
+                    checksum = compute_checksum(abs_path)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("Checksum failed for %s: %s", abs_path, e)
+                    continue
+                hits.append(
+                    FileHit(
+                        path=abs_path,
+                        size=st.st_size,
+                        mtime=st.st_mtime,
+                        checksum=checksum,
+                        ext=ext.lstrip("."),
                     )
-                else:
-                    files_by_checksum[checksum] = entry
-    return {"files": files_by_checksum, "conflicts": conflicts}
+                )
+    return ScanResult(
+        hits=hits,
+        scanned_roots_successful=scanned_success,
+        scanned_roots_failed=scanned_failed,
+        ignored_files=ignored_files,
+    )
 
 
-def reconcile(index_state: Dict[str, Dict[str, Any]], disk_state: Dict[str, Any]) -> List[Dict[str, Any]]:
-    disk_files = disk_state.get("files", disk_state)
-    conflicts = disk_state.get("conflicts", {})
+def _load_index_snapshot() -> tuple[dict[str, IndexedDoc], dict[str, list[str]], dict[str, str]]:
+    """Return (docs_by_checksum, duplicate_ids_by_checksum, path_to_checksum)."""
 
-    rows: List[Dict[str, Any]] = []
-    checksums = set(index_state.keys()) | set(disk_files.keys())
+    client = get_client()
+    docs: dict[str, IndexedDoc] = {}
+    duplicates: dict[str, list[str]] = {}
+    path_to_checksum: dict[str, str] = {}
 
-    for checksum in sorted(checksums):
-        idx_entry = index_state.get(checksum)
-        disk_entry = disk_files.get(checksum)
-        if checksum in conflicts:
-            rows.append(
-                {
-                    "status": "conflict",
-                    "checksum": checksum,
-                    "old_path": idx_entry.get("path") if idx_entry else None,
-                    "new_path": ", ".join([c.get("path", "") for c in conflicts[checksum]]),
-                    "confidence": 1.0,
-                    "actions": {"update_opensearch": False, "update_qdrant": False},
-                }
+    # Pull all full-text docs because they store canonical + aliases.
+    for hit in helpers.scan(
+        client,
+        index=FULLTEXT_INDEX,
+        query={"query": {"match_all": {}}, "_source": ["path", "aliases", "checksum"]},
+    ):
+        source = hit.get("_source") or {}
+        checksum = source.get("checksum") or hit.get("_id")
+        if not checksum:
+            continue
+        canonical = normalize_path(source.get("path") or "") or None
+        aliases = [normalize_path(p) for p in (source.get("aliases") or []) if p]
+        doc = IndexedDoc(
+            content_id=hit.get("_id"),
+            checksum=checksum,
+            canonical_path=canonical,
+            aliases=aliases,
+        )
+        if checksum in docs:
+            duplicates.setdefault(checksum, [docs[checksum].content_id]).append(doc.content_id)
+        else:
+            docs[checksum] = doc
+        for p in doc.paths:
+            path_to_checksum[p] = checksum
+
+    return docs, duplicates, path_to_checksum
+
+
+def _paths_within_roots(paths: Iterable[str], roots: Sequence[str]) -> list[str]:
+    normalized_roots = [normalize_path(r) for r in roots if r]
+    result = []
+    for p in paths:
+        np = normalize_path(p)
+        if any(np.startswith(r.rstrip("/") + "/") or np == r for r in normalized_roots):
+            result.append(np)
+    return result
+
+
+def _bucket_counts(items: Iterable[PlanItem]) -> Dict[Bucket, int]:
+    counts: Dict[Bucket, int] = {"SAFE": 0, "REVIEW": 0, "BLOCKED": 0, "INFO": 0}
+    for item in items:
+        counts[item.bucket] = counts.get(item.bucket, 0) + 1
+    return counts
+
+
+def build_reconciliation_plan(
+    scan_result: ScanResult | Sequence[FileHit],
+    roots: Sequence[str] | None = None,
+    *,
+    retire_replaced_content: bool = False,
+) -> ReconciliationPlan:
+    """Produce a deterministic reconciliation plan."""
+
+    docs, duplicates, _ = _load_index_snapshot()
+    hits: Sequence[FileHit]
+    scanned_roots: list[str]
+    scanned_failed: list[str]
+    if isinstance(scan_result, ScanResult):
+        hits = scan_result.hits
+        scanned_roots = [normalize_path(r) for r in scan_result.scanned_roots_successful]
+        scanned_failed = [normalize_path(r) for r in scan_result.scanned_roots_failed]
+    else:
+        hits = scan_result
+        scanned_roots = [normalize_path(r) for r in (roots or []) if r]
+        scanned_failed = []
+
+    disk_by_checksum: dict[str, list[str]] = {}
+    disk_by_path: dict[str, str] = {}
+    for hit in hits:
+        disk_by_checksum.setdefault(hit.checksum, []).append(hit.path)
+        disk_by_path[hit.path] = hit.checksum
+
+    items: list[PlanItem] = []
+
+    # Duplicate index documents for the same checksum are BLOCKED.
+    for checksum, ids in duplicates.items():
+        canonical = docs.get(checksum, IndexedDoc("", checksum, None, [])).paths
+        items.append(
+            PlanItem(
+                bucket="BLOCKED",
+                reason="DUPLICATE_INDEX_DOCS",
+                checksum=checksum,
+                content_id=None,
+                disk_paths=disk_by_checksum.get(checksum, []),
+                indexed_paths=canonical,
+                explanation=f"Multiple full-text docs share checksum={checksum}: {ids}",
             )
+        )
+
+    # Files present on disk but not indexed.
+    for checksum, paths in disk_by_checksum.items():
+        if checksum in docs:
+            continue
+        actions: list[Action] = []
+        for p in sorted(paths):
+            # Only propose ingestion when guardrails are met (size already checked in scan).
+            actions.append(Action("INGEST_NEW", {"path": p}))
+        items.append(
+            PlanItem(
+                bucket="INFO",
+                reason="NOT_INDEXED",
+                checksum=checksum,
+                content_id=None,
+                disk_paths=sorted(paths),
+                indexed_paths=[],
+                actions=actions,
+                explanation="Checksum not found in indexes.",
+            )
+        )
+
+    for checksum, doc in docs.items():
+        disk_paths = sorted(disk_by_checksum.get(checksum, []))
+        indexed_paths = doc.paths
+        actions: list[Action] = []
+        reasons: list[str] = []
+        bucket: Bucket = "SAFE"
+
+        missing_paths = [p for p in indexed_paths if p not in disk_paths]
+        missing_in_scanned = _paths_within_roots(missing_paths, scanned_roots)
+        extra_disk_paths = [p for p in disk_paths if p not in indexed_paths]
+
+        # New aliases to add.
+        if extra_disk_paths:
+            reasons.append("ADD_ALIAS")
+            for path in extra_disk_paths:
+                actions.append(Action("ADD_ALIAS", {"path": path}))
+
+        # Aliases missing on disk (only remove when root was scanned).
+        if missing_in_scanned:
+            for path in missing_in_scanned:
+                if path in doc.aliases:
+                    actions.append(Action("REMOVE_ALIAS", {"path": path}))
+                    reasons.append("REMOVE_ALIAS")
+
+        # Canonical path handling (see CANONICAL_PATH_RULES above).
+        canonical_missing = doc.canonical_path and doc.canonical_path in missing_in_scanned
+        if canonical_missing:
+            if len(disk_paths) == 1:
+                new_canonical = disk_paths[0]
+                actions.append(
+                    Action("SET_CANONICAL", {"path": new_canonical, "previous": doc.canonical_path})
+                )
+                reasons.append("SET_CANONICAL")
+                bucket = "SAFE"
+            else:
+                reasons.append("CANONICAL_AMBIGUOUS")
+                bucket = "REVIEW"
+
+        # Orphan detection (no disk paths for this checksum under scanned roots).
+        if not disk_paths and missing_in_scanned:
+            bucket = "REVIEW"
+            reasons.append("ORPHANED_INDEX_CONTENT")
+            actions.append(Action("DELETE_CONTENT", {"checksum": checksum, "conditional": True}))
+
+        # Path replaced with different checksum at canonical path.
+        if doc.canonical_path:
+            disk_checksum_at_path = disk_by_path.get(doc.canonical_path)
+            if disk_checksum_at_path and disk_checksum_at_path != checksum:
+                reasons.append("PATH_REPLACED")
+                bucket = "REVIEW"
+                # Only retire when the old checksum had exactly one known path (canonical) and it was replaced.
+                if (
+                    retire_replaced_content
+                    and not disk_paths
+                    and len(indexed_paths) == 1
+                ):
+                    actions.append(
+                        Action(
+                            "DELETE_CONTENT",
+                            {
+                                "checksum": checksum,
+                                "conditional": True,
+                                "reason": "retire_replaced_content",
+                            },
+                        )
+                    )
+                items.append(
+                    PlanItem(
+                        bucket=bucket,
+                        reason="PATH_REPLACED",
+                        checksum=checksum,
+                        content_id=doc.content_id,
+                        disk_paths=disk_paths,
+                        indexed_paths=indexed_paths,
+                        actions=list(actions),
+                        explanation=(
+                            f"Path {doc.canonical_path} now points to checksum "
+                            f"{disk_checksum_at_path}; indexed checksum is {checksum}."
+                        ),
+                        new_checksum=disk_checksum_at_path,
+                    )
+                )
+                continue
+
+        # No changes detected: skip noisy rows.
+        if not actions and not reasons:
             continue
 
-        if idx_entry and disk_entry:
-            old_path = normalize_path(idx_entry.get("path")) if idx_entry.get("path") else None
-            new_path = normalize_path(disk_entry.get("path")) if disk_entry.get("path") else None
-            if old_path != new_path:
-                status = "moved"
-                actions = {"update_opensearch": True, "update_qdrant": True}
-            else:
-                status = "unchanged"
-                actions = {"update_opensearch": False, "update_qdrant": False}
-            rows.append(
-                {
-                    "status": status,
-                    "checksum": checksum,
-                    "old_path": idx_entry.get("path"),
-                    "new_path": disk_entry.get("path"),
-                    "confidence": 1.0,
-                    "actions": actions,
-                }
-            )
-        elif idx_entry and not disk_entry:
-            rows.append(
-                {
-                    "status": "missing_on_disk",
-                    "checksum": checksum,
-                    "old_path": idx_entry.get("path"),
-                    "new_path": None,
-                    "confidence": 1.0,
-                    "actions": {"update_opensearch": False, "update_qdrant": False},
-                }
-            )
-        elif disk_entry and not idx_entry:
-            rows.append(
-                {
-                    "status": "new_untracked",
-                    "checksum": checksum,
-                    "old_path": None,
-                    "new_path": disk_entry.get("path"),
-                    "confidence": 1.0,
-                    "actions": {"update_opensearch": False, "update_qdrant": False},
-                }
-            )
-    return rows
+        if bucket == "SAFE" and ("CANONICAL_AMBIGUOUS" in reasons or "ORPHANED_INDEX_CONTENT" in reasons):
+            bucket = "REVIEW"
 
-
-def _update_opensearch_paths(checksum: str, new_path: str) -> int:
-    client = get_client()
-    filename = os.path.basename(new_path)
-    now = datetime.now(timezone.utc).isoformat()
-    script = {
-        "source": "ctx._source.path=params.path; ctx._source.filename=params.filename; ctx._source.path_updated_at=params.path_updated_at;",
-        "lang": "painless",
-        "params": {"path": new_path, "filename": filename, "path_updated_at": now},
-    }
-    total_updated = 0
-    for index in (FULLTEXT_INDEX, CHUNKS_INDEX):
-        resp = client.update_by_query(
-            index=index,
-            body={"script": script, "query": {"term": {"checksum": checksum}}},
-            refresh=True,
-            conflicts="proceed",
+        items.append(
+            PlanItem(
+                bucket=bucket,
+                reason=";".join(sorted(set(reasons))) or "MIXED",
+                checksum=checksum,
+                content_id=doc.content_id,
+                disk_paths=disk_paths,
+                indexed_paths=indexed_paths,
+                actions=actions,
+                explanation="; ".join(sorted(set(reasons))) or "Metadata update required.",
+            )
         )
-        total_updated += resp.get("updated", 0)
-    return total_updated
+
+    return ReconciliationPlan(
+        items=items,
+        counts=_bucket_counts(items),
+        scanned_roots=scanned_roots,
+        scanned_roots_failed=scanned_failed,
+        generated_at=datetime.now(timezone.utc),
+    )
+
+
+def _update_fulltext_paths(content_id: str, canonical_path: Optional[str], aliases: list[str]) -> int:
+    """Update canonical/alias paths for a single full-text document."""
+
+    client = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    script_lines = [
+        "if (params.aliases != null) { ctx._source.aliases = params.aliases; }",
+        "else if (ctx._source.containsKey('aliases')) { ctx._source.remove('aliases'); }",
+    ]
+    params: Dict[str, Any] = {"aliases": aliases}
+    if canonical_path is not None:
+        script_lines.append(
+            "ctx._source.path=params.path; ctx._source.filename=params.filename; "
+            "ctx._source.path_updated_at=params.path_updated_at;"
+        )
+        params.update(
+            {
+                "path": canonical_path,
+                "filename": os.path.basename(canonical_path),
+                "path_updated_at": now,
+            }
+        )
+    script = {"source": " ".join(script_lines), "lang": "painless", "params": params}
+    resp = client.update(index=FULLTEXT_INDEX, id=content_id, body={"script": script}, refresh=True)
+    return int(resp.get("_shards", {}).get("successful", 0))
+
+
+def _update_chunk_paths(checksum: str, canonical_path: str) -> int:
+    """Update chunk docs to the new canonical path."""
+
+    client = get_client()
+    script = {
+        "source": "ctx._source.path=params.path; ctx._source.filename=params.filename;",
+        "lang": "painless",
+        "params": {"path": canonical_path, "filename": os.path.basename(canonical_path)},
+    }
+    resp = client.update_by_query(
+        index=CHUNKS_INDEX,
+        body={"script": script, "query": {"term": {"checksum": checksum}}},
+        refresh=True,
+        conflicts="proceed",
+    )
+    return int(resp.get("updated", 0))
 
 
 def _update_qdrant_payload(checksum: str, new_path: str) -> int:
+    """Update Qdrant payload path for a checksum."""
+
     client = QdrantClient(url=QDRANT_URL)
     filename = os.path.basename(new_path)
     result = client.set_payload(
@@ -267,44 +544,127 @@ def _update_qdrant_payload(checksum: str, new_path: str) -> int:
     return 0
 
 
-def apply_updates(rows: List[Dict[str, Any]], dry_run: bool = True) -> Dict[str, Any]:
-    summary: Dict[str, Any] = {
-        "counts_by_status": Counter(),
-        "updated_opensearch": 0,
-        "updated_qdrant": 0,
-        "errors": [],
-    }
-    for row in rows:
-        summary["counts_by_status"].update([row.get("status", "")])
+def _apply_alias_canonical_updates(
+    changes: dict[str, dict[str, Any]],
+    result: ApplyResult,
+) -> None:
+    """Apply alias + canonical updates for each checksum."""
 
-    if dry_run:
-        summary["counts_by_status"] = dict(summary["counts_by_status"])
-        return summary
+    for checksum, change in changes.items():
+        doc = get_fulltext_by_checksum(checksum)
+        if not doc or not doc.get("id"):
+            result.errors.append(f"Missing full-text doc for checksum={checksum}")
+            continue
 
-    for row in rows:
-        if row.get("status") != "moved":
+        aliases: Set[str] = set(doc.get("aliases") or [])
+        aliases.update(change.get("add_aliases", set()))
+        aliases.difference_update(change.get("remove_aliases", set()))
+
+        canonical_path: Optional[str] = doc.get("path")
+        new_canonical = change.get("canonical_path")
+        if new_canonical is not None:
+            canonical_path = new_canonical
+        if canonical_path and canonical_path in aliases:
+            aliases.discard(canonical_path)
+
+        try:
+            updated = _update_fulltext_paths(doc["id"], canonical_path, sorted(aliases))
+            result.updated_fulltext += updated
+        except Exception as e:  # noqa: BLE001
+            logger.error("Failed to update full-text paths for %s: %s", checksum, e)
+            result.errors.append(str(e))
             continue
-        if row.get("confidence", 1.0) < 1.0:
+
+        if canonical_path and canonical_path != doc.get("path"):
+            try:
+                result.updated_chunks += _update_chunk_paths(checksum, canonical_path)
+            except Exception as e:  # noqa: BLE001
+                logger.error("Failed to update chunk paths for %s: %s", checksum, e)
+                result.errors.append(str(e))
+            try:
+                result.updated_qdrant += _update_qdrant_payload(checksum, canonical_path)
+            except Exception as e:  # noqa: BLE001
+                logger.error("Failed to update Qdrant payload for %s: %s", checksum, e)
+                result.errors.append(str(e))
+
+
+def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
+    """Execute a reconciliation plan respecting safety options."""
+
+    result = ApplyResult(counts_by_bucket=plan.counts)
+    if not plan.items:
+        return result
+
+    metadata_changes: dict[str, dict[str, Any]] = {}
+    ingestion_queue: list[str] = []
+    delete_checksums: list[str] = []
+
+    for item in plan.items:
+        if options.apply_safe_only and item.bucket != "SAFE":
             continue
-        actions = row.get("actions", {})
-        if not actions.get("update_opensearch") and not actions.get("update_qdrant"):
-            continue
-        checksum = row.get("checksum")
-        new_path = row.get("new_path")
-        if not checksum or not new_path:
+        for action in item.actions:
+            if action.type == "INGEST_NEW":
+                if options.ingest_missing:
+                    ingestion_queue.append(action.payload.get("path"))
+            elif action.type == "ADD_ALIAS":
+                change = metadata_changes.setdefault(
+                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                )
+                change["add_aliases"].add(action.payload.get("path"))
+            elif action.type == "REMOVE_ALIAS":
+                change = metadata_changes.setdefault(
+                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                )
+                change["remove_aliases"].add(action.payload.get("path"))
+            elif action.type == "SET_CANONICAL":
+                change = metadata_changes.setdefault(
+                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                )
+                change["canonical_path"] = action.payload.get("path")
+            elif action.type == "DELETE_CONTENT":
+                if options.delete_orphaned or action.payload.get("reason") == "retire_replaced_content":
+                    delete_checksums.append(action.payload.get("checksum", item.checksum))
+
+    # Apply metadata updates first to avoid ingest collisions.
+    if metadata_changes:
+        _apply_alias_canonical_updates(metadata_changes, result)
+
+    for checksum in delete_checksums:
+        try:
+            delete_vectors_by_checksum(checksum)
+            delete_chunks_by_checksum(checksum)
+            delete_fulltext_by_checksum(checksum)
+            result.deleted_checksums += 1
+        except Exception as e:  # noqa: BLE001
+            logger.error("Delete failed for checksum=%s: %s", checksum, e)
+            result.errors.append(str(e))
+
+    for path in dict.fromkeys(ingestion_queue):
+        if not path:
             continue
         try:
-            if actions.get("update_opensearch"):
-                summary["updated_opensearch"] += _update_opensearch_paths(checksum, new_path)
-        except Exception as e:
-            logger.error("OpenSearch update failed for %s: %s", checksum, e)
-            summary["errors"].append(str(e))
-        try:
-            if actions.get("update_qdrant"):
-                summary["updated_qdrant"] += _update_qdrant_payload(checksum, new_path)
-        except Exception as e:
-            logger.error("Qdrant update failed for %s: %s", checksum, e)
-            summary["errors"].append(str(e))
+            ingest_one(path, force=True, replace=True, op="resync", source="resync")
+            result.ingested += 1
+        except Exception as e:  # noqa: BLE001
+            logger.error("Ingest failed for %s: %s", path, e)
+            result.errors.append(str(e))
 
-    summary["counts_by_status"] = dict(summary["counts_by_status"])
-    return summary
+    return result
+
+
+__all__ = [
+    "DEFAULT_ALLOWED_EXTENSIONS",
+    "CANONICAL_PATH_RULES",
+    "ScanResult",
+    "FileHit",
+    "IndexedDoc",
+    "PlanItem",
+    "Action",
+    "ReconciliationPlan",
+    "ApplyOptions",
+    "ApplyResult",
+    "scan_files",
+    "compute_checksum",
+    "build_reconciliation_plan",
+    "apply_plan",
+]

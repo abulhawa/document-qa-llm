@@ -390,6 +390,21 @@ def delete_chunks_by_path(path: str) -> int:
     return int(resp.get("deleted", 0))
 
 
+def delete_chunks_by_checksum(checksum: str) -> int:
+    """Delete chunk documents by checksum across all paths."""
+    client = get_client()
+    resp = client.delete_by_query(
+        index=CHUNKS_INDEX,
+        body={"query": {"term": {"checksum": {"value": checksum}}}},
+        params={
+            "refresh": "true",
+            "conflicts": "proceed",
+            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+        },
+    )
+    return int(resp.get("deleted", 0))
+
+
 def delete_fulltext_by_path(path: str) -> int:
     """Delete full-text doc(s) for a file from the full_text index."""
     client = get_client()
@@ -403,6 +418,31 @@ def delete_fulltext_by_path(path: str) -> int:
         },
     )
     return int(resp.get("deleted", 0))
+
+
+def delete_fulltext_by_checksum(checksum: str) -> int:
+    """Delete full-text doc(s) by checksum (id or field match)."""
+    client = get_client()
+    # Try direct delete first; fall back to delete_by_query for legacy docs.
+    deleted = 0
+    try:
+        client.delete(index=FULLTEXT_INDEX, id=checksum, params={"refresh": "true"})
+        deleted += 1
+    except exceptions.NotFoundError:
+        pass
+    except Exception:
+        logger.warning("Full-text direct delete failed for checksum=%s", checksum, exc_info=True)
+    resp = client.delete_by_query(
+        index=FULLTEXT_INDEX,
+        body={"query": {"term": {"checksum": {"value": checksum}}}},
+        params={
+            "refresh": "true",
+            "conflicts": "proceed",
+            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+        },
+    )
+    deleted += int(resp.get("deleted", 0))
+    return deleted
 
 
 def list_fulltext_paths(size: int = 1000) -> List[str]:

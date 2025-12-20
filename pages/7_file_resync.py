@@ -1,5 +1,4 @@
 import os
-from collections import Counter
 from typing import List
 
 import pandas as pd
@@ -7,10 +6,10 @@ import streamlit as st
 
 from core.sync.file_resync import (
     DEFAULT_ALLOWED_EXTENSIONS,
-    apply_updates,
-    fetch_index_state,
-    reconcile,
-    scan_disk,
+    ApplyOptions,
+    apply_plan,
+    build_reconciliation_plan,
+    scan_files,
 )
 
 st.set_page_config(page_title="File Path Re-Sync", layout="wide")
@@ -29,11 +28,14 @@ def _parse_exts(raw: str) -> set[str]:
     return exts or set(DEFAULT_ALLOWED_EXTENSIONS)
 
 
-def _render_summary(rows: List[dict]) -> None:
-    counts = Counter([r.get("status", "") for r in rows])
-    cols = st.columns(len(counts) or 1)
-    for col, (status, cnt) in zip(cols, counts.items()):
-        col.metric(status.replace("_", " ").title(), cnt)
+def _render_summary(counts: dict) -> None:
+    counts = {k: v for k, v in counts.items() if v}
+    if not counts:
+        st.info("No plan items yet. Run a scan to populate this view.")
+        return
+    cols = st.columns(len(counts))
+    for col, (bucket, cnt) in zip(cols, counts.items()):
+        col.metric(bucket.title(), cnt)
 
 
 def _render_table(rows: List[dict]) -> pd.DataFrame:
@@ -42,19 +44,13 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
         st.info("No results to show yet. Run a scan to populate this table.")
         return df
 
-    status_options = [
-        "moved",
-        "unchanged",
-        "missing_on_disk",
-        "new_untracked",
-        "conflict",
-    ]
-    default_selection = [s for s in status_options if s in df["status"].unique()]
+    bucket_options = ["SAFE", "REVIEW", "BLOCKED", "INFO"]
+    default_selection = [s for s in bucket_options if s in df["bucket"].unique()]
     selected = st.multiselect(
-        "Filter by status", options=status_options, default=default_selection
+        "Filter by bucket", options=bucket_options, default=default_selection
     )
     if selected:
-        df = df[df["status"].isin(selected)]
+        df = df[df["bucket"].isin(selected)]
 
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv_data = df.to_csv(index=False).encode("utf-8")
@@ -62,12 +58,23 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
     return df
 
 
-with st.expander("Instructions", expanded=False):
+with st.expander("Workflow & Safety", expanded=False):
     st.markdown(
         """
-        * Scan configured roots for files and match them against indexed checksums.
-        * Conflicts (same checksum on multiple paths) are never updated automatically.
-        * Dry-run is enabled by default; uncheck it only after reviewing the table.
+        **Phase A: Scan & Plan** (dry run only)
+        - Builds a plan without changing data.
+
+        **Phase B: Apply SAFE actions**
+        - Canonical/alias updates that are unambiguous.
+        - Optional ingestion of clearly missing files.
+        - No deletions.
+
+        **Phase C: Apply destructive actions**
+        - REVIEW + SAFE buckets.
+        - Optional orphan cleanup and retire-on-replace.
+        - Use with care; vectors/chunks/full-text may be deleted.
+
+        *Orphaned content* = indexed content whose canonical path **and** all aliases are missing on disk within scanned roots.
         """
     )
 
@@ -80,18 +87,33 @@ ext_input = st.text_input(
     "Allowed extensions (comma-separated)",
     value=", ".join(sorted(DEFAULT_ALLOWED_EXTENSIONS)),
 )
-dry_run = st.checkbox("Dry-run", value=True)
-confirm_apply = st.checkbox(
-    "I have reviewed the report and want to apply metadata updates.", value=False
-)
+
+st.subheader("Apply Options")
+opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
+with opt_col1:
+    ingest_missing_safe = st.checkbox("Ingest missing (SAFE phase)", value=False)
+with opt_col2:
+    ingest_missing_destructive = st.checkbox("Ingest missing (Destructive phase)", value=False)
+with opt_col3:
+    delete_orphaned = st.checkbox("Delete orphaned content (Destructive)", value=False)
+with opt_col4:
+    retire_replaced = st.checkbox("Retire replaced content (Destructive)", value=False)
 
 col1, col2 = st.columns([1, 1])
 with col1:
-    scan_clicked = st.button("Scan Files", use_container_width=True)
+    scan_clicked = st.button("Scan & Plan", use_container_width=True)
 with col2:
-    apply_clicked = st.button(
-        "Apply Updates", use_container_width=True, disabled="file_resync_rows" not in st.session_state
+    apply_safe_clicked = st.button(
+        "Apply SAFE actions",
+        use_container_width=True,
+        disabled="file_resync_plan" not in st.session_state,
     )
+
+apply_destructive_clicked = st.button(
+    "Apply destructive actions",
+    use_container_width=True,
+    disabled="file_resync_plan" not in st.session_state,
+)
 
 if scan_clicked:
     roots = _parse_roots(roots_input)
@@ -99,25 +121,75 @@ if scan_clicked:
     if not roots:
         st.error("Please provide at least one root to scan.")
     else:
-        with st.spinner("Scanning disk and indexes…"):
-            index_state = fetch_index_state()
-            disk_state = scan_disk(roots, exts)
-            rows = reconcile(index_state, disk_state)
-        st.session_state["file_resync_rows"] = rows
-        st.success(f"Scan complete. {len(rows)} row(s) ready.")
+        with st.spinner("Scanning disk and building plan…"):
+            scan_result = scan_files(roots, exts)
+            plan = build_reconciliation_plan(scan_result, roots, retire_replaced_content=retire_replaced)
+        st.session_state["file_resync_plan"] = plan
+        st.session_state["file_resync_scan_meta"] = {
+            "ignored": scan_result.ignored_files,
+            "scanned_roots": scan_result.scanned_roots_successful,
+            "failed_roots": scan_result.scanned_roots_failed,
+        }
+        st.success(
+            f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
+        )
 
-rows = st.session_state.get("file_resync_rows", [])
-if rows:
+plan = st.session_state.get("file_resync_plan")
+scan_meta = st.session_state.get("file_resync_scan_meta", {})
+if plan:
     st.subheader("Reconciliation Report")
-    _render_summary(rows)
+    if scan_meta:
+        st.info(
+            f"Roots scanned: {', '.join(scan_meta.get('scanned_roots', [])) or 'None'}; "
+            f"failed roots: {', '.join(scan_meta.get('failed_roots', [])) or 'None'}; "
+            f"ignored temp/small files: {scan_meta.get('ignored', 0)}"
+        )
+    _render_summary(plan.counts)
+    rows = plan.as_rows()
     filtered_df = _render_table(rows)
 
-if apply_clicked and rows:
-    st.warning("Updates will touch metadata only; conflicts and non-moved rows are skipped.")
-    if confirm_apply:
-        with st.spinner("Applying path updates…"):
-            summary = apply_updates(rows, dry_run=dry_run)
-        st.success("Done." if not summary.get("errors") else "Completed with errors.")
-        st.json(summary)
-    else:
-        st.info("Enable the confirmation checkbox to apply updates.")
+if apply_safe_clicked and plan:
+    with st.spinner("Applying SAFE actions…"):
+        result = apply_plan(
+            plan,
+            ApplyOptions(
+                ingest_missing=ingest_missing_safe,
+                apply_safe_only=True,
+                delete_orphaned=False,
+                retire_replaced_content=False,
+            ),
+        )
+    st.success("SAFE actions completed." if not result.errors else "SAFE actions completed with warnings.")
+    st.json(
+        {
+            "ingested": result.ingested,
+            "updated_fulltext": result.updated_fulltext,
+            "updated_chunks": result.updated_chunks,
+            "updated_qdrant": result.updated_qdrant,
+            "deleted_checksums": result.deleted_checksums,
+            "errors": result.errors,
+        }
+    )
+
+if apply_destructive_clicked and plan:
+    with st.spinner("Applying destructive actions…"):
+        result = apply_plan(
+            plan,
+            ApplyOptions(
+                ingest_missing=ingest_missing_destructive,
+                apply_safe_only=False,
+                delete_orphaned=delete_orphaned,
+                retire_replaced_content=retire_replaced,
+            ),
+        )
+    st.success("Destructive actions completed." if not result.errors else "Destructive actions completed with warnings.")
+    st.json(
+        {
+            "ingested": result.ingested,
+            "updated_fulltext": result.updated_fulltext,
+            "updated_chunks": result.updated_chunks,
+            "updated_qdrant": result.updated_qdrant,
+            "deleted_checksums": result.deleted_checksums,
+            "errors": result.errors,
+        }
+    )
