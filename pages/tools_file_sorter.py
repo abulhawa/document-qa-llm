@@ -1,0 +1,140 @@
+import os
+from typing import List
+
+import pandas as pd
+import streamlit as st
+
+from core.llm import check_llm_status
+from core.sync.file_sorter import SortOptions, apply_sort_plan, build_sort_plan
+
+
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Smart File Sorter", layout="wide")
+
+st.title("Smart File Sorter")
+st.caption("Dry-run classifier for moving files into your 1-5 topic folders.")
+
+with st.expander("How it works", expanded=False):
+    st.markdown(
+        """
+        - Scores each file against the subfolders under your numbered topics.
+        - Uses filename + parent folder names + optional content excerpt embeddings.
+        - Applies keyword boosts from folder names and optional aliases.
+        - Produces a dry-run plan you can review before moving files.
+        """
+    )
+
+root_default = os.getenv("LOCAL_SYNC_ROOT", "C:\\Users\\ali_a\\My Drive")
+llm_status = check_llm_status()
+
+with st.form("smart_sort_config"):
+    root = st.text_input("Root folder to scan", value=root_default)
+    st.caption("Example: `C:\\Users\\ali_a\\My Drive`. All files under this root will be considered.")
+    include_content = st.checkbox("Use file content (PDF/DOCX/TXT)", value=True)
+    st.caption("When enabled, PDFs/DOCX/TXT contribute text embeddings. Large files are skipped.")
+    max_parent_levels = st.slider("Parent folder depth used as signal", 0, 8, 4)
+    st.caption("Depth 0 = filename only; depth 2 uses two parent folders. Example: `file.pdf Tickets Germany`.")
+    max_content_mb = st.slider("Max file size for content parsing (MB)", 1, 200, 25)
+    st.caption("Files larger than this are not parsed for content embeddings.")
+    max_content_chars = st.slider("Max characters from content", 500, 20000, 6000, step=500)
+    st.caption("Only the first N characters from content are used.")
+    max_files = st.number_input("Max files to scan (0 = no limit)", min_value=0, value=0)
+    st.caption("Use a small limit for quick dry-runs.")
+
+    st.subheader("Scoring weights")
+    weight_meta = st.slider("Filename + folder embedding weight", 0.0, 1.0, 0.55)
+    st.caption("Signals from filename + parent folders. Higher = more path-driven classification.")
+    weight_content = st.slider("Content embedding weight", 0.0, 1.0, 0.30)
+    st.caption("Signals from PDF/DOCX/TXT content. Higher = more content-driven classification.")
+    weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, 0.15)
+    st.caption("Exact keyword matches from folder names + aliases. Good for IDs, taxes, tickets, etc.")
+
+    st.subheader("LLM fallback (same model as Ask Your Documents)")
+    use_llm_fallback = st.checkbox(
+        "Use LLM for low-confidence items",
+        value=False,
+        disabled=not llm_status.get("active"),
+    )
+    st.caption("Only applies to items below the confidence floor; uses the currently loaded model.")
+    if not llm_status.get("active"):
+        st.caption("LLM server or model is not active. Load a model in Ask Your Documents.")
+    llm_confidence_floor = st.slider(
+        "LLM apply threshold (confidence floor)",
+        0.0,
+        1.0,
+        0.65,
+    )
+    st.caption("LLM can overwrite the target only if confidence is below this value.")
+    llm_max_items = st.number_input("Max LLM items per run", min_value=0, value=200)
+    st.caption("Hard cap to prevent large LLM batches.")
+
+    alias_map = st.text_area(
+        "Alias map (optional)",
+        placeholder="Topic/Subfolder | passport:2, id:1.5\nMedical Records | mri, xray",
+        height=140,
+    )
+    st.caption("Format: `Target Label | keyword[:weight], keyword`. Example: `2. Personal Admin & Life/Taxes | tax:2, finanzamt`.")
+
+    min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, 0.7)
+    st.caption("Only items at or above this confidence will move when you confirm.")
+    submitted = st.form_submit_button("Scan & Classify (dry-run)")
+
+if submitted:
+    options = SortOptions(
+        root=root,
+        include_content=include_content,
+        max_parent_levels=int(max_parent_levels),
+        max_content_mb=int(max_content_mb),
+        max_content_chars=int(max_content_chars),
+        weight_meta=float(weight_meta),
+        weight_content=float(weight_content),
+        weight_keyword=float(weight_keyword),
+        alias_map_text=alias_map,
+        max_files=int(max_files) if max_files else None,
+        use_llm_fallback=bool(use_llm_fallback),
+        llm_confidence_floor=float(llm_confidence_floor),
+        llm_max_items=int(llm_max_items),
+    )
+    with st.spinner("Scanning and classifying files..."):
+        plan = build_sort_plan(options)
+    st.session_state["smart_sort_plan"] = plan
+    st.session_state["smart_sort_options"] = options
+    st.success(f"Built plan with {len(plan)} file(s).")
+
+plan: List = st.session_state.get("smart_sort_plan", [])
+options: SortOptions | None = st.session_state.get("smart_sort_options")
+
+if plan:
+    st.subheader("Plan Summary")
+    df = pd.DataFrame([p.as_dict() for p in plan])
+    st.caption(
+        f"Confidence >= {min_confidence:.2f}: {(df['confidence'] >= min_confidence).sum()} file(s)"
+    )
+
+    st.subheader("Plan Details")
+    min_conf_filter = st.slider(
+        "Filter by minimum confidence", 0.0, 1.0, 0.0, key="filter_confidence"
+    )
+    filtered = df[df["confidence"] >= min_conf_filter]
+    st.dataframe(filtered, use_container_width=True, hide_index=True)
+
+    csv_data = filtered.to_csv(index=False).encode("utf-8")
+    st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
+
+    st.subheader("Apply Moves")
+    st.warning("Moves are destructive. Review your plan before proceeding.")
+    confirm = st.text_input("Type MOVE to confirm", value="")
+    if st.button("Move files", type="primary"):
+        if confirm.strip().upper() != "MOVE":
+            st.error("Confirmation text mismatch. Type MOVE to proceed.")
+        elif not options:
+            st.error("Missing plan options. Re-run the scan.")
+        else:
+            with st.spinner("Moving files..."):
+                result = apply_sort_plan(plan, min_confidence=min_confidence, dry_run=False)
+            st.success(f"Moved {len(result['moved'])} file(s).")
+            if result["errors"]:
+                st.error(f"Errors: {len(result['errors'])}")
+                st.json(result["errors"])
+            if result["skipped"]:
+                st.info(f"Skipped: {len(result['skipped'])} below threshold.")
