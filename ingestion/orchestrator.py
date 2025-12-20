@@ -1,5 +1,4 @@
 import os
-import uuid
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -8,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, Protocol, Sequence
 from config import logger
 from ingestion import io_loader, preprocess, storage
 from utils.ingest_logging import IngestLogEmitter
+from utils.file_utils import choose_canonical_path
 
 
 class InventoryWriter(Protocol):
@@ -86,7 +86,7 @@ def ingest_one(
     """
     Ingest a single file path:
       1) load + split locally
-      2) build chunk metadata (UUIDv5 ids)
+      2) build chunk metadata (deterministic checksum-based ids)
       3) vectors first (embed + Qdrant), then OpenSearch (chunks + full text)
     """
 
@@ -99,9 +99,21 @@ def ingest_one(
 
     with log:
         checksum, size_bytes, timestamps = io_loader.file_fingerprint(io_path)
+        existing_fulltext = storage.get_existing_fulltext(checksum)
+        existing_path = existing_fulltext.get("path") if existing_fulltext else None
+        existing_aliases: list[str] = []
+        if existing_fulltext:
+            existing_aliases = existing_fulltext.get("aliases") or []
+        all_paths = [normalized_path]
+        if existing_path:
+            all_paths.append(existing_path)
+        all_paths.extend(existing_aliases)
+        canonical_path = choose_canonical_path(all_paths)
+        aliases = sorted({p for p in all_paths if p and p != canonical_path})
+
         log.set(
             checksum=checksum,
-            path_hash=io_loader.hash_path(normalized_path),
+            path_hash=io_loader.hash_path(canonical_path),
             bytes=size_bytes,
             size=io_loader.format_file_size(size_bytes),
         )
@@ -148,9 +160,10 @@ def ingest_one(
             }
 
         full_doc = {
-            "id": io_loader.hash_path(normalized_path),
-            "path": normalized_path,
-            "filename": os.path.basename(normalized_path),
+            "id": checksum,
+            "path": canonical_path,
+            "aliases": aliases,
+            "filename": os.path.basename(canonical_path),
             "filetype": ext,
             "modified_at": modified,
             "created_at": created,
@@ -183,9 +196,9 @@ def ingest_one(
         logger.info("🧩 Split into %s chunks", len(chunks))
 
     for i, chunk in enumerate(chunks):
-        chunk["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{normalized_path}-{i}"))
+        chunk["id"] = f"{checksum}:{i}"
         chunk["chunk_index"] = i
-        chunk["path"] = normalized_path
+        chunk["path"] = canonical_path
         chunk["checksum"] = checksum
         chunk["filetype"] = ext
         chunk["indexed_at"] = indexed_at
@@ -197,7 +210,7 @@ def ingest_one(
         chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)
 
     if force and replace:
-        storage.replace_existing_artifacts(normalized_path)
+        storage.replace_existing_artifacts(canonical_path)
 
     os_acc: Dict[str, Any] = {"indexed": 0, "errors": []}
 
@@ -229,8 +242,8 @@ def ingest_one(
             f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
         ) from e
 
-    inventory_writer.set_number_of_chunks(normalized_path, len(chunks))
-    inventory_writer.set_last_indexed(normalized_path, indexed_at)
+    inventory_writer.set_number_of_chunks(canonical_path, len(chunks))
+    inventory_writer.set_last_indexed(canonical_path, indexed_at)
 
     final_status = "Duplicate & Indexed" if is_dup else "Success"
     log.done(status=final_status)

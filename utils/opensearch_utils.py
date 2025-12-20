@@ -153,7 +153,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     client = get_client()
     actions = []
     for chunk in chunks:
-        op_type = chunk.get("op_type", "create")
+        op_type = chunk.get("op_type", "index")
         action: Dict[str, Any] = {
             "_index": CHUNKS_INDEX,
             "_id": chunk["id"],
@@ -211,7 +211,7 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
 
 
 def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-    """Index a single full-text document into OpenSearch (op_type=create).
+    """Index or update a single full-text document into OpenSearch.
     Returns the OpenSearch response dict. Raises on fatal errors."""
     client = get_client()
 
@@ -220,24 +220,16 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
 
     conn_timeout_exc = getattr(exceptions, "ConnectionTimeout", Exception)
     transport_exc = getattr(exceptions, "TransportError", Exception)
-    conflict_exc = getattr(exceptions, "ConflictError", Exception)
 
     try:
         resp = client.index(
             index=FULLTEXT_INDEX,
             id=doc_id,
             body=payload,
-            op_type="create",  # pyright: ignore[reportCallIssue]
+            op_type="index",  # pyright: ignore[reportCallIssue]
             refresh=False,  # pyright: ignore[reportCallIssue]
             request_timeout=30,  # pyright: ignore[reportCallIssue]
         )
-    except conflict_exc:  # type: ignore[misc]
-        # Document already exists (expected with op_type=create)
-        logger.info(
-            "Full-text indexing skipped (already exists).",
-            extra={"index": FULLTEXT_INDEX, "doc_id": doc_id},
-        )
-        return {"skipped": True, "reason": "conflict", "doc_id": doc_id}
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch index timeout.",
@@ -266,7 +258,7 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         raise
 
     # Examine response and log accordingly
-    result = resp.get("result")  # expected: "created"
+    result = resp.get("result")
     shards = resp.get("_shards", {}) or {}
     failed = int(shards.get("failed", 0))
     successful = int(shards.get("successful", 0))
@@ -435,6 +427,22 @@ def list_files_missing_fulltext(size: int = 1000) -> List[Dict[str, Any]]:
     fulltext_paths = {p for p in list_fulltext_paths(size=size) if p}
     missing = [f for f in doc_files if f.get("path") not in fulltext_paths]
     return missing
+
+
+def get_fulltext_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
+    """Return full-text document for the checksum, if present."""
+    client = get_client()
+    try:
+        resp = client.get(index=FULLTEXT_INDEX, id=checksum)
+    except exceptions.NotFoundError:
+        return None
+    except Exception:
+        logger.warning("Failed to fetch full-text doc for checksum=%s", checksum)
+        return None
+
+    source = resp.get("_source") or {}
+    source["id"] = resp.get("_id") or checksum
+    return source
 
 
 def get_chunks_by_paths(
