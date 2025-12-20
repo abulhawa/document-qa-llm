@@ -112,8 +112,9 @@ def purge_queues(r: redis.Redis, qnames: List[str]) -> Dict[str, int]:
 # ----------------------------
 # UI
 # ----------------------------
-st.set_page_config(page_title="Worker Emergency Controls", page_icon="🧯", layout="wide")
-st.title("🧯 Worker Emergency Controls")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Worker Emergency", page_icon="🧯", layout="wide")
+st.title("Worker Emergency")
 st.caption("Kill or pause Celery safely and purge pending tasks. Use with care – destructive operations ahead.")
 
 c1, c2, c3 = st.columns(3)

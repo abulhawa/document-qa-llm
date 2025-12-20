@@ -12,7 +12,8 @@ from core.sync.file_resync import (
     scan_files,
 )
 
-st.set_page_config(page_title="File Path Re-Sync", layout="wide")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="File Path Re-Sync", layout="wide")
 st.title("🔁 File Path Re-Sync")
 
 DEFAULT_ROOT = os.getenv("LOCAL_SYNC_ROOT", "")

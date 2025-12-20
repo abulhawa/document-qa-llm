@@ -5,48 +5,10 @@ st.set_page_config(
 )
 
 pages = [
-    st.Page("pages/0_chat.py", title="Ask Your Documents", icon="💬"),
-    st.Page("pages/1_ingest.py", title="Ingest Documents", icon="📥"),
-    st.Page(
-        "pages/2_index_viewer.py",
-        title="File Index Viewer",
-        icon="📂",
-    ),
-    st.Page(
-        "pages/3_duplicates_viewer.py",
-        title="Duplicate Files",
-        icon="🗂️",
-    ),
-    st.Page(
-        "pages/4_ingest_logs.py",
-        title="Ingestion Logs",
-        icon="📝",
-    ),
-    st.Page(
-        "pages/5_search.py",
-        title="Search",
-        icon="🔎",
-    ),
-    st.Page(
-        "pages/6_watchlist.py",
-        title="Watchlist",
-        icon="👀",
-    ),
-    st.Page(
-        "pages/7_file_resync.py",
-        title="File Path Re-Sync",
-        icon="🔁",
-    ),
-    st.Page(
-        "pages/30_running_tasks.py",
-        title="Running Tasks",
-        icon="🧵",
-    ),
-    st.Page(
-        "pages/worker_emergency.py",
-        title="Worker Emergency",
-        icon="⚠️",
-    ),
+    st.Page("pages/0_chat.py", title="Ask Your Documents"),
+    st.Page("pages/1_ingest.py", title="Ingest Documents"),
+    st.Page("pages/8_storage_index.py", title="Storage & Index"),
+    st.Page("pages/9_admin.py", title="Admin"),
 ]
 
 pg = st.navigation(pages, position="top")

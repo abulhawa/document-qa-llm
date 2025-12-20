@@ -5,7 +5,8 @@ from utils.opensearch_utils import search_ingest_logs
 from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp
 
-st.set_page_config(page_title="Ingestion Logs", layout="wide")
+if st.session_state.get("_nav_context") != "hub":
+    st.set_page_config(page_title="Ingestion Logs", layout="wide")
 st.title("📝 Ingestion Logs")
 
 # Filters
