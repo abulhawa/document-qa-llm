@@ -97,6 +97,11 @@ FULLTEXT_INDEX_SETTINGS = {
                 "ignore_above": 2048,
                 "fields": {"ngram": {"type": "text", "analyzer": "path_ngram"}},
             },
+            "aliases": {
+                "type": "keyword",
+                "ignore_above": 2048,
+                "fields": {"ngram": {"type": "text", "analyzer": "path_ngram"}},
+            },
             "filename": {
                 "type": "text",
                 "analyzer": "custom_text_analyzer",
