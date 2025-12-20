@@ -478,8 +478,8 @@ def get_fulltext_by_path_or_alias(path: str) -> Optional[Dict[str, Any]]:
                 "query": {
                     "bool": {
                         "should": [
-                            {"term": {"path": {"value": path}}},
-                            {"term": {"aliases": {"value": path}}},
+                            {"term": {"path": path}},
+                            {"term": {"aliases": path}},
                         ],
                         "minimum_should_match": 1,
                     }
