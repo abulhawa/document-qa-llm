@@ -68,3 +68,34 @@ def test_index_documents_update(monkeypatch):
     action = recorded["actions"][0]
     assert action["_op_type"] == "update"
     assert action["doc"]["text"] == "a"
+
+
+def test_get_fulltext_by_path_or_alias(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def search(self, *, index, body):
+            captured["body"] = body
+            return {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "doc1",
+                            "_source": {
+                                "path": "/foo/bar.txt",
+                                "aliases": ["/other/location.txt"],
+                                "checksum": "abc123",
+                            },
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
+    doc = osu.get_fulltext_by_path_or_alias("/other/location.txt")
+
+    assert doc["id"] == "doc1"
+    assert doc["path"] == "/foo/bar.txt"
+    assert captured["body"]["query"]["bool"]["should"][1]["term"] == {
+        "aliases.keyword": "/other/location.txt"
+    }

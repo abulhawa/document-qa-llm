@@ -467,6 +467,39 @@ def get_fulltext_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def get_fulltext_by_path_or_alias(path: str) -> Optional[Dict[str, Any]]:
+    """Return full-text document whose canonical path or aliases contain path."""
+    client = get_client()
+    try:
+        search = client.search(
+            index=FULLTEXT_INDEX,
+            body={
+                "size": 1,
+                "query": {
+                    "bool": {
+                        "should": [
+                            {"term": {"path.keyword": path}},
+                            {"term": {"aliases.keyword": path}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
+                },
+            },
+        )
+        hits = search.get("hits", {}).get("hits", [])
+        if not hits:
+            return None
+        hit = hits[0]
+        source = hit.get("_source") or {}
+        source["id"] = hit.get("_id")
+        return source
+    except Exception:
+        logger.warning(
+            "Failed to search full-text doc by path or alias=%s", path, exc_info=True
+        )
+        return None
+
+
 def get_chunks_by_paths(
     paths: Iterable[str], batch_size: int = 1000
 ) -> List[Dict[str, Any]]:
