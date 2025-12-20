@@ -578,6 +578,8 @@ def get_duplicate_checksums(
                     return dups
 
         after = hits[-1].get("sort")
+        if not after:
+            break
 
     return dups
 
