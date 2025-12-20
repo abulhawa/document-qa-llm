@@ -19,7 +19,9 @@ else:
             rows.append(
                 {
                     "Checksum": checksum,
-                    "Path": f.get("path"),
+                    "Location": f.get("path"),
+                    "Canonical Path": f.get("canonical_path") or f.get("path"),
+                    "Location Type": "Alias" if f.get("location_type") == "alias" else "Canonical",
                     "Filetype": f.get("filetype"),
                     "Created": format_timestamp_ampm(f.get("created_at") or ""),
                     "Modified": format_timestamp_ampm(f.get("modified_at") or ""),

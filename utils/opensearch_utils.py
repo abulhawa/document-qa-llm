@@ -541,76 +541,139 @@ def get_duplicate_checksums(
     page_size: int = 1000, max_results: int | None = None
 ) -> list[str]:
     """
-    Scan for all checksums that appear under >1 distinct path.
-    Uses composite agg for deterministic paging (no 'top N' bias).
+    Scan for checksums that have multiple known locations (canonical path + aliases).
+    Uses the full-text index, where canonical/alias paths are recorded even when chunk
+    docs are deduplicated to a single path.
     """
     client = get_client()
     dups: list[str] = []
     after = None
 
+    # Rely on aliases recorded in the full-text doc. Empty alias arrays are not stored,
+    # so an ``exists`` filter surfaces only checksums with >0 alias paths.
     while True:
-        comp = {
+        body = {
             "size": page_size,
-            "sources": [{"checksum": {"terms": {"field": "checksum"}}}],
+            "_source": ["checksum", "aliases"],
+            "sort": [{"checksum": "asc"}, {"_id": "asc"}],
+            "query": {"bool": {"must": [{"exists": {"field": "aliases"}}]}},
         }
         if after:
-            comp["after"] = after
+            body["search_after"] = after
 
-        body = {
-            "size": 0,
-            "aggs": {
-                "by_checksum": {
-                    "composite": comp,
-                    "aggregations": {
-                        "paths": {"terms": {"field": "path.keyword", "size": 2}},
-                    },
-                }
-            },
-        }
-        resp = client.search(index=CHUNKS_INDEX, body=body)
-        agg = resp["aggregations"]["by_checksum"]
-        for b in agg["buckets"]:
-            if len(b["paths"]["buckets"]) >= 2:
-                dups.append(b["key"]["checksum"])
+        resp = client.search(index=FULLTEXT_INDEX, body=body)
+        hits = resp.get("hits", {}).get("hits", [])
+        if not hits:
+            break
+
+        for hit in hits:
+            src = hit.get("_source", {}) or {}
+            aliases = src.get("aliases") or []
+            if not aliases:
+                continue
+            checksum = src.get("checksum") or hit.get("_id")
+            if checksum and checksum not in dups:
+                dups.append(checksum)
                 if max_results and len(dups) >= max_results:
                     return dups
-        after = agg.get("after_key")
-        if not after:
-            break
+
+        after = hits[-1].get("sort")
 
     return dups
 
 
 def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
-    """Return a list of files (unique paths) associated with a checksum."""
+    """
+    Return all recorded file locations (canonical path + aliases) for a checksum.
+
+    Chunk docs may only store the canonical path, so alias locations are sourced from
+    the full-text document.
+    """
     client = get_client()
+
+    # Aggregate chunk metadata by path for this checksum (canonical path should exist).
     resp = client.search(
         index=CHUNKS_INDEX,
-        body={"size": 10000, "query": {"term": {"checksum": checksum}}},
+        body={
+            "size": 0,
+            "query": {"term": {"checksum": checksum}},
+            "aggs": {
+                "by_path": {
+                    "terms": {"field": "path.keyword", "size": 2000},
+                    "aggs": {
+                        "sample": {"top_hits": {"size": 1}},
+                    },
+                }
+            },
+        },
     )
-    hits = resp.get("hits", {}).get("hits", [])
-    files: Dict[str, Dict[str, Any]] = {}
-    for hit in hits:
-        src = hit.get("_source", {})
-        path = src.get("path")
+    buckets = resp.get("aggregations", {}).get("by_path", {}).get("buckets", []) or []
+    chunk_meta: Dict[str, Dict[str, Any]] = {}
+    for bucket in buckets:
+        sample_hit = (
+            bucket.get("sample", {})
+            .get("hits", {})
+            .get("hits", [{}])[0]
+            .get("_source", {})
+        )
+        path = bucket.get("key")
         if not path:
             continue
-        info = files.setdefault(
-            path,
+        chunk_meta[path] = {
+            "num_chunks": bucket.get("doc_count", 0),
+            "filetype": sample_hit.get("filetype"),
+            "created_at": sample_hit.get("created_at"),
+            "modified_at": sample_hit.get("modified_at"),
+            "indexed_at": sample_hit.get("indexed_at"),
+            "bytes": sample_hit.get("bytes"),
+            "size": sample_hit.get("size"),
+        }
+
+    fulltext_doc = get_fulltext_by_checksum(checksum) or {}
+    canonical_path = fulltext_doc.get("path")
+    aliases = fulltext_doc.get("aliases") or []
+
+    files: list[Dict[str, Any]] = []
+    base_meta = {
+        "filetype": fulltext_doc.get("filetype"),
+        "created_at": fulltext_doc.get("created_at"),
+        "modified_at": fulltext_doc.get("modified_at"),
+        "indexed_at": fulltext_doc.get("indexed_at"),
+        "bytes": fulltext_doc.get("size_bytes"),
+    }
+    canonical_chunks = (
+        chunk_meta.get(canonical_path, {}) if canonical_path else {}
+    )
+
+    def append_entry(path: str, is_alias: bool) -> None:
+        path_meta = chunk_meta.get(path, {})
+        meta = {**base_meta, **path_meta}
+        files.append(
             {
                 "path": path,
-                "filetype": src.get("filetype"),
-                "created_at": src.get("created_at"),
-                "modified_at": src.get("modified_at"),
-                "indexed_at": src.get("indexed_at"),
-                "bytes": src.get("bytes"),
-                "size": src.get("size"),
+                "canonical_path": canonical_path or path,
+                "location_type": "alias" if is_alias else "canonical",
+                "filetype": meta.get("filetype"),
+                "created_at": meta.get("created_at"),
+                "modified_at": meta.get("modified_at"),
+                "indexed_at": meta.get("indexed_at"),
+                "bytes": meta.get("bytes"),
+                "size": meta.get("size"),
                 "checksum": checksum,
-                "num_chunks": 0,
-            },
+                "num_chunks": meta.get("num_chunks", canonical_chunks.get("num_chunks", 0)),
+            }
         )
-        info["num_chunks"] += 1
-    return list(files.values())
+
+    if canonical_path:
+        append_entry(canonical_path, False)
+    else:
+        for path in chunk_meta:
+            append_entry(path, False)
+
+    for alias in aliases:
+        append_entry(alias, True)
+
+    return files
 
 
 def is_file_up_to_date(checksum: str, path: str) -> bool:

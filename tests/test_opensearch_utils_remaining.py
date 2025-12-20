@@ -69,22 +69,26 @@ def test_list_files_from_opensearch(monkeypatch):
 
 
 def test_get_duplicate_checksums(monkeypatch):
+    recorded = {}
+
     class FakeClient:
         def search(self, index, body):
+            recorded["index"] = index
+            recorded["body"] = body
             return {
-                "aggregations": {
-                    "by_checksum": {
-                        "buckets": [
-                            {"key": {"checksum": "abc"}, "paths": {"buckets": [{"key": "p1"}, {"key": "p2"}]}},
-                            {"key": {"checksum": "def"}, "paths": {"buckets": [{"key": "p1"}]}}
-                        ]
-                    }
+                "hits": {
+                    "hits": [
+                        {"_id": "abc", "_source": {"checksum": "abc", "aliases": ["p1", "p2"]}},
+                        {"_id": "def", "_source": {"checksum": "def", "aliases": []}},
+                    ]
                 }
             }
 
     monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
     dups = osu.get_duplicate_checksums()
     assert dups == ["abc"]
+    assert recorded["index"] == osu.FULLTEXT_INDEX
+    assert recorded["body"]["query"] == {"bool": {"must": [{"exists": {"field": "aliases"}}]}}
 
 
 def test_is_duplicate_checksum(monkeypatch):
