@@ -88,32 +88,35 @@ ext_input = st.text_input(
     value=", ".join(sorted(DEFAULT_ALLOWED_EXTENSIONS)),
 )
 
-st.subheader("Apply Options")
-opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
-with opt_col1:
-    ingest_missing_safe = st.checkbox("Ingest missing (SAFE phase)", value=False)
-with opt_col2:
-    ingest_missing_destructive = st.checkbox("Ingest missing (Destructive phase)", value=False)
-with opt_col3:
-    delete_orphaned = st.checkbox("Delete orphaned content (Destructive)", value=False)
-with opt_col4:
-    retire_replaced = st.checkbox("Retire replaced content (Destructive)", value=False)
+st.subheader("Plan & Apply Actions")
+phase_col1, phase_col2, phase_col3 = st.columns(3)
 
-col1, col2 = st.columns([1, 1])
-with col1:
+with phase_col1:
+    st.markdown("**Step 1: Scan & Plan**")
+    st.caption("Dry run that builds the reconciliation plan based on the options below.")
     scan_clicked = st.button("Scan & Plan", use_container_width=True)
-with col2:
+
+with phase_col2:
+    st.markdown("**Step 2: Apply SAFE actions**")
+    st.caption("Unambiguous updates only; no deletions.")
+    ingest_missing_safe = st.checkbox("Ingest missing (SAFE phase)", value=False)
     apply_safe_clicked = st.button(
         "Apply SAFE actions",
         use_container_width=True,
         disabled="file_resync_plan" not in st.session_state,
     )
 
-apply_destructive_clicked = st.button(
-    "Apply destructive actions",
-    use_container_width=True,
-    disabled="file_resync_plan" not in st.session_state,
-)
+with phase_col3:
+    st.markdown("**Step 3: Apply destructive actions**")
+    st.caption("Includes REVIEW bucket; may delete content.")
+    ingest_missing_destructive = st.checkbox("Ingest missing (Destructive phase)", value=False)
+    delete_orphaned = st.checkbox("Delete orphaned content (Destructive)", value=False)
+    retire_replaced = st.checkbox("Retire replaced content (Destructive)", value=False)
+    apply_destructive_clicked = st.button(
+        "Apply destructive actions",
+        use_container_width=True,
+        disabled="file_resync_plan" not in st.session_state,
+    )
 
 if scan_clicked:
     roots = _parse_roots(roots_input)
