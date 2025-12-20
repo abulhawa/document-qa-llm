@@ -11,6 +11,7 @@ __all__ = [
     "get_file_size",
     "get_file_timestamps",
     "format_file_size",
+    "choose_canonical_path",
 ]
 
 
@@ -128,3 +129,29 @@ def show_in_folder(path: str) -> None:
             subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
     except Exception as e:
         logger.warning(f"Could not open folder: {e}")
+
+
+def _dir_parts(path: str) -> list[str]:
+    """Return directory components for a path (excluding filename)."""
+    directory = os.path.dirname(normalize_path(path))
+    if not directory:
+        return []
+    return [p for p in directory.split("/") if p]
+
+
+def choose_canonical_path(paths: list[str] | tuple[str, ...] | set[str]) -> str:
+    """
+    Choose the canonical path from a set of paths by the shortest directory path.
+
+    Comparison is performed on directory components only (ignoring filename length)
+    to avoid long filenames biasing the decision.
+    """
+    valid_paths = [p for p in paths if p]
+    if not valid_paths:
+        return ""
+
+    def _key(p: str) -> tuple[int, list[str], str]:
+        parts = _dir_parts(p)
+        return (len(parts), parts, normalize_path(p))
+
+    return min(valid_paths, key=_key)
