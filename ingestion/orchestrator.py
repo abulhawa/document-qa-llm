@@ -159,19 +159,22 @@ def ingest_one(
                 "path": normalized_path,
             }
 
-        full_doc = {
-            "id": checksum,
-            "path": canonical_path,
-            "aliases": aliases,
-            "filename": os.path.basename(canonical_path),
-            "filetype": ext,
-            "modified_at": modified,
-            "created_at": created,
-            "indexed_at": indexed_at,
-            "size_bytes": size_bytes,
-            "checksum": checksum,
-            "text_full": full_text,
-        }
+        full_doc = existing_fulltext or {}
+        full_doc.update(
+            {
+                "id": checksum,
+                "path": canonical_path,
+                "aliases": aliases,
+                "filename": os.path.basename(canonical_path),
+                "filetype": ext,
+                "modified_at": modified,
+                "created_at": created,
+                "indexed_at": indexed_at,
+                "size_bytes": size_bytes,
+                "checksum": checksum,
+                "text_full": full_text,
+            }
+        )
 
         logger.info("✂️ Splitting document into chunks")
         try:
