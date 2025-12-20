@@ -1,4 +1,5 @@
 import os
+import uuid
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -223,8 +224,11 @@ def ingest_one(
 
         logger.info("🧩 Split into %s chunks", len(chunks))
 
+    def _chunk_id(checksum_val: str, index: int) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{checksum_val}:{index}"))
+
     for i, chunk in enumerate(chunks):
-        chunk["id"] = f"{checksum}:{i}"
+        chunk["id"] = _chunk_id(checksum, i)
         chunk["chunk_index"] = i
         chunk["path"] = canonical_path
         chunk["checksum"] = checksum
