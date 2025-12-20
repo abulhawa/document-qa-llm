@@ -1,4 +1,5 @@
 import os
+import uuid
 from langchain_core.documents import Document
 
 from ingestion.orchestrator import ingest_one
@@ -68,7 +69,8 @@ def test_ingest_assigns_unique_ids_per_path_for_duplicate_files(tmp_path, monkey
 
     assert len(captured) == 1
     canonical_path = next(iter(captured.keys()))
-    assert set(captured[canonical_path]) == {"abc123:0"}
+    expected_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "abc123:0"))
+    assert set(captured[canonical_path]) == {expected_id}
     full_doc = stored_fulltext["abc123"]
     assert full_doc["path"] == canonical_path
     assert set(full_doc["aliases"]) == {str(file_a), str(file_b)} - {canonical_path}
