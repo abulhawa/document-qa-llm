@@ -47,7 +47,7 @@ def test_index_documents_bulk(monkeypatch):
     chunks = [{"id": "1", "text": "a"}, {"id": "2", "text": "b"}]
     osu.index_documents(chunks)
     assert len(recorded["actions"]) == 2
-    assert all(a.get("_op_type") == "create" for a in recorded["actions"])
+    assert all(a.get("_op_type") == "index" for a in recorded["actions"])
 
 
 def test_index_documents_update(monkeypatch):
