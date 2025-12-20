@@ -97,5 +97,5 @@ def test_get_fulltext_by_path_or_alias(monkeypatch):
     assert doc["id"] == "doc1"
     assert doc["path"] == "/foo/bar.txt"
     assert captured["body"]["query"]["bool"]["should"][1]["term"] == {
-        "aliases.keyword": "/other/location.txt"
+        "aliases": "/other/location.txt"
     }
