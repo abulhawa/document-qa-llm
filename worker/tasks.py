@@ -1,4 +1,5 @@
 import os
+from typing import Iterable
 from worker.celery_worker import app as celery_app
 from celery.signals import task_prerun, task_postrun, task_failure
 from worker.audit import log_task
@@ -143,5 +144,58 @@ def delete_document(path: str) -> dict:
             "qdrant_points": deleted_vec,
             "os_chunks": deleted_chunks,
             "os_fulltext": deleted_fulltext,
+        },
+    }
+
+
+@celery_app.task(
+    name="tasks.resync_paths",
+    acks_late=True,
+)
+def resync_paths(
+    roots: list[str],
+    allowed_exts: Iterable[str] | None = None,
+    *,
+    ingest_missing: bool = False,
+    apply_safe_only: bool = True,
+    delete_orphaned: bool = False,
+    retire_replaced_content: bool = False,
+) -> dict:
+    """
+    Run the file path reconciliation workflow in Celery.
+
+    Returns a JSON-serializable dict containing the plan rows and (if applied)
+    the apply summary.
+    """
+    from core.sync.file_resync import (
+        ApplyOptions,
+        apply_plan,
+        build_reconciliation_plan,
+        scan_files,
+    )
+
+    scan_result = scan_files(roots, allowed_exts or [])
+    plan = build_reconciliation_plan(
+        scan_result, roots, retire_replaced_content=retire_replaced_content
+    )
+    apply_result = apply_plan(
+        plan,
+        ApplyOptions(
+            ingest_missing=ingest_missing,
+            apply_safe_only=apply_safe_only,
+            delete_orphaned=delete_orphaned,
+            retire_replaced_content=retire_replaced_content,
+        ),
+    )
+    return {
+        "plan_counts": plan.counts,
+        "plan_items": plan.as_rows(),
+        "applied": {
+            "ingested": apply_result.ingested,
+            "updated_fulltext": apply_result.updated_fulltext,
+            "updated_chunks": apply_result.updated_chunks,
+            "updated_qdrant": apply_result.updated_qdrant,
+            "deleted_checksums": apply_result.deleted_checksums,
+            "errors": apply_result.errors,
         },
     }
