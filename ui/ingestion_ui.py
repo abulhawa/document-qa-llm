@@ -20,3 +20,6 @@ def run_file_picker() -> list[str]:
 
 def run_folder_picker() -> list[str]:
     return run_picker("folder")
+
+def run_root_picker() -> list[str]:
+    return run_picker("root")
