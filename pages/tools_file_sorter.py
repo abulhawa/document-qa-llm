@@ -237,42 +237,152 @@ if plan is not None:
             use_container_width=True,
         )
 
-    st.subheader("Plan Details")
-    min_conf_filter = st.slider(
-        "Filter by minimum confidence", 0.0, 1.0, 0.0, key="filter_confidence"
-    )
+    if not df.empty:
+        df = df.copy()
+        df["filename"] = df["path"].apply(os.path.basename)
+        df["extension"] = df["filename"].apply(lambda name: os.path.splitext(name)[1].lower())
+        df["target_label_display"] = df["target_label"].fillna("Unassigned")
+        if "second_confidence" not in df.columns:
+            df["second_confidence"] = pd.NA
+        if "top2_margin" not in df.columns:
+            df["top2_margin"] = pd.NA
+
+    st.subheader("Review Queue")
+    review_mask = pd.Series(False, index=df.index) if not df.empty else pd.Series(dtype=bool)
     if df.empty:
-        filtered = df
         st.info("No files were included in the plan.")
     else:
-        filtered = df[df["confidence"] >= min_conf_filter].copy()
-        if filtered.empty:
-            st.info("No files match the current confidence filter.")
+        gray_low, gray_high = st.slider(
+            "Confidence gray zone",
+            0.0,
+            1.0,
+            (0.55, 0.75),
+            step=0.01,
+            key="review_gray_zone",
+        )
+        margin_threshold = st.slider(
+            "Top-2 margin ≤",
+            0.0,
+            1.0,
+            0.08,
+            step=0.01,
+            key="review_margin_threshold",
+        )
+        suspicious_raw = st.text_input(
+            "Suspicious extensions or filenames (comma-separated)",
+            value="desktop.ini, .lnk, .temp",
+            key="review_suspicious_items",
+        )
+        suspicious_items = [item.strip().lower() for item in suspicious_raw.split(",") if item.strip()]
+        suspicious_extensions = {
+            f".{item}" for item in suspicious_items if "." not in item
+        }
+        suspicious_extensions |= {
+            item for item in suspicious_items if item.startswith(".") and item.count(".") == 1
+        }
+        suspicious_names = {
+            item for item in suspicious_items if "." in item and not item.startswith(".")
+        }
+
+        filename_lower = df["filename"].str.lower()
+        extension_lower = df["extension"].str.lower()
+        suspicious_mask = filename_lower.isin(suspicious_names) | extension_lower.isin(
+            suspicious_extensions
+        )
+        gray_mask = df["confidence"].between(gray_low, gray_high, inclusive="both")
+        if df["top2_margin"].notna().any():
+            margin_mask = df["top2_margin"].isna() | (df["top2_margin"] <= margin_threshold)
         else:
-            filtered["target_label_display"] = filtered["target_label"].fillna("Unassigned")
+            margin_mask = pd.Series(True, index=df.index)
+            st.caption("Top-2 margin is not available for this run.")
+
+        review_mask = gray_mask & suspicious_mask & margin_mask
+        review_df = df[review_mask].sort_values("confidence", ascending=True)
+        st.caption(f"{len(review_df)} file(s) flagged for review.")
+        if review_df.empty:
+            st.info("No files match the review queue criteria.")
+        else:
+            st.dataframe(review_df, use_container_width=True, hide_index=True)
+
+    st.subheader("Plan Details")
+    if df.empty:
+        st.info("No files were included in the plan.")
+    else:
+        min_conf_filter = st.slider(
+            "Minimum confidence",
+            0.0,
+            1.0,
+            0.0,
+            key="filter_confidence",
+        )
+        target_options = ["All"] + sorted(df["target_label_display"].unique())
+        target_filter = st.selectbox("Target folder", options=target_options, index=0)
+        filename_filter = st.text_input("Filename contains", value="", key="filter_filename")
+        extension_options = sorted({ext for ext in df["extension"].unique() if ext})
+        if "" in df["extension"].unique():
+            extension_options = extension_options + ["(none)"]
+        selected_extensions = st.multiselect(
+            "Extensions",
+            options=extension_options,
+            default=extension_options,
+            key="filter_extensions",
+        )
+        only_above_threshold = st.checkbox(
+            f"Only above move threshold ({min_confidence:.2f})",
+            value=False,
+            key="filter_above_threshold",
+        )
+        only_review_queue = st.checkbox(
+            "Only review queue",
+            value=False,
+            key="filter_review_queue",
+        )
+
+        filtered = df[df["confidence"] >= min_conf_filter].copy()
+        if target_filter != "All":
+            filtered = filtered[filtered["target_label_display"] == target_filter]
+        if filename_filter:
+            filtered = filtered[
+                filtered["filename"].str.contains(filename_filter, case=False, na=False)
+            ]
+        if selected_extensions:
+            extension_mask = filtered["extension"].isin(
+                [ext for ext in selected_extensions if ext != "(none)"]
+            )
+            if "(none)" in selected_extensions:
+                extension_mask |= filtered["extension"] == ""
+            filtered = filtered[extension_mask]
+        if only_above_threshold:
+            filtered = filtered[filtered["confidence"] >= min_confidence]
+        if only_review_queue and not review_mask.empty:
+            filtered = filtered[review_mask.reindex(filtered.index, fill_value=False)]
+
+        if filtered.empty:
+            st.info("No files match the current filters.")
+        else:
             view_mode = st.selectbox(
                 "View mode",
                 options=["By folder", "By confidence", "Raw table"],
                 index=0,
             )
 
-        def paginate_dataframe(dataframe: pd.DataFrame, key: str) -> pd.DataFrame:
-            page_size = 200
-            total_rows = len(dataframe)
-            total_pages = max(1, math.ceil(total_rows / page_size))
-            page = st.number_input(
-                "Page",
-                min_value=1,
-                max_value=total_pages,
-                value=1,
-                step=1,
-                key=key,
-            )
-            start = (page - 1) * page_size
-            end = min(start + page_size, total_rows)
-            if total_rows:
-                st.caption(f"Showing {start + 1}-{end} of {total_rows}")
-            return dataframe.iloc[start:end]
+            def paginate_dataframe(dataframe: pd.DataFrame, key: str) -> pd.DataFrame:
+                page_size = 200
+                total_rows = len(dataframe)
+                total_pages = max(1, math.ceil(total_rows / page_size))
+                page = st.number_input(
+                    "Page",
+                    min_value=1,
+                    max_value=total_pages,
+                    value=1,
+                    step=1,
+                    key=key,
+                )
+                start = (page - 1) * page_size
+                end = min(start + page_size, total_rows)
+                if total_rows:
+                    st.caption(f"Showing {start + 1}-{end} of {total_rows}")
+                return dataframe.iloc[start:end]
 
             export_df = filtered
             if view_mode == "By folder":
