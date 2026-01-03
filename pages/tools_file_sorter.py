@@ -187,6 +187,70 @@ if submitted:
 plan: List | None = st.session_state.get("smart_sort_plan")
 options: SortOptions | None = st.session_state.get("smart_sort_options")
 
+def _score_bucket(score: float) -> str:
+    if score >= 0.75:
+        return "strong"
+    if score >= 0.45:
+        return "medium"
+    if score >= 0.15:
+        return "light"
+    return "none"
+
+
+def _parse_reason(reason: str) -> dict:
+    parsed: dict = {}
+    if not isinstance(reason, str):
+        return parsed
+    for chunk in reason.split(";"):
+        part = chunk.strip()
+        if "=" not in part:
+            continue
+        key, raw_value = [item.strip() for item in part.split("=", 1)]
+        key = key.lower()
+        if key == "llm":
+            parsed[key] = raw_value
+            continue
+        try:
+            parsed[key] = float(raw_value)
+        except ValueError:
+            continue
+    return parsed
+
+
+def _format_reason_tokens(reason: str) -> str:
+    parsed = _parse_reason(reason)
+    tokens: List[str] = []
+    if "llm" in parsed:
+        tokens.append(f"LLM → {parsed['llm']}")
+    for key, label in (("meta", "Meta"), ("content", "Content"), ("keywords", "Keywords")):
+        if key in parsed:
+            tokens.append(f"{label} {_score_bucket(parsed[key])}")
+    return " · ".join(tokens)
+
+
+def _build_display_table(dataframe: pd.DataFrame, show_advanced: bool) -> pd.DataFrame:
+    columns = ["basename", "proposed_folder", "confidence", "reason_tokens", "path"]
+    labels = {
+        "basename": "Basename",
+        "proposed_folder": "Proposed folder",
+        "confidence": "Confidence",
+        "reason_tokens": "Reason",
+        "path": "Path",
+    }
+    if show_advanced:
+        columns += ["meta_similarity", "content_similarity", "keyword_score", "reason"]
+        labels.update(
+            {
+                "meta_similarity": "Meta score",
+                "content_similarity": "Content score",
+                "keyword_score": "Keyword score",
+                "reason": "Reason (raw)",
+            }
+        )
+    display = dataframe[columns].rename(columns=labels)
+    return display
+
+
 if plan is not None:
     st.subheader("Results")
     st.subheader("Plan Summary")
@@ -242,12 +306,23 @@ if plan is not None:
         df["filename"] = df["path"].apply(os.path.basename)
         df["extension"] = df["filename"].apply(lambda name: os.path.splitext(name)[1].lower())
         df["target_label_display"] = df["target_label"].fillna("Unassigned")
+        df["basename"] = df["filename"]
+        df["proposed_folder"] = df["target_label_display"]
+        df["reason_tokens"] = df["reason"].apply(_format_reason_tokens)
         if "second_confidence" not in df.columns:
             df["second_confidence"] = pd.NA
         if "top2_margin" not in df.columns:
             df["top2_margin"] = pd.NA
 
     st.subheader("Review Queue")
+    show_advanced_columns = st.checkbox(
+        "Show advanced columns",
+        value=False,
+        key="show_advanced_columns",
+    )
+    path_column_config = {
+        "Path": st.column_config.TextColumn("Path", help="Full path", max_chars=60)
+    }
     review_mask = pd.Series(False, index=df.index) if not df.empty else pd.Series(dtype=bool)
     if df.empty:
         st.info("No files were included in the plan.")
@@ -302,7 +377,13 @@ if plan is not None:
         if review_df.empty:
             st.info("No files match the review queue criteria.")
         else:
-            st.dataframe(review_df, use_container_width=True, hide_index=True)
+            review_display = _build_display_table(review_df, show_advanced_columns)
+            st.dataframe(
+                review_display,
+                use_container_width=True,
+                hide_index=True,
+                column_config=path_column_config,
+            )
 
     st.subheader("Plan Details")
     if df.empty:
@@ -407,7 +488,13 @@ if plan is not None:
                 )
                 details = filtered[filtered["target_label_display"] == selected_folder]
                 paged = paginate_dataframe(details, f"page_folder_{selected_folder}")
-                st.dataframe(paged, use_container_width=True, hide_index=True)
+                details_display = _build_display_table(paged, show_advanced_columns)
+                st.dataframe(
+                    details_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=path_column_config,
+                )
                 export_df = details
             else:
                 if view_mode == "By confidence":
@@ -415,7 +502,13 @@ if plan is not None:
                 else:
                     view_df = filtered
                 paged = paginate_dataframe(view_df, f"page_{view_mode.lower().replace(' ', '_')}")
-                st.dataframe(paged, use_container_width=True, hide_index=True)
+                view_display = _build_display_table(paged, show_advanced_columns)
+                st.dataframe(
+                    view_display,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=path_column_config,
+                )
                 export_df = view_df
 
             csv_data = export_df.to_csv(index=False).encode("utf-8")
