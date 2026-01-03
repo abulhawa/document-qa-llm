@@ -37,6 +37,8 @@ class SortPlanItem:
     content_similarity: float
     keyword_score: float
     reason: str
+    second_confidence: Optional[float] = None
+    top2_margin: Optional[float] = None
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -44,6 +46,10 @@ class SortPlanItem:
             "target_label": self.target_label,
             "target_path": self.target_path,
             "confidence": round(self.confidence, 4),
+            "second_confidence": round(self.second_confidence, 4)
+            if self.second_confidence is not None
+            else None,
+            "top2_margin": round(self.top2_margin, 4) if self.top2_margin is not None else None,
             "meta_similarity": round(self.meta_similarity, 4),
             "content_similarity": round(self.content_similarity, 4),
             "keyword_score": round(self.keyword_score, 4),
@@ -325,6 +331,7 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
     plan: List[SortPlanItem] = []
     for idx, path in enumerate(files):
         best: Optional[SortPlanItem] = None
+        second_best: Optional[SortPlanItem] = None
         for t_idx, target in enumerate(targets):
             meta_sim = _scaled_similarity(_cosine_similarity(meta_embeddings[idx], target_embeddings[t_idx]))
             content_sim = 0.0
@@ -352,8 +359,14 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
                 reason=reason,
             )
             if best is None or candidate.confidence > best.confidence:
+                second_best = best
                 best = candidate
+            elif second_best is None or candidate.confidence > second_best.confidence:
+                second_best = candidate
         if best:
+            if second_best is not None:
+                best.second_confidence = second_best.confidence
+                best.top2_margin = best.confidence - second_best.confidence
             plan.append(best)
 
     if options.use_llm_fallback:
