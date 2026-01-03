@@ -95,7 +95,7 @@ with st.form("smart_sort_config"):
     st.caption("Example: `C:\\Users\\ali_a\\My Drive`. All files under this root will be considered.")
     include_content = st.checkbox("Use file content (PDF/DOCX/TXT)", value=True)
     st.caption("When enabled, PDFs/DOCX/TXT contribute text embeddings. Large files are skipped.")
-    max_files = st.number_input("Max files preset (0 = no limit)", min_value=0, value=0)
+    max_files_choice = st.selectbox("Max files preset", options=[50, 200, 1000, "All"], index=3)
     st.caption("Use a small limit for quick dry-runs.")
     submitted = st.form_submit_button("Preview classification (dry-run)", type="primary")
 
@@ -171,7 +171,7 @@ if submitted:
         weight_content=float(normalized_content),
         weight_keyword=float(normalized_keyword),
         alias_map_text=alias_map,
-        max_files=int(max_files) if max_files else None,
+        max_files=None if max_files_choice == "All" else int(max_files_choice),
         use_llm_fallback=bool(use_llm_fallback),
         llm_confidence_floor=float(llm_confidence_floor),
         llm_max_items=int(llm_max_items),
