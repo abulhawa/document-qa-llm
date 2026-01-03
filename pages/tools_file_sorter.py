@@ -296,7 +296,7 @@ if plan is not None:
             margin_mask = pd.Series(True, index=df.index)
             st.caption("Top-2 margin is not available for this run.")
 
-        review_mask = gray_mask & suspicious_mask & margin_mask
+        review_mask = (gray_mask & margin_mask) | suspicious_mask
         review_df = df[review_mask].sort_values("confidence", ascending=True)
         st.caption(f"{len(review_df)} file(s) flagged for review.")
         if review_df.empty:
