@@ -100,14 +100,14 @@ with st.form("smart_sort_config"):
     submitted = st.form_submit_button("Preview classification (dry-run)", type="primary")
 
     with st.expander("Advanced settings"):
-        max_parent_levels = st.slider("Parent folder depth used as signal", 0, 8, 4)
+        max_parent_levels = st.slider("Use up to N parent folders as hints", 0, 8, 4)
         st.caption(
             "Depth 0 = filename only; depth 2 uses two parent folders. Example: `file.pdf Tickets Germany`."
         )
         max_content_mb = st.slider("Max file size for content parsing (MB)", 1, 200, 25)
         st.caption("Files larger than this are not parsed for content embeddings.")
-        max_content_chars = st.slider("Max characters from content", 500, 20000, 6000, step=500)
-        st.caption("Only the first N characters from content are used.")
+        max_content_chars = st.slider("Read up to N chars per file", 500, 20000, 6000, step=500)
+        st.caption("Only the first N characters from each file are used.")
 
         st.subheader("Scoring weights")
         weight_meta = st.slider(
@@ -139,7 +139,7 @@ with st.form("smart_sort_config"):
         if not llm_status.get("active"):
             st.caption("LLM server or model is not active. Load a model in Ask Your Documents.")
         llm_confidence_floor = st.slider(
-            "LLM apply threshold (confidence floor)",
+            "Ask LLM when confidence <",
             0.0,
             1.0,
             key="llm_confidence_floor",
@@ -157,7 +157,7 @@ with st.form("smart_sort_config"):
             "Format: `Target Label | keyword[:weight], keyword`. Example: `2. Personal Admin & Life/Taxes | tax:2, finanzamt`."
         )
 
-        min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, key="move_threshold")
+        min_confidence = st.slider("Only move when confidence ≥", 0.0, 1.0, key="move_threshold")
         st.caption("Only items at or above this confidence will move when you confirm.")
 
 if submitted:
