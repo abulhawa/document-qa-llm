@@ -32,52 +32,58 @@ with st.form("smart_sort_config"):
     st.caption("Example: `C:\\Users\\ali_a\\My Drive`. All files under this root will be considered.")
     include_content = st.checkbox("Use file content (PDF/DOCX/TXT)", value=True)
     st.caption("When enabled, PDFs/DOCX/TXT contribute text embeddings. Large files are skipped.")
-    max_parent_levels = st.slider("Parent folder depth used as signal", 0, 8, 4)
-    st.caption("Depth 0 = filename only; depth 2 uses two parent folders. Example: `file.pdf Tickets Germany`.")
-    max_content_mb = st.slider("Max file size for content parsing (MB)", 1, 200, 25)
-    st.caption("Files larger than this are not parsed for content embeddings.")
-    max_content_chars = st.slider("Max characters from content", 500, 20000, 6000, step=500)
-    st.caption("Only the first N characters from content are used.")
-    max_files = st.number_input("Max files to scan (0 = no limit)", min_value=0, value=0)
+    max_files = st.number_input("Max files preset (0 = no limit)", min_value=0, value=0)
     st.caption("Use a small limit for quick dry-runs.")
+    submitted = st.form_submit_button("Preview classification (dry-run)", type="primary")
 
-    st.subheader("Scoring weights")
-    weight_meta = st.slider("Filename + folder embedding weight", 0.0, 1.0, 0.55)
-    st.caption("Signals from filename + parent folders. Higher = more path-driven classification.")
-    weight_content = st.slider("Content embedding weight", 0.0, 1.0, 0.30)
-    st.caption("Signals from PDF/DOCX/TXT content. Higher = more content-driven classification.")
-    weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, 0.15)
-    st.caption("Exact keyword matches from folder names + aliases. Good for IDs, taxes, tickets, etc.")
+    with st.expander("Advanced settings"):
+        max_parent_levels = st.slider("Parent folder depth used as signal", 0, 8, 4)
+        st.caption(
+            "Depth 0 = filename only; depth 2 uses two parent folders. Example: `file.pdf Tickets Germany`."
+        )
+        max_content_mb = st.slider("Max file size for content parsing (MB)", 1, 200, 25)
+        st.caption("Files larger than this are not parsed for content embeddings.")
+        max_content_chars = st.slider("Max characters from content", 500, 20000, 6000, step=500)
+        st.caption("Only the first N characters from content are used.")
 
-    st.subheader("LLM fallback (same model as Ask Your Documents)")
-    use_llm_fallback = st.checkbox(
-        "Use LLM for low-confidence items",
-        value=False,
-        disabled=not llm_status.get("active"),
-    )
-    st.caption("Only applies to items below the confidence floor; uses the currently loaded model.")
-    if not llm_status.get("active"):
-        st.caption("LLM server or model is not active. Load a model in Ask Your Documents.")
-    llm_confidence_floor = st.slider(
-        "LLM apply threshold (confidence floor)",
-        0.0,
-        1.0,
-        0.65,
-    )
-    st.caption("LLM can overwrite the target only if confidence is below this value.")
-    llm_max_items = st.number_input("Max LLM items per run", min_value=0, value=200)
-    st.caption("Hard cap to prevent large LLM batches.")
+        st.subheader("Scoring weights")
+        weight_meta = st.slider("Filename + folder embedding weight", 0.0, 1.0, 0.55)
+        st.caption("Signals from filename + parent folders. Higher = more path-driven classification.")
+        weight_content = st.slider("Content embedding weight", 0.0, 1.0, 0.30)
+        st.caption("Signals from PDF/DOCX/TXT content. Higher = more content-driven classification.")
+        weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, 0.15)
+        st.caption("Exact keyword matches from folder names + aliases. Good for IDs, taxes, tickets, etc.")
 
-    alias_map = st.text_area(
-        "Alias map (optional)",
-        placeholder="Topic/Subfolder | passport:2, id:1.5\nMedical Records | mri, xray",
-        height=140,
-    )
-    st.caption("Format: `Target Label | keyword[:weight], keyword`. Example: `2. Personal Admin & Life/Taxes | tax:2, finanzamt`.")
+        st.subheader("LLM fallback (same model as Ask Your Documents)")
+        use_llm_fallback = st.checkbox(
+            "Use LLM for low-confidence items",
+            value=False,
+            disabled=not llm_status.get("active"),
+        )
+        st.caption("Only applies to items below the confidence floor; uses the currently loaded model.")
+        if not llm_status.get("active"):
+            st.caption("LLM server or model is not active. Load a model in Ask Your Documents.")
+        llm_confidence_floor = st.slider(
+            "LLM apply threshold (confidence floor)",
+            0.0,
+            1.0,
+            0.65,
+        )
+        st.caption("LLM can overwrite the target only if confidence is below this value.")
+        llm_max_items = st.number_input("Max LLM items per run", min_value=0, value=200)
+        st.caption("Hard cap to prevent large LLM batches.")
 
-    min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, 0.7)
-    st.caption("Only items at or above this confidence will move when you confirm.")
-    submitted = st.form_submit_button("Scan & Classify (dry-run)")
+        alias_map = st.text_area(
+            "Alias map (optional)",
+            placeholder="Topic/Subfolder | passport:2, id:1.5\nMedical Records | mri, xray",
+            height=140,
+        )
+        st.caption(
+            "Format: `Target Label | keyword[:weight], keyword`. Example: `2. Personal Admin & Life/Taxes | tax:2, finanzamt`."
+        )
+
+        min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, 0.7)
+        st.caption("Only items at or above this confidence will move when you confirm.")
 
 if submitted:
     options = SortOptions(
@@ -101,25 +107,29 @@ if submitted:
     st.session_state["smart_sort_options"] = options
     st.success(f"Built plan with {len(plan)} file(s).")
 
-plan: List = st.session_state.get("smart_sort_plan", [])
+plan: List | None = st.session_state.get("smart_sort_plan")
 options: SortOptions | None = st.session_state.get("smart_sort_options")
 
-if plan:
+if plan is not None:
+    st.subheader("Results")
     st.subheader("Plan Summary")
-    df = pd.DataFrame([p.as_dict() for p in plan])
-    st.caption(
-        f"Confidence >= {min_confidence:.2f}: {(df['confidence'] >= min_confidence).sum()} file(s)"
-    )
+    df = pd.DataFrame([p.as_dict() for p in plan]) if plan else pd.DataFrame()
+    qualifying_count = (df["confidence"] >= min_confidence).sum() if not df.empty else 0
+    st.caption(f"Confidence >= {min_confidence:.2f}: {qualifying_count} file(s)")
 
     st.subheader("Plan Details")
     min_conf_filter = st.slider(
         "Filter by minimum confidence", 0.0, 1.0, 0.0, key="filter_confidence"
     )
-    filtered = df[df["confidence"] >= min_conf_filter]
-    st.dataframe(filtered, use_container_width=True, hide_index=True)
+    if df.empty:
+        filtered = df
+        st.info("No files were included in the plan.")
+    else:
+        filtered = df[df["confidence"] >= min_conf_filter]
+        st.dataframe(filtered, use_container_width=True, hide_index=True)
 
-    csv_data = filtered.to_csv(index=False).encode("utf-8")
-    st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
+        csv_data = filtered.to_csv(index=False).encode("utf-8")
+        st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
 
     st.subheader("Apply Moves")
     st.warning("Moves are destructive. Review your plan before proceeding.")
