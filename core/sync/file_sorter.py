@@ -187,6 +187,34 @@ def _scan_files(root: str, exclude_roots: Iterable[str], max_files: Optional[int
     return files
 
 
+def _filesystem_fingerprint(root: str, max_files: Optional[int]) -> str:
+    root = os.path.abspath(root)
+    hasher = hashlib.sha256()
+    file_count = 0
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
+        rel_dir = os.path.relpath(dirpath, root)
+        for name in filenames:
+            if name.startswith("~$"):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            rel = os.path.join(rel_dir, name) if rel_dir != "." else name
+            hasher.update(rel.encode("utf-8"))
+            hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+            hasher.update(str(stat.st_size).encode("utf-8"))
+            file_count += 1
+            if max_files is not None and file_count >= max_files:
+                break
+        if max_files is not None and file_count >= max_files:
+            break
+    hasher.update(str(file_count).encode("utf-8"))
+    return hasher.hexdigest()
+
+
 def _build_meta_text(path: str, root: str, max_parent_levels: int) -> Tuple[str, List[str]]:
     rel = os.path.relpath(path, root)
     parts = Path(rel).parts
@@ -290,8 +318,9 @@ def _cached_scan_files(
     exclude_roots: Tuple[str, ...],
     max_files: Optional[int],
     settings_hash: str,
+    filesystem_fingerprint: str,
 ) -> List[str]:
-    _ = settings_hash
+    _ = (settings_hash, filesystem_fingerprint)
     return _scan_files(root, exclude_roots, max_files)
 
 
@@ -311,10 +340,11 @@ def _cached_build_sort_plan(
     root: str,
     options_payload: Tuple[Tuple[str, object], ...],
     settings_hash: str,
+    filesystem_fingerprint: str,
 ) -> List[SortPlanItem]:
-    _ = settings_hash
+    _ = (settings_hash, filesystem_fingerprint)
     options = SortOptions(root=root, **dict(options_payload))
-    return _build_sort_plan_uncached(options, settings_hash)
+    return _build_sort_plan_uncached(options, settings_hash, filesystem_fingerprint)
 
 
 def _render_llm_prompt(
@@ -352,7 +382,9 @@ def _match_target_label(response: str, target_labels: List[str]) -> str:
     return ""
 
 
-def _build_sort_plan_uncached(options: SortOptions, settings_hash: str) -> List[SortPlanItem]:
+def _build_sort_plan_uncached(
+    options: SortOptions, settings_hash: str, filesystem_fingerprint: str
+) -> List[SortPlanItem]:
     targets = _list_topic_targets(options.root, options.alias_map_text)
     if not targets:
         return []
@@ -367,6 +399,7 @@ def _build_sort_plan_uncached(options: SortOptions, settings_hash: str) -> List[
         tuple(sorted(exclude_roots)),
         options.max_files,
         settings_hash,
+        filesystem_fingerprint,
     )
     _notify_progress("scan", scanned=len(files), total=len(files))
     if not files:
@@ -519,10 +552,16 @@ def build_sort_plan(
 ) -> List[SortPlanItem]:
     settings_hash = _settings_hash(options)
     options_payload = tuple((key, value) for key, value in options.__dict__.items() if key != "root")
+    filesystem_fingerprint = _filesystem_fingerprint(options.root, options.max_files)
     global _PROGRESS_CALLBACK
     _PROGRESS_CALLBACK = progress_callback
     try:
-        return _cached_build_sort_plan(options.root, options_payload, settings_hash)
+        return _cached_build_sort_plan(
+            options.root,
+            options_payload,
+            settings_hash,
+            filesystem_fingerprint,
+        )
     finally:
         _PROGRESS_CALLBACK = None
 
