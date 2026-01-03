@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -189,8 +190,51 @@ if plan is not None:
     st.subheader("Results")
     st.subheader("Plan Summary")
     df = pd.DataFrame([p.as_dict() for p in plan]) if plan else pd.DataFrame()
+    total_files = len(df)
     qualifying_count = (df["confidence"] >= min_confidence).sum() if not df.empty else 0
-    st.caption(f"Confidence >= {min_confidence:.2f}: {qualifying_count} file(s)")
+    below_threshold = total_files - qualifying_count
+    ambiguous_band = 0.05
+    ambiguous_count = (
+        df["confidence"].between(
+            max(0.0, min_confidence - ambiguous_band),
+            min(1.0, min_confidence + ambiguous_band),
+            inclusive="both",
+        ).sum()
+        if not df.empty
+        else 0
+    )
+    distinct_targets = df["target_label"].nunique() if not df.empty else 0
+    show_llm_used = bool(options and options.use_llm_fallback)
+    llm_used = (
+        df["reason"].str.startswith("llm=").sum() if show_llm_used and not df.empty else 0
+    )
+
+    metric_labels = [
+        ("Files scanned", total_files),
+        (f"Above {min_confidence:.2f}", qualifying_count),
+        ("Below threshold", below_threshold),
+        (f"Ambiguous (±{ambiguous_band:.2f})", ambiguous_count),
+    ]
+    if show_llm_used:
+        metric_labels.append(("LLM used", llm_used))
+    metric_labels.append(("Distinct targets", distinct_targets))
+
+    columns = st.columns(len(metric_labels))
+    for column, (label, value) in zip(columns, metric_labels):
+        column.metric(label, value)
+
+    if not df.empty:
+        hist = alt.Chart(df).mark_bar().encode(
+            x=alt.X("confidence:Q", bin=alt.Bin(maxbins=20), title="Confidence"),
+            y=alt.Y("count()", title="Files"),
+        )
+        threshold = alt.Chart(pd.DataFrame({"threshold": [min_confidence]})).mark_rule(
+            color="#d65f5f"
+        ).encode(x="threshold:Q")
+        st.altair_chart(
+            (hist + threshold).properties(height=220, title="Confidence distribution"),
+            use_container_width=True,
+        )
 
     st.subheader("Plan Details")
     min_conf_filter = st.slider(
