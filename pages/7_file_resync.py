@@ -11,6 +11,7 @@ from core.sync.file_resync import (
     build_reconciliation_plan,
     scan_files,
 )
+from ui.ingestion_ui import run_root_picker
 
 if st.session_state.get("_nav_context") != "hub":
     st.set_page_config(page_title="File Path Re-Sync", layout="wide")
@@ -52,10 +53,6 @@ REASON_ACTION_MAP = {
     "PATH_REPLACED": "Manual review; optional retire replaced content.",
     "MIXED": "Review actions list for applyable steps.",
 }
-
-
-def _parse_roots(raw: str) -> List[str]:
-    return [line.strip() for line in raw.splitlines() if line.strip()]
 
 
 def _parse_exts(raw: str) -> set[str]:
@@ -166,11 +163,30 @@ with st.expander("Reason Map (Mismatch -> Apply Action)", expanded=False):
     ]
     st.table(pd.DataFrame(mapping_rows))
 
-roots_input = st.text_area(
-    "Sync roots (one per line)",
-    value=DEFAULT_ROOT,
-    placeholder="/path/to/drive/root",
-)
+if "file_resync_roots" not in st.session_state:
+    st.session_state["file_resync_roots"] = [DEFAULT_ROOT] if DEFAULT_ROOT else []
+
+roots_col1, roots_col2 = st.columns([1, 1], gap="small")
+with roots_col1:
+    if st.button("Select Folder Root"):
+        picked = run_root_picker()
+        if picked:
+            current = st.session_state.get("file_resync_roots", [])
+            merged = list(dict.fromkeys(current + picked))
+            st.session_state["file_resync_roots"] = merged
+with roots_col2:
+    if st.button("Clear Roots"):
+        st.session_state["file_resync_roots"] = []
+
+roots = st.session_state.get("file_resync_roots", [])
+if roots:
+    st.dataframe(
+        pd.DataFrame({"Sync roots": roots}),
+        use_container_width=True,
+        hide_index=True,
+    )
+else:
+    st.info("No roots selected yet. Use the folder picker to add one.")
 ext_input = st.text_input(
     "Allowed extensions (comma-separated)",
     value=", ".join(sorted(DEFAULT_ALLOWED_EXTENSIONS)),
@@ -207,7 +223,6 @@ with phase_col3:
     )
 
 if scan_clicked:
-    roots = _parse_roots(roots_input)
     exts = _parse_exts(ext_input)
     if not roots:
         st.error("Please provide at least one root to scan.")

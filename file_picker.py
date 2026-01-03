@@ -37,6 +37,16 @@ def pick_folder() -> List[str]:
     return matched_files
 
 
+def pick_root() -> List[str]:
+    """
+    Open a folder dialog and return the selected root path.
+    """
+    folder_path = filedialog.askdirectory(title="Select Folder")
+    if not folder_path:
+        return []
+    return [folder_path]
+
+
 if __name__ == "__main__":
     # Hide the root window (we only want the file/folder dialog)
     root = tk.Tk()
@@ -46,7 +56,9 @@ if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "files"
 
     try:
-        if mode == "folder":
+        if mode == "root":
+            result = pick_root()
+        elif mode == "folder":
             result = pick_folder()
         else:
             result = pick_files()
