@@ -515,17 +515,57 @@ if plan is not None:
             st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
 
     st.subheader("Apply Moves")
-    st.warning("Moves are destructive. Review your plan before proceeding.")
+    if df.empty:
+        will_move_count = 0
+        will_not_move_count = 0
+        ignored_count = 0
+    else:
+        target_mask = df["target_path"].fillna("").astype(str).str.len() > 0
+        will_move_mask = target_mask & (df["confidence"] >= min_confidence)
+        will_not_move_mask = target_mask & (df["confidence"] < min_confidence)
+        will_move_count = int(will_move_mask.sum())
+        will_not_move_count = int(will_not_move_mask.sum())
+        ignored_count = int(len(df) - will_move_count - will_not_move_count)
+
+    count_columns = st.columns(3)
+    count_columns[0].metric("Will move", will_move_count)
+    count_columns[1].metric("Will not move", will_not_move_count)
+    count_columns[2].metric("Ignored", ignored_count)
+
+    move_mode = st.radio(
+        "Mode",
+        options=["Dry-run only (default)", "Enable moving"],
+        index=0,
+        horizontal=True,
+        key="smart_sort_move_mode",
+    )
+    enable_moving = move_mode == "Enable moving"
+    if enable_moving:
+        st.warning("Moves are destructive. Review your plan before proceeding.")
+    else:
+        st.info("Dry-run mode: no files will be moved.")
+
     confirm = st.text_input("Type MOVE to confirm", value="")
-    if st.button("Move files", type="primary"):
-        if confirm.strip().upper() != "MOVE":
-            st.error("Confirmation text mismatch. Type MOVE to proceed.")
-        elif not options:
+    confirm_ready = confirm.strip().upper() == "MOVE"
+    button_label = f"Move {will_move_count} file(s)"
+    if st.button(
+        button_label,
+        type="primary",
+        disabled=not (confirm_ready and will_move_count > 0),
+    ):
+        if not options:
             st.error("Missing plan options. Re-run the scan.")
         else:
-            with st.spinner("Moving files..."):
-                result = apply_sort_plan(plan, min_confidence=min_confidence, dry_run=False)
-            st.success(f"Moved {len(result['moved'])} file(s).")
+            with st.spinner("Processing plan..."):
+                result = apply_sort_plan(
+                    plan,
+                    min_confidence=min_confidence,
+                    dry_run=not enable_moving,
+                )
+            if enable_moving:
+                st.success(f"Moved {len(result['moved'])} file(s).")
+            else:
+                st.info(f"Dry run: would move {len(result['moved'])} file(s).")
             if result["errors"]:
                 st.error(f"Errors: {len(result['errors'])}")
                 st.json(result["errors"])
