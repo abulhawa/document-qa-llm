@@ -1,5 +1,6 @@
 import math
 import os
+import time
 from typing import List
 
 import altair as alt
@@ -178,8 +179,46 @@ if submitted:
         llm_confidence_floor=float(llm_confidence_floor),
         llm_max_items=int(llm_max_items),
     )
+    st.subheader("Progress")
+    progress_columns = st.columns(4)
+    scan_placeholder = progress_columns[0].empty()
+    parse_placeholder = progress_columns[1].empty()
+    embed_placeholder = progress_columns[2].empty()
+    elapsed_placeholder = progress_columns[3].empty()
+    start_time = time.monotonic()
+    progress_state = {
+        "scan": 0,
+        "scan_total": 0,
+        "parse": 0,
+        "parse_total": 0,
+        "embed": 0,
+        "embed_total": 0,
+    }
+
+    def _format_count(value: int, total: int) -> str:
+        return f"{value}/{total}" if total else str(value)
+
+    def _update_progress(stage: str, payload: dict) -> None:
+        if stage == "scan":
+            progress_state["scan"] = payload.get("scanned", progress_state["scan"])
+            progress_state["scan_total"] = payload.get("total", progress_state["scan_total"])
+        elif stage == "parse":
+            progress_state["parse"] = payload.get("parsed", progress_state["parse"])
+            progress_state["parse_total"] = payload.get("total", progress_state["parse_total"])
+        elif stage == "embed":
+            progress_state["embed"] = payload.get("embedded", progress_state["embed"])
+            progress_state["embed_total"] = payload.get("total", progress_state["embed_total"])
+
+        elapsed = time.monotonic() - start_time
+        scan_placeholder.metric("Scanning", _format_count(progress_state["scan"], progress_state["scan_total"]))
+        parse_placeholder.metric("Parsing", _format_count(progress_state["parse"], progress_state["parse_total"]))
+        embed_placeholder.metric("Embedding", _format_count(progress_state["embed"], progress_state["embed_total"]))
+        elapsed_placeholder.metric("Elapsed", f"{elapsed:.1f}s")
+
+    _update_progress("scan", {"scanned": 0, "total": 0})
     with st.spinner("Scanning and classifying files..."):
-        plan = build_sort_plan(options)
+        plan = build_sort_plan(options, progress_callback=_update_progress)
+    _update_progress("scan", {"scanned": progress_state["scan"], "total": progress_state["scan_total"]})
     st.session_state["smart_sort_plan"] = plan
     st.session_state["smart_sort_options"] = options
     st.success(f"Built plan with {len(plan)} file(s).")
