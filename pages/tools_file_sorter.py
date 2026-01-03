@@ -14,6 +14,69 @@ if st.session_state.get("_nav_context") != "hub":
 st.title("Smart File Sorter")
 st.caption("Dry-run classifier for moving files into your 1-5 topic folders.")
 
+PRESET_CONFIGS = {
+    "Balanced (default)": {
+        "move_threshold": 0.7,
+        "weight_meta": 0.55,
+        "weight_content": 0.30,
+        "weight_keyword": 0.15,
+        "use_llm_fallback": False,
+        "llm_confidence_floor": 0.65,
+        "llm_max_items": 200,
+    },
+    "Path-heavy (folder structure)": {
+        "move_threshold": 0.75,
+        "weight_meta": 0.7,
+        "weight_content": 0.2,
+        "weight_keyword": 0.1,
+        "use_llm_fallback": False,
+        "llm_confidence_floor": 0.65,
+        "llm_max_items": 200,
+    },
+    "Content-heavy (document text)": {
+        "move_threshold": 0.65,
+        "weight_meta": 0.35,
+        "weight_content": 0.5,
+        "weight_keyword": 0.15,
+        "use_llm_fallback": False,
+        "llm_confidence_floor": 0.6,
+        "llm_max_items": 200,
+    },
+    "LLM assist (low-confidence only)": {
+        "move_threshold": 0.7,
+        "weight_meta": 0.5,
+        "weight_content": 0.3,
+        "weight_keyword": 0.2,
+        "use_llm_fallback": True,
+        "llm_confidence_floor": 0.75,
+        "llm_max_items": 300,
+    },
+}
+
+
+def ensure_default(key: str, default):
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+def apply_preset():
+    preset = PRESET_CONFIGS[st.session_state["smart_sort_preset"]]
+    for key, value in preset.items():
+        st.session_state[key] = value
+
+
+default_preset = "Balanced (default)"
+for preset_key, preset_value in PRESET_CONFIGS[default_preset].items():
+    ensure_default(preset_key, preset_value)
+
+st.selectbox(
+    "Preset",
+    options=list(PRESET_CONFIGS.keys()),
+    index=list(PRESET_CONFIGS.keys()).index(st.session_state.get("smart_sort_preset", default_preset)),
+    key="smart_sort_preset",
+    on_change=apply_preset,
+)
+
 with st.expander("How it works", expanded=False):
     st.markdown(
         """
@@ -47,17 +110,19 @@ with st.form("smart_sort_config"):
         st.caption("Only the first N characters from content are used.")
 
         st.subheader("Scoring weights")
-        weight_meta = st.slider("Filename + folder embedding weight", 0.0, 1.0, 0.55)
+        weight_meta = st.slider(
+            "Filename + folder embedding weight", 0.0, 1.0, key="weight_meta"
+        )
         st.caption("Signals from filename + parent folders. Higher = more path-driven classification.")
-        weight_content = st.slider("Content embedding weight", 0.0, 1.0, 0.30)
+        weight_content = st.slider("Content embedding weight", 0.0, 1.0, key="weight_content")
         st.caption("Signals from PDF/DOCX/TXT content. Higher = more content-driven classification.")
-        weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, 0.15)
+        weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, key="weight_keyword")
         st.caption("Exact keyword matches from folder names + aliases. Good for IDs, taxes, tickets, etc.")
 
         st.subheader("LLM fallback (same model as Ask Your Documents)")
         use_llm_fallback = st.checkbox(
             "Use LLM for low-confidence items",
-            value=False,
+            key="use_llm_fallback",
             disabled=not llm_status.get("active"),
         )
         st.caption("Only applies to items below the confidence floor; uses the currently loaded model.")
@@ -67,10 +132,10 @@ with st.form("smart_sort_config"):
             "LLM apply threshold (confidence floor)",
             0.0,
             1.0,
-            0.65,
+            key="llm_confidence_floor",
         )
         st.caption("LLM can overwrite the target only if confidence is below this value.")
-        llm_max_items = st.number_input("Max LLM items per run", min_value=0, value=200)
+        llm_max_items = st.number_input("Max LLM items per run", min_value=0, key="llm_max_items")
         st.caption("Hard cap to prevent large LLM batches.")
 
         alias_map = st.text_area(
@@ -82,7 +147,7 @@ with st.form("smart_sort_config"):
             "Format: `Target Label | keyword[:weight], keyword`. Example: `2. Personal Admin & Life/Taxes | tax:2, finanzamt`."
         )
 
-        min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, 0.7)
+        min_confidence = st.slider("Move threshold (confidence)", 0.0, 1.0, key="move_threshold")
         st.caption("Only items at or above this confidence will move when you confirm.")
 
 if submitted:
