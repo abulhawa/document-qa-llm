@@ -1,3 +1,4 @@
+import math
 import os
 from typing import List
 
@@ -244,10 +245,64 @@ if plan is not None:
         filtered = df
         st.info("No files were included in the plan.")
     else:
-        filtered = df[df["confidence"] >= min_conf_filter]
-        st.dataframe(filtered, use_container_width=True, hide_index=True)
+        filtered = df[df["confidence"] >= min_conf_filter].copy()
+        filtered["target_label_display"] = filtered["target_label"].fillna("Unassigned")
+        view_mode = st.selectbox(
+            "View mode",
+            options=["By folder", "By confidence", "Raw table"],
+            index=0,
+        )
 
-        csv_data = filtered.to_csv(index=False).encode("utf-8")
+        def paginate_dataframe(dataframe: pd.DataFrame, key: str) -> pd.DataFrame:
+            page_size = 200
+            total_rows = len(dataframe)
+            total_pages = max(1, math.ceil(total_rows / page_size))
+            page = st.number_input(
+                "Page",
+                min_value=1,
+                max_value=total_pages,
+                value=1,
+                step=1,
+                key=key,
+            )
+            start = (page - 1) * page_size
+            end = min(start + page_size, total_rows)
+            if total_rows:
+                st.caption(f"Showing {start + 1}-{end} of {total_rows}")
+            return dataframe.iloc[start:end]
+
+        export_df = filtered
+        if view_mode == "By folder":
+            summary = (
+                filtered.groupby("target_label_display", dropna=False)
+                .agg(
+                    file_count=("path", "size"),
+                    avg_confidence=("confidence", "mean"),
+                    pct_above_threshold=("confidence", lambda s: (s >= min_confidence).mean() * 100),
+                )
+                .reset_index()
+                .sort_values("file_count", ascending=False)
+            )
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+
+            selected_folder = st.selectbox(
+                "Folder",
+                options=summary["target_label_display"].tolist(),
+            )
+            details = filtered[filtered["target_label_display"] == selected_folder]
+            paged = paginate_dataframe(details, f"page_folder_{selected_folder}")
+            st.dataframe(paged, use_container_width=True, hide_index=True)
+            export_df = details
+        else:
+            if view_mode == "By confidence":
+                view_df = filtered.sort_values("confidence", ascending=False)
+            else:
+                view_df = filtered
+            paged = paginate_dataframe(view_df, f"page_{view_mode.lower().replace(' ', '_')}")
+            st.dataframe(paged, use_container_width=True, hide_index=True)
+            export_df = view_df
+
+        csv_data = export_df.to_csv(index=False).encode("utf-8")
         st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
 
     st.subheader("Apply Moves")
