@@ -118,6 +118,16 @@ with st.form("smart_sort_config"):
         st.caption("Signals from PDF/DOCX/TXT content. Higher = more content-driven classification.")
         weight_keyword = st.slider("Keyword boost weight", 0.0, 1.0, key="weight_keyword")
         st.caption("Exact keyword matches from folder names + aliases. Good for IDs, taxes, tickets, etc.")
+        weight_total = weight_meta + weight_content + weight_keyword
+        if weight_total > 0:
+            normalized_meta = weight_meta / weight_total
+            normalized_content = weight_content / weight_total
+            normalized_keyword = weight_keyword / weight_total
+        else:
+            normalized_meta = 0.0
+            normalized_content = 0.0
+            normalized_keyword = 0.0
+        st.caption(f"Total = {weight_total:.2f} (weights are normalized to 1.00)")
 
         st.subheader("LLM fallback (same model as Ask Your Documents)")
         use_llm_fallback = st.checkbox(
@@ -157,9 +167,9 @@ if submitted:
         max_parent_levels=int(max_parent_levels),
         max_content_mb=int(max_content_mb),
         max_content_chars=int(max_content_chars),
-        weight_meta=float(weight_meta),
-        weight_content=float(weight_content),
-        weight_keyword=float(weight_keyword),
+        weight_meta=float(normalized_meta),
+        weight_content=float(normalized_content),
+        weight_keyword=float(normalized_keyword),
         alias_map_text=alias_map,
         max_files=int(max_files) if max_files else None,
         use_llm_fallback=bool(use_llm_fallback),
