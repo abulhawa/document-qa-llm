@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import hashlib
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
@@ -21,7 +22,10 @@ _TOPIC_PATTERN = re.compile(r"^[1-5]\.\s*")
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _DEFAULT_EXCLUDE_DIRS = {".tmp.drivedownload", ".tmp.driveupload"}
 _DEFAULT_EXCLUDE_PREFIXES = (".",)
-_PROGRESS_CALLBACK: Optional[Callable[[str, Dict[str, int]], None]] = None
+_PROGRESS_CALLBACK: ContextVar[Optional[Callable[[str, Dict[str, int]], None]]] = ContextVar(
+    "progress_callback",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -163,9 +167,10 @@ def _should_skip_dir(name: str) -> bool:
 
 
 def _notify_progress(stage: str, **payload: int) -> None:
-    if _PROGRESS_CALLBACK is None:
+    callback = _PROGRESS_CALLBACK.get()
+    if callback is None:
         return
-    _PROGRESS_CALLBACK(stage, payload)
+    callback(stage, payload)
 
 
 def _scan_files(root: str, exclude_roots: Iterable[str], max_files: Optional[int]) -> List[str]:
@@ -553,8 +558,7 @@ def build_sort_plan(
     settings_hash = _settings_hash(options)
     options_payload = tuple((key, value) for key, value in options.__dict__.items() if key != "root")
     filesystem_fingerprint = _filesystem_fingerprint(options.root, options.max_files)
-    global _PROGRESS_CALLBACK
-    _PROGRESS_CALLBACK = progress_callback
+    token = _PROGRESS_CALLBACK.set(progress_callback)
     try:
         return _cached_build_sort_plan(
             options.root,
@@ -563,7 +567,7 @@ def build_sort_plan(
             filesystem_fingerprint,
         )
     finally:
-        _PROGRESS_CALLBACK = None
+        _PROGRESS_CALLBACK.reset(token)
 
 
 def _resolve_collision(dest_dir: str, filename: str) -> str:
