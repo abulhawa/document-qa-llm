@@ -3,9 +3,13 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import hashlib
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
+
+import streamlit as st
 
 from config import logger
 from core.llm import ask_llm, check_llm_status
@@ -18,6 +22,10 @@ _TOPIC_PATTERN = re.compile(r"^[1-5]\.\s*")
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _DEFAULT_EXCLUDE_DIRS = {".tmp.drivedownload", ".tmp.driveupload"}
 _DEFAULT_EXCLUDE_PREFIXES = (".",)
+_PROGRESS_CALLBACK: ContextVar[Optional[Callable[[str, Dict[str, int]], None]]] = ContextVar(
+    "progress_callback",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -158,6 +166,13 @@ def _should_skip_dir(name: str) -> bool:
     return any(name.startswith(prefix) for prefix in _DEFAULT_EXCLUDE_PREFIXES)
 
 
+def _notify_progress(stage: str, **payload: int) -> None:
+    callback = _PROGRESS_CALLBACK.get()
+    if callback is None:
+        return
+    callback(stage, payload)
+
+
 def _scan_files(root: str, exclude_roots: Iterable[str], max_files: Optional[int]) -> List[str]:
     root = os.path.abspath(root)
     exclude_norm = [os.path.abspath(p) for p in exclude_roots]
@@ -171,9 +186,44 @@ def _scan_files(root: str, exclude_roots: Iterable[str], max_files: Optional[int
             if name.startswith("~$"):
                 continue
             files.append(os.path.join(dirpath, name))
+            _notify_progress("scan", scanned=len(files))
             if max_files is not None and len(files) >= max_files:
                 return files
     return files
+
+
+def _filesystem_fingerprint(root: str, max_files: Optional[int]) -> str:
+    root = os.path.abspath(root)
+    hasher = hashlib.sha256()
+    file_count = 0
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
+        rel_dir = os.path.relpath(dirpath, root)
+        if rel_dir != ".":
+            hasher.update(rel_dir.encode("utf-8"))
+        for dirname in dirnames:
+            if rel_dir == ".":
+                rel_path = dirname
+            else:
+                rel_path = os.path.join(rel_dir, dirname)
+            hasher.update(rel_path.encode("utf-8"))
+        for name in filenames:
+            if name.startswith("~$"):
+                continue
+            if max_files is not None and file_count >= max_files:
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            rel = os.path.join(rel_dir, name) if rel_dir != "." else name
+            hasher.update(rel.encode("utf-8"))
+            hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+            hasher.update(str(stat.st_size).encode("utf-8"))
+            file_count += 1
+    hasher.update(str(file_count).encode("utf-8"))
+    return hasher.hexdigest()
 
 
 def _build_meta_text(path: str, root: str, max_parent_levels: int) -> Tuple[str, List[str]]:
@@ -234,14 +284,82 @@ def _keyword_score(tokens: List[str], keyword_weights: Dict[str, float]) -> floa
     return hits / total
 
 
-def _embed_in_batches(texts: List[str], batch_size: int = 32) -> List[List[float]]:
+def _embed_in_batches(
+    texts: List[str],
+    batch_size: int = 32,
+    *,
+    root: str,
+    settings_hash: str,
+    embed_state: Optional[Dict[str, int]] = None,
+) -> List[List[float]]:
     if not texts:
         return []
     embeddings: List[List[float]] = []
     for i in range(0, len(texts), batch_size):
         chunk = texts[i : i + batch_size]
-        embeddings.extend(embed_texts(chunk, batch_size=batch_size))
+        embeddings.extend(_cached_embed_batch(tuple(chunk), batch_size, root, settings_hash))
+        if embed_state is not None:
+            embed_state["embedded"] += len(chunk)
+            _notify_progress("embed", embedded=embed_state["embedded"], total=embed_state["total"])
     return embeddings
+
+
+def _settings_hash(options: SortOptions) -> str:
+    payload = {
+        "include_content": options.include_content,
+        "max_parent_levels": options.max_parent_levels,
+        "max_content_chars": options.max_content_chars,
+        "max_content_mb": options.max_content_mb,
+        "weight_meta": options.weight_meta,
+        "weight_content": options.weight_content,
+        "weight_keyword": options.weight_keyword,
+        "alias_map_text": options.alias_map_text,
+        "max_files": options.max_files,
+        "use_llm_fallback": options.use_llm_fallback,
+        "llm_confidence_floor": options.llm_confidence_floor,
+        "llm_max_items": options.llm_max_items,
+    }
+    raw = repr(sorted(payload.items()))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@st.cache_data(show_spinner=False)
+def _cached_scan_files(
+    root: str,
+    exclude_roots: Tuple[str, ...],
+    max_files: Optional[int],
+    settings_hash: str,
+    filesystem_fingerprint: str,
+) -> List[str]:
+    _ = (settings_hash, filesystem_fingerprint)
+    return _scan_files(root, exclude_roots, max_files)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_embed_batch(
+    texts: Tuple[str, ...],
+    batch_size: int,
+    root: str,
+    settings_hash: str,
+) -> List[List[float]]:
+    _ = (root, settings_hash)
+    return embed_texts(list(texts), batch_size=batch_size)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_build_sort_plan(
+    root: str,
+    options_payload: Tuple[Tuple[str, object], ...],
+    settings_hash: str,
+    filesystem_fingerprint: str,
+    llm_cache_key: Optional[Tuple[Optional[bool], Optional[str]]],
+) -> List[SortPlanItem]:
+    _ = (settings_hash, filesystem_fingerprint, llm_cache_key)
+    options = SortOptions(root=root, **dict(options_payload))
+    llm_status = None
+    if llm_cache_key is not None:
+        llm_status = {"active": llm_cache_key[0], "current_model": llm_cache_key[1]}
+    return _build_sort_plan_uncached(options, settings_hash, filesystem_fingerprint, llm_status)
 
 
 def _render_llm_prompt(
@@ -279,7 +397,12 @@ def _match_target_label(response: str, target_labels: List[str]) -> str:
     return ""
 
 
-def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
+def _build_sort_plan_uncached(
+    options: SortOptions,
+    settings_hash: str,
+    filesystem_fingerprint: str,
+    llm_status: Optional[Dict[str, object]] = None,
+) -> List[SortPlanItem]:
     targets = _list_topic_targets(options.root, options.alias_map_text)
     if not targets:
         return []
@@ -289,7 +412,14 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
         parent = Path(target.path).parent
         if _TOPIC_PATTERN.match(parent.name):
             exclude_roots.add(str(parent))
-    files = _scan_files(options.root, exclude_roots, options.max_files)
+    files = _cached_scan_files(
+        options.root,
+        tuple(sorted(exclude_roots)),
+        options.max_files,
+        settings_hash,
+        filesystem_fingerprint,
+    )
+    _notify_progress("scan", scanned=len(files), total=len(files))
     if not files:
         return []
 
@@ -298,6 +428,7 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
     meta_texts: List[str] = []
     file_tokens: List[List[str]] = []
     content_texts: List[str] = []
+    parsed_count = 0
     for path in files:
         meta_text, tokens = _build_meta_text(path, options.root, options.max_parent_levels)
         meta_texts.append(meta_text)
@@ -308,15 +439,33 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
             )
         else:
             content_texts.append("")
+        parsed_count += 1
+        _notify_progress("parse", parsed=parsed_count, total=len(files))
 
     target_texts = [f"{t.label} {' '.join(t.keywords.keys())}".strip() for t in targets]
-    target_embeddings = _embed_in_batches(target_texts)
-    meta_embeddings = _embed_in_batches(meta_texts)
+    embed_state = {"embedded": 0, "total": len(target_texts) + len(meta_texts)}
+    if options.include_content:
+        embed_state["total"] += len(content_texts)
+    target_embeddings = _embed_in_batches(
+        target_texts,
+        root=options.root,
+        settings_hash=settings_hash,
+        embed_state=embed_state,
+    )
+    meta_embeddings = _embed_in_batches(
+        meta_texts,
+        root=options.root,
+        settings_hash=settings_hash,
+        embed_state=embed_state,
+    )
 
     content_embeddings: List[List[float]] = []
     if options.include_content:
         content_embeddings = _embed_in_batches(
-            [t if t else "empty" for t in content_texts]
+            [t if t else "empty" for t in content_texts],
+            root=options.root,
+            settings_hash=settings_hash,
+            embed_state=embed_state,
         )
     else:
         content_embeddings = [[] for _ in files]
@@ -370,7 +519,8 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
             plan.append(best)
 
     if options.use_llm_fallback:
-        llm_status = check_llm_status()
+        if llm_status is None:
+            llm_status = check_llm_status()
         if not llm_status.get("active"):
             logger.warning("LLM fallback requested but LLM is not active.")
             return plan
@@ -413,6 +563,30 @@ def build_sort_plan(options: SortOptions) -> List[SortPlanItem]:
             remaining -= 1
 
     return plan
+
+
+def build_sort_plan(
+    options: SortOptions,
+    progress_callback: Optional[Callable[[str, Dict[str, int]], None]] = None,
+) -> List[SortPlanItem]:
+    settings_hash = _settings_hash(options)
+    options_payload = tuple((key, value) for key, value in options.__dict__.items() if key != "root")
+    filesystem_fingerprint = _filesystem_fingerprint(options.root, options.max_files)
+    llm_cache_key = None
+    if options.use_llm_fallback:
+        llm_status = check_llm_status()
+        llm_cache_key = (llm_status.get("active"), llm_status.get("current_model"))
+    token = _PROGRESS_CALLBACK.set(progress_callback)
+    try:
+        return _cached_build_sort_plan(
+            options.root,
+            options_payload,
+            settings_hash,
+            filesystem_fingerprint,
+            llm_cache_key,
+        )
+    finally:
+        _PROGRESS_CALLBACK.reset(token)
 
 
 def _resolve_collision(dest_dir: str, filename: str) -> str:
