@@ -199,8 +199,18 @@ def _filesystem_fingerprint(root: str, max_files: Optional[int]) -> str:
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
         rel_dir = os.path.relpath(dirpath, root)
+        if rel_dir != ".":
+            hasher.update(rel_dir.encode("utf-8"))
+        for dirname in dirnames:
+            if rel_dir == ".":
+                rel_path = dirname
+            else:
+                rel_path = os.path.join(rel_dir, dirname)
+            hasher.update(rel_path.encode("utf-8"))
         for name in filenames:
             if name.startswith("~$"):
+                continue
+            if max_files is not None and file_count >= max_files:
                 continue
             path = os.path.join(dirpath, name)
             try:
@@ -212,10 +222,6 @@ def _filesystem_fingerprint(root: str, max_files: Optional[int]) -> str:
             hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
             hasher.update(str(stat.st_size).encode("utf-8"))
             file_count += 1
-            if max_files is not None and file_count >= max_files:
-                break
-        if max_files is not None and file_count >= max_files:
-            break
     hasher.update(str(file_count).encode("utf-8"))
     return hasher.hexdigest()
 
