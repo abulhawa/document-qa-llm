@@ -352,10 +352,14 @@ def _cached_build_sort_plan(
     options_payload: Tuple[Tuple[str, object], ...],
     settings_hash: str,
     filesystem_fingerprint: str,
+    llm_cache_key: Optional[Tuple[Optional[bool], Optional[str]]],
 ) -> List[SortPlanItem]:
-    _ = (settings_hash, filesystem_fingerprint)
+    _ = (settings_hash, filesystem_fingerprint, llm_cache_key)
     options = SortOptions(root=root, **dict(options_payload))
-    return _build_sort_plan_uncached(options, settings_hash, filesystem_fingerprint)
+    llm_status = None
+    if llm_cache_key is not None:
+        llm_status = {"active": llm_cache_key[0], "current_model": llm_cache_key[1]}
+    return _build_sort_plan_uncached(options, settings_hash, filesystem_fingerprint, llm_status)
 
 
 def _render_llm_prompt(
@@ -394,7 +398,10 @@ def _match_target_label(response: str, target_labels: List[str]) -> str:
 
 
 def _build_sort_plan_uncached(
-    options: SortOptions, settings_hash: str, filesystem_fingerprint: str
+    options: SortOptions,
+    settings_hash: str,
+    filesystem_fingerprint: str,
+    llm_status: Optional[Dict[str, object]] = None,
 ) -> List[SortPlanItem]:
     targets = _list_topic_targets(options.root, options.alias_map_text)
     if not targets:
@@ -512,7 +519,8 @@ def _build_sort_plan_uncached(
             plan.append(best)
 
     if options.use_llm_fallback:
-        llm_status = check_llm_status()
+        if llm_status is None:
+            llm_status = check_llm_status()
         if not llm_status.get("active"):
             logger.warning("LLM fallback requested but LLM is not active.")
             return plan
@@ -564,6 +572,10 @@ def build_sort_plan(
     settings_hash = _settings_hash(options)
     options_payload = tuple((key, value) for key, value in options.__dict__.items() if key != "root")
     filesystem_fingerprint = _filesystem_fingerprint(options.root, options.max_files)
+    llm_cache_key = None
+    if options.use_llm_fallback:
+        llm_status = check_llm_status()
+        llm_cache_key = (llm_status.get("active"), llm_status.get("current_model"))
     token = _PROGRESS_CALLBACK.set(progress_callback)
     try:
         return _cached_build_sort_plan(
@@ -571,6 +583,7 @@ def build_sort_plan(
             options_payload,
             settings_hash,
             filesystem_fingerprint,
+            llm_cache_key,
         )
     finally:
         _PROGRESS_CALLBACK.reset(token)
