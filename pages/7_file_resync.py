@@ -55,6 +55,24 @@ REASON_ACTION_MAP = {
 }
 
 
+def _friendly_service_error(exc: Exception) -> str:
+    msg = str(exc)
+    lowered = msg.lower()
+    name = exc.__class__.__name__.lower()
+    if "connection" in name or "connection" in lowered or "remotedisconnected" in lowered:
+        return "Index services are unavailable. Start OpenSearch and Qdrant, then retry."
+    if "opensearch" in lowered:
+        return "OpenSearch is unavailable. Start OpenSearch, then retry."
+    if "qdrant" in lowered:
+        return "Qdrant is unavailable. Start Qdrant, then retry."
+    return f"Failed to contact indexing services: {msg}"
+
+
+def _render_service_error(exc: Exception, action: str) -> None:
+    st.error(f"{action} failed. {_friendly_service_error(exc)}")
+    st.caption(f"Error details: {exc.__class__.__name__}: {exc}")
+
+
 def _parse_exts(raw: str) -> set[str]:
     parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
     exts = {p if p.startswith(".") else f".{p}" for p in parts}
@@ -227,18 +245,27 @@ if scan_clicked:
     if not roots:
         st.error("Please provide at least one root to scan.")
     else:
-        with st.spinner("Scanning disk and building plan…"):
-            scan_result = scan_files(roots, exts)
-            plan = build_reconciliation_plan(scan_result, roots, retire_replaced_content=retire_replaced)
-        st.session_state["file_resync_plan"] = plan
-        st.session_state["file_resync_scan_meta"] = {
-            "ignored": scan_result.ignored_files,
-            "scanned_roots": scan_result.scanned_roots_successful,
-            "failed_roots": scan_result.scanned_roots_failed,
-        }
-        st.success(
-            f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
-        )
+        try:
+            with st.spinner("Scanning disk and building plan…"):
+                scan_result = scan_files(roots, exts)
+                plan = build_reconciliation_plan(
+                    scan_result, roots, retire_replaced_content=retire_replaced
+                )
+        except Exception as e:  # noqa: BLE001
+            st.session_state.pop("file_resync_plan", None)
+            st.session_state.pop("file_resync_scan_meta", None)
+            _render_service_error(e, "Scan & plan")
+            st.stop()
+        else:
+            st.session_state["file_resync_plan"] = plan
+            st.session_state["file_resync_scan_meta"] = {
+                "ignored": scan_result.ignored_files,
+                "scanned_roots": scan_result.scanned_roots_successful,
+                "failed_roots": scan_result.scanned_roots_failed,
+            }
+            st.success(
+                f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
+            )
 
 plan = st.session_state.get("file_resync_plan")
 scan_meta = st.session_state.get("file_resync_scan_meta", {})
@@ -255,16 +282,20 @@ if plan:
     filtered_df = _render_table(rows)
 
 if apply_safe_clicked and plan:
-    with st.spinner("Applying SAFE actions…"):
-        result = apply_plan(
-            plan,
-            ApplyOptions(
-                ingest_missing=ingest_missing_safe,
-                apply_safe_only=True,
-                delete_orphaned=False,
-                retire_replaced_content=False,
-            ),
-        )
+    try:
+        with st.spinner("Applying SAFE actions…"):
+            result = apply_plan(
+                plan,
+                ApplyOptions(
+                    ingest_missing=ingest_missing_safe,
+                    apply_safe_only=True,
+                    delete_orphaned=False,
+                    retire_replaced_content=False,
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        _render_service_error(e, "SAFE apply")
+        st.stop()
     st.success("SAFE actions completed." if not result.errors else "SAFE actions completed with warnings.")
     st.json(
         {
@@ -278,16 +309,20 @@ if apply_safe_clicked and plan:
     )
 
 if apply_destructive_clicked and plan:
-    with st.spinner("Applying destructive actions…"):
-        result = apply_plan(
-            plan,
-            ApplyOptions(
-                ingest_missing=ingest_missing_destructive,
-                apply_safe_only=False,
-                delete_orphaned=delete_orphaned,
-                retire_replaced_content=retire_replaced,
-            ),
-        )
+    try:
+        with st.spinner("Applying destructive actions…"):
+            result = apply_plan(
+                plan,
+                ApplyOptions(
+                    ingest_missing=ingest_missing_destructive,
+                    apply_safe_only=False,
+                    delete_orphaned=delete_orphaned,
+                    retire_replaced_content=retire_replaced,
+                ),
+            )
+    except Exception as e:  # noqa: BLE001
+        _render_service_error(e, "Destructive apply")
+        st.stop()
     st.success("Destructive actions completed." if not result.errors else "Destructive actions completed with warnings.")
     st.json(
         {
