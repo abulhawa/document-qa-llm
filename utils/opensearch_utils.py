@@ -43,6 +43,7 @@ CHUNKS_INDEX_SETTINGS = {
             },
             "chunk_index": {"type": "integer"},
             "checksum": {"type": "keyword"},
+            "chunk_char_len": {"type": "integer"},
             "filetype": {"type": "keyword"},
             "indexed_at": {"type": "date"},
             "created_at": {"type": "date"},
@@ -140,6 +141,37 @@ INGEST_LOGS_INDEX_SETTINGS = {
         }
     },
 }
+
+
+def ensure_chunk_char_len_mapping() -> None:
+    client = get_client()
+    try:
+        mapping = client.indices.get_mapping(index=CHUNKS_INDEX)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to fetch OpenSearch mappings for index=%s", CHUNKS_INDEX
+        )
+        raise
+
+    index_mapping = mapping.get(CHUNKS_INDEX, {}).get("mappings", {})
+    props = index_mapping.get("properties", {}) or {}
+    if "chunk_char_len" in props:
+        return
+
+    try:
+        client.indices.put_mapping(
+            index=CHUNKS_INDEX,
+            body={"properties": {"chunk_char_len": {"type": "integer"}}},
+        )
+        logger.info(
+            "Added chunk_char_len mapping to OpenSearch index=%s", CHUNKS_INDEX
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to add chunk_char_len mapping to OpenSearch index=%s",
+            CHUNKS_INDEX,
+        )
+        raise
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
