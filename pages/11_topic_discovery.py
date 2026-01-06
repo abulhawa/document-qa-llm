@@ -24,12 +24,17 @@ with tabs[1]:
 
     status_placeholder = st.empty()
 
+    @st.cache_data(ttl=30)
+    def _get_status() -> tuple[int, int, float]:
+        unique_checksums = get_unique_checksums_in_chunks()
+        file_vectors_count = get_file_vectors_count()
+        total_files = len(unique_checksums)
+        coverage = (file_vectors_count / total_files * 100) if total_files else 0.0
+        return total_files, file_vectors_count, coverage
+
     def _render_status() -> None:
         try:
-            unique_checksums = get_unique_checksums_in_chunks()
-            file_vectors_count = get_file_vectors_count()
-            total_files = len(unique_checksums)
-            coverage = (file_vectors_count / total_files * 100) if total_files else 0.0
+            total_files, file_vectors_count, coverage = _get_status()
             with status_placeholder.container():
                 cols = st.columns(3)
                 cols[0].metric("Unique files in chunks", total_files)
@@ -39,6 +44,12 @@ with tabs[1]:
             status_placeholder.error(f"Status check failed: {exc}")
 
     _render_status()
+
+    status_cols = st.columns(2)
+    with status_cols[0]:
+        if st.button("Refresh status"):
+            _get_status.clear()
+            _render_status()
 
     st.divider()
 
@@ -58,6 +69,7 @@ with tabs[1]:
             with st.spinner("Ensuring collection..."):
                 ensure_file_vectors_collection()
             st.success("Collection is ready.")
+            _get_status.clear()
             _render_status()
 
     def _run_build(force: bool, recreate: bool = False) -> None:
@@ -92,6 +104,7 @@ with tabs[1]:
         )
         if stats.get("error_list"):
             st.warning("Errors:\n" + "\n".join(stats["error_list"]))
+        _get_status.clear()
         _render_status()
 
     with action_cols[1]:
