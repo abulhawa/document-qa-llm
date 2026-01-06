@@ -48,11 +48,26 @@ with tabs[0]:
         if not checksums:
             st.warning("No file vectors found. Run Step 1 first.")
         else:
+            vector_count = len(vectors)
+            effective_min_cluster_size = int(min_cluster_size)
+            effective_min_samples = int(min_samples)
+            if vector_count < effective_min_cluster_size:
+                st.warning(
+                    f"Only {vector_count} file vectors available. "
+                    f"Lowering min_cluster_size to {vector_count} for this run."
+                )
+                effective_min_cluster_size = vector_count
+            if vector_count < effective_min_samples:
+                st.warning(
+                    f"Only {vector_count} file vectors available. "
+                    f"Lowering min_samples to {vector_count} for this run."
+                )
+                effective_min_samples = vector_count
             with st.spinner("Clustering with HDBSCAN..."):
                 labels, probs, clusters = run_hdbscan(
                     vectors=vectors,
-                    min_cluster_size=int(min_cluster_size),
-                    min_samples=int(min_samples),
+                    min_cluster_size=effective_min_cluster_size,
+                    min_samples=effective_min_samples,
                     metric="cosine",
                 )
                 clusters = attach_representative_checksums(clusters, checksums)
@@ -63,8 +78,8 @@ with tabs[0]:
                     probs=probs,
                     clusters=clusters,
                     params={
-                        "min_cluster_size": int(min_cluster_size),
-                        "min_samples": int(min_samples),
+                        "min_cluster_size": effective_min_cluster_size,
+                        "min_samples": effective_min_samples,
                         "metric": "cosine",
                     },
                 )

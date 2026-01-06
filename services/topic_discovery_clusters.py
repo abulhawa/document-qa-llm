@@ -52,13 +52,34 @@ def run_hdbscan(
     min_samples: int,
     metric: str = "cosine",
 ) -> tuple[list[int], list[float], list[dict]]:
+    vector_count = len(vectors)
     if not vectors:
         return [], [], []
+    if vector_count < 2:
+        logger.warning(
+            "Not enough vectors for HDBSCAN (count=%s). Returning all outliers.",
+            vector_count,
+        )
+        return [-1] * vector_count, [0.0] * vector_count, []
+    effective_min_cluster_size = min(min_cluster_size, vector_count)
+    effective_min_samples = min(min_samples, vector_count)
+    if (
+        effective_min_cluster_size != min_cluster_size
+        or effective_min_samples != min_samples
+    ):
+        logger.warning(
+            "Adjusting HDBSCAN params for vector count=%s: min_cluster_size=%s->%s, min_samples=%s->%s",
+            vector_count,
+            min_cluster_size,
+            effective_min_cluster_size,
+            min_samples,
+            effective_min_samples,
+        )
     data = np.asarray(vectors, dtype=np.float32)
     normalized = _l2_normalize_matrix(data)
     clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples,
+        min_cluster_size=effective_min_cluster_size,
+        min_samples=effective_min_samples,
         metric=metric,
     )
     labels = clusterer.fit_predict(normalized)
