@@ -77,10 +77,15 @@ def run_hdbscan(
         )
     data = np.asarray(vectors, dtype=np.float32)
     normalized = _l2_normalize_matrix(data)
+    effective_metric = metric
+    if metric.lower() == "cosine":
+        # HDBSCAN's BallTree backend does not accept cosine; for unit vectors,
+        # Euclidean distance is monotonic with cosine distance.
+        effective_metric = "euclidean"
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=effective_min_cluster_size,
         min_samples=effective_min_samples,
-        metric=metric,
+        metric=effective_metric,
     )
     labels = clusterer.fit_predict(normalized)
     probs = clusterer.probabilities_
