@@ -10,6 +10,7 @@ pages = [
     st.Page("pages/8_storage_index.py", title="Storage & Index"),
     st.Page("pages/10_tools.py", title="Tools"),
     st.Page("pages/9_admin.py", title="Admin"),
+    st.Page("pages/11_topic_discovery.py", title="Topic Discovery"),
 ]
 
 pg = st.navigation(pages, position="top")
