@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import math
+import uuid
 from typing import Callable, Iterable, List, Optional
 
 from qdrant_client import QdrantClient
@@ -178,7 +179,7 @@ def build_missing_file_vectors(
             }
             points.append(
                 models.PointStruct(
-                    id=checksum,
+                    id=_file_vector_id(checksum),
                     vector=file_vector,
                     payload=payload,
                 )
@@ -272,6 +273,10 @@ def _extract_id(point: models.Record) -> str | None:
         return str(point.get("id")) if point.get("id") is not None else None
     point_id = getattr(point, "id", None)
     return str(point_id) if point_id is not None else None
+
+
+def _file_vector_id(checksum: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"file-vector:{checksum}"))
 
 
 def _topk_mean_pool(
