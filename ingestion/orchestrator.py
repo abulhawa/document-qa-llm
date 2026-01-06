@@ -262,6 +262,7 @@ def ingest_one(
         chunk["chunk_index"] = i
         chunk["path"] = canonical_path
         chunk["checksum"] = checksum
+        chunk["chunk_char_len"] = len(chunk.get("text") or "")
         chunk["filetype"] = ext
         chunk["indexed_at"] = indexed_at
         chunk["created_at"] = created
