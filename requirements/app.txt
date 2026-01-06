@@ -4,4 +4,5 @@
 streamlit==1.48.*
 arize-phoenix-otel==0.13.*
 hdbscan==0.8.*
-numpy==1.26.*
+numpy==1.26.*; python_version < "3.13"
+numpy==2.1.*; python_version >= "3.13"
