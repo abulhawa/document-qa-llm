@@ -5,11 +5,9 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, Optional
 
 from core.opensearch_client import get_client
-from opensearchpy import helpers
-from qdrant_client import QdrantClient, models
+from qdrant_client import QdrantClient
 
 from config import CHUNKS_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
-from utils.opensearch_utils import ensure_chunk_char_len_mapping
 
 
 def _resolve_checksum_sort_field(os_client) -> str:
@@ -48,7 +46,7 @@ def _iter_chunks(
 
         body: Dict[str, Any] = {
             "size": size,
-            "_source": ["checksum", "chunk_index", "text"],
+            "_source": ["checksum", "chunk_index", "chunk_char_len"],
             "sort": [
                 {checksum_sort_field: "asc"},
                 {"chunk_index": "asc"},
@@ -66,32 +64,80 @@ def _iter_chunks(
         after = hits[-1].get("sort")
 
 
+def _build_qdrant_lookup(
+    qdrant_client: QdrantClient,
+    *,
+    scroll_batch_size: int,
+) -> tuple[dict[tuple[str, int], list[str | int]], int, int]:
+    lookup: dict[tuple[str, int], list[str | int]] = defaultdict(list)
+    duplicates = 0
+    errors = 0
+    offset = None
+
+    while True:
+        points, next_offset = qdrant_client.scroll(
+            collection_name=QDRANT_COLLECTION,
+            limit=scroll_batch_size,
+            with_payload=["checksum", "chunk_index"],
+            with_vectors=False,
+            offset=offset,
+        )
+        if not points:
+            break
+
+        for point in points:
+            payload = point.payload or {}
+            checksum = payload.get("checksum")
+            chunk_index_raw = payload.get("chunk_index")
+            point_id = point.id
+            if checksum is None or chunk_index_raw is None or point_id is None:
+                errors += 1
+                continue
+            try:
+                chunk_index = int(chunk_index_raw)
+            except (TypeError, ValueError):
+                errors += 1
+                continue
+            key = (checksum, chunk_index)
+            if lookup[key]:
+                duplicates += 1
+            lookup[key].append(point_id)
+
+        offset = next_offset
+        if offset is None:
+            break
+
+    return lookup, duplicates, errors
+
+
+def _batched_ids(ids: list[str | int], size: int) -> Iterable[list[str | int]]:
+    for start in range(0, len(ids), size):
+        yield ids[start : start + size]
+
+
 def backfill_chunk_char_len(
     *,
     batch_size: int = 500,
-    qdrant_batch_size: int = 200,
+    qdrant_batch_size: int = 1000,
     limit: Optional[int] = None,
     dry_run: bool = False,
 ) -> dict[str, int]:
     os_client = get_client()
     qdrant_client = QdrantClient(url=QDRANT_URL)
 
-    if dry_run:
-        logger.info("Dry run enabled: skipping OpenSearch mapping update.")
-    else:
-        ensure_chunk_char_len_mapping()
-
     checksum_sort_field = _resolve_checksum_sort_field(os_client)
+    qdrant_lookup, qdrant_duplicates, lookup_errors = _build_qdrant_lookup(
+        qdrant_client,
+        scroll_batch_size=batch_size,
+    )
     stats = {
-        "processed": 0,
-        "os_updated": 0,
-        "os_errors": 0,
-        "qdrant_updated": 0,
-        "qdrant_not_found": 0,
-        "duplicates": 0,
-        "errors": 0,
+        "processed_os": 0,
+        "qdrant_updated_points": 0,
+        "not_found": 0,
+        "already_migrated": 0,
+        "duplicates": qdrant_duplicates,
+        "errors": lookup_errors,
     }
-    logged_sample = False
 
     for hits in _iter_chunks(
         os_client,
@@ -100,21 +146,17 @@ def backfill_chunk_char_len(
         checksum_sort_field=checksum_sort_field,
     ):
         batch_processed = 0
-        batch_os_updated = 0
-        batch_os_errors = 0
         batch_qdrant_updated = 0
         batch_qdrant_not_found = 0
-        batch_duplicates = 0
         batch_errors = 0
+        grouped_updates: dict[int, list[str | int]] = defaultdict(list)
 
-        os_actions: list[dict[str, Any]] = []
-
-        for idx, hit in enumerate(hits):
-            chunk_id = hit.get("_id")
+        for hit in hits:
             source = hit.get("_source") or {}
             checksum = source.get("checksum")
             chunk_index_raw = source.get("chunk_index")
-            if not chunk_id or checksum is None or chunk_index_raw is None:
+            chunk_char_len = source.get("chunk_char_len")
+            if checksum is None or chunk_index_raw is None:
                 batch_errors += 1
                 continue
             try:
@@ -122,128 +164,73 @@ def backfill_chunk_char_len(
             except (TypeError, ValueError):
                 batch_errors += 1
                 continue
-            text = source.get("text")
-            chunk_char_len = len(text or "")
-
-            if not logged_sample and idx < 3:
-                logger.info(
-                    "Sample chunk: checksum=%s chunk_index=%s chunk_char_len=%s",
-                    checksum,
-                    chunk_index,
-                    chunk_char_len,
-                )
-
-            batch_processed += 1
-
-            count_filter = models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="checksum", match=models.MatchValue(value=checksum)
-                    ),
-                    models.FieldCondition(
-                        key="chunk_index", match=models.MatchValue(value=chunk_index)
-                    ),
-                ]
-            )
-
+            if chunk_char_len is None:
+                batch_errors += 1
+                continue
             try:
-                count_result = qdrant_client.count(
-                    collection_name=QDRANT_COLLECTION,
-                    count_filter=count_filter,
-                    exact=True,
-                )
-                match_count = count_result.count
-            except Exception as exc:  # noqa: BLE001
-                logger.error(
-                    "Failed to count Qdrant points checksum=%s chunk_index=%s: %s",
-                    checksum,
-                    chunk_index,
-                    exc,
-                )
+                chunk_char_len = int(chunk_char_len)
+            except (TypeError, ValueError):
                 batch_errors += 1
                 continue
 
-            if match_count == 0:
-                batch_qdrant_not_found += 1
-            elif match_count > 1:
-                batch_duplicates += 1
+            batch_processed += 1
+            key = (checksum, chunk_index)
+            point_ids = qdrant_lookup.get(key)
 
-            if match_count > 0 and not dry_run:
+            if not point_ids:
+                batch_qdrant_not_found += 1
+                continue
+
+            grouped_updates[chunk_char_len].extend(point_ids)
+
+        for chunk_char_len, point_ids in grouped_updates.items():
+            for ids_batch in _batched_ids(point_ids, qdrant_batch_size):
+                if dry_run:
+                    logger.info(
+                        "Dry run: would update %s points for chunk_char_len=%s.",
+                        len(ids_batch),
+                        chunk_char_len,
+                    )
+                    continue
                 try:
                     qdrant_client.set_payload(
                         collection_name=QDRANT_COLLECTION,
                         payload={"chunk_char_len": chunk_char_len},
-                        filter=count_filter,
-                        wait=True,
+                        points=ids_batch,
+                        wait=False,
                     )
-                    batch_qdrant_updated += match_count
+                    batch_qdrant_updated += len(ids_batch)
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
-                        "Failed to set payload for checksum=%s chunk_index=%s: %s",
-                        checksum,
-                        chunk_index,
+                        "Failed to set payload for chunk_char_len=%s: %s",
+                        chunk_char_len,
                         exc,
                     )
-                    batch_errors += 1
+                    batch_errors += len(ids_batch)
 
-            os_actions.append(
-                {
-                    "_op_type": "update",
-                    "_index": CHUNKS_INDEX,
-                    "_id": str(chunk_id),
-                    "doc": {"chunk_char_len": chunk_char_len},
-                }
-            )
-
-        logged_sample = True
-
-        if os_actions:
-            if dry_run:
-                logger.info(
-                    "Dry run: would update %s OpenSearch docs in this batch.",
-                    len(os_actions),
-                )
-            else:
-                try:
-                    success_count, errors = helpers.bulk(
-                        os_client,
-                        os_actions,
-                        raise_on_error=False,
-                    )
-                    batch_os_updated += success_count
-                    batch_os_errors += len(errors or [])
-                except Exception as exc:  # noqa: BLE001
-                    logger.error("OpenSearch bulk update failed: %s", exc)
-                    batch_os_errors += len(os_actions)
-
-        stats["processed"] += batch_processed
-        stats["os_updated"] += batch_os_updated
-        stats["os_errors"] += batch_os_errors
-        stats["qdrant_updated"] += batch_qdrant_updated
-        stats["qdrant_not_found"] += batch_qdrant_not_found
-        stats["duplicates"] += batch_duplicates
+        stats["processed_os"] += batch_processed
+        stats["qdrant_updated_points"] += batch_qdrant_updated
+        stats["not_found"] += batch_qdrant_not_found
         stats["errors"] += batch_errors
 
         logger.info(
-            "Batch complete. processed=%s os_updated=%s os_errors=%s "
-            "qdrant_updated=%s qdrant_not_found=%s duplicates=%s errors=%s",
+            "Batch complete. processed_os=%s qdrant_updated_points=%s not_found=%s "
+            "already_migrated=%s duplicates=%s errors=%s",
             batch_processed,
-            batch_os_updated,
-            batch_os_errors,
             batch_qdrant_updated,
             batch_qdrant_not_found,
-            batch_duplicates,
+            stats["already_migrated"],
+            stats["duplicates"],
             batch_errors,
         )
 
     logger.info(
-        "Backfill complete. processed=%s os_updated=%s os_errors=%s "
-        "qdrant_updated=%s qdrant_not_found=%s duplicates=%s errors=%s",
-        stats["processed"],
-        stats["os_updated"],
-        stats["os_errors"],
-        stats["qdrant_updated"],
-        stats["qdrant_not_found"],
+        "Backfill complete. processed_os=%s qdrant_updated_points=%s not_found=%s "
+        "already_migrated=%s duplicates=%s errors=%s",
+        stats["processed_os"],
+        stats["qdrant_updated_points"],
+        stats["not_found"],
+        stats["already_migrated"],
         stats["duplicates"],
         stats["errors"],
     )
