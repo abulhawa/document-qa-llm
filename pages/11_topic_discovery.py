@@ -273,6 +273,19 @@ with tabs[0]:
                 "Largest parent share",
                 f"{largest_parent_share:.1%}" if largest_parent_share is not None else "n/a",
             )
+            auto_split = macro_metrics.get("auto_split", {})
+            if auto_split.get("applied"):
+                new_parent_ids = auto_split.get("new_parent_ids", [])
+                new_shares = auto_split.get("new_shares", [])
+                st.caption(
+                    "Auto-split applied to parent "
+                    f"{auto_split.get('original_parent_id')} "
+                    f"(share {auto_split.get('original_share', 0.0):.1%}) → parents "
+                    f"{new_parent_ids[0] if len(new_parent_ids) > 0 else 'n/a'} / "
+                    f"{new_parent_ids[1] if len(new_parent_ids) > 1 else 'n/a'} "
+                    f"(shares {new_shares[0] if len(new_shares) > 0 else 0.0:.1%} / "
+                    f"{new_shares[1] if len(new_shares) > 1 else 0.0:.1%})."
+                )
             candidate_rows = macro_metrics.get("candidates", [])
             if candidate_rows:
                 st.dataframe(candidate_rows, use_container_width=True)
