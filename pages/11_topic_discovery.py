@@ -10,6 +10,7 @@ from services.qdrant_file_vectors import (
     sample_file_vectors,
 )
 from services.topic_discovery_clusters import (
+    clear_cluster_cache,
     cluster_cache_exists,
     ensure_macro_grouping,
     load_last_cluster_cache,
@@ -65,9 +66,10 @@ with tabs[0]:
         with macro_cols[1]:
             macro_max_k = st.number_input("Macro grouping max k", min_value=2, max_value=30, value=10)
 
-    action_cols = st.columns(2)
+    action_cols = st.columns(3)
     run_clicked = action_cols[0].button("Run clustering", type="primary")
     load_clicked = action_cols[1].button("Load last run", disabled=not cluster_cache_exists())
+    clear_clicked = action_cols[2].button("Clear cache")
 
     if run_clicked:
         with st.spinner("Running clustering workflow..."):
@@ -100,6 +102,13 @@ with tabs[0]:
             )
             st.session_state["topic_discovery_clusters"] = cached
             st.success("Loaded cached clustering results.")
+    if clear_clicked:
+        removed = clear_cluster_cache()
+        st.session_state.pop("topic_discovery_clusters", None)
+        if removed:
+            st.success("Cluster cache cleared.")
+        else:
+            st.info("No cache files to clear.")
 
     result = st.session_state.get("topic_discovery_clusters")
 

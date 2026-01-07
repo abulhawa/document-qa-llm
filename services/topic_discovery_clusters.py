@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Iterable
 
@@ -392,9 +393,8 @@ def _macro_group_topics(
             "k": int(k),
             "silhouette": silhouette,
             "largest_parent_share": largest_parent_share,
-            "labels": labels,
         }
-        candidate_metrics.append(metrics)
+        candidate_metrics.append({**metrics, "labels": labels})
     eligible_metrics = [
         metrics
         for metrics in candidate_metrics
@@ -419,9 +419,14 @@ def _macro_group_topics(
             ),
         )
     best_labels = best_choice["labels"] if best_choice else None
+    candidate_metrics_clean = [
+        {key: value for key, value in metrics.items() if key != "labels"}
+        for metrics in candidate_metrics
+    ]
+    labels_iter = best_labels if best_labels is not None else []
     parent_map = {
         topic_id: int(parent_id)
-        for topic_id, parent_id in zip(topic_ids, best_labels or [], strict=False)
+        for topic_id, parent_id in zip(topic_ids, labels_iter, strict=False)
     }
     parent_summaries = _build_parent_summaries(
         clusters=clusters,
@@ -431,7 +436,7 @@ def _macro_group_topics(
         "selected_k": int(best_choice["k"]) if best_choice else 0,
         "silhouette": best_choice["silhouette"] if best_choice else None,
         "largest_parent_share": best_choice["largest_parent_share"] if best_choice else 0.0,
-        "candidates": sorted(candidate_metrics, key=lambda item: item["k"]),
+        "candidates": sorted(candidate_metrics_clean, key=lambda item: item["k"]),
     }
     return parent_map, parent_summaries, macro_metrics
 
@@ -649,6 +654,10 @@ def load_last_cluster_cache() -> dict | None:
             payload = json.load(handle)
         cache_path = Path(payload.get("path", ""))
         if not cache_path.exists():
+            try:
+                last_path.unlink()
+            except OSError:
+                pass
             return None
         with cache_path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
@@ -658,8 +667,24 @@ def load_last_cluster_cache() -> dict | None:
 
 
 def cluster_cache_exists() -> bool:
+    return load_last_cluster_cache() is not None
+
+
+def clear_cluster_cache() -> bool:
     cache_dir = _get_cache_dir()
-    return (cache_dir / CACHE_LAST_FILENAME).exists()
+    if not cache_dir.exists():
+        return False
+    removed = False
+    for entry in cache_dir.iterdir():
+        try:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+            removed = True
+        except OSError:
+            continue
+    return removed
 
 
 def _cache_filename(result: dict) -> str:
