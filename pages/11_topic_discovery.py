@@ -38,6 +38,8 @@ with tabs[0]:
     with control_cols[1]:
         min_samples = st.slider("min_samples", min_value=1, max_value=30, value=10)
 
+    use_umap = st.checkbox("Use UMAP before clustering", value=False)
+
     action_cols = st.columns(2)
     run_clicked = action_cols[0].button("Run clustering", type="primary")
     load_clicked = action_cols[1].button("Load last run", disabled=not cluster_cache_exists())
@@ -69,6 +71,15 @@ with tabs[0]:
                     min_cluster_size=effective_min_cluster_size,
                     min_samples=effective_min_samples,
                     metric="cosine",
+                    use_umap=use_umap,
+                    umap_config={
+                        "n_components": 10,
+                        "n_neighbors": 30,
+                        "min_dist": 0.1,
+                        "metric": "cosine",
+                    }
+                    if use_umap
+                    else None,
                 )
                 clusters = attach_representative_checksums(clusters, checksums)
                 result = build_cluster_cache_result(
@@ -81,6 +92,15 @@ with tabs[0]:
                         "min_cluster_size": effective_min_cluster_size,
                         "min_samples": effective_min_samples,
                         "metric": "cosine",
+                        "use_umap": use_umap,
+                        "umap": {
+                            "n_components": 10,
+                            "n_neighbors": 30,
+                            "min_dist": 0.1,
+                            "metric": "cosine",
+                        }
+                        if use_umap
+                        else None,
                     },
                 )
                 save_cluster_cache(result)
@@ -108,12 +128,20 @@ with tabs[0]:
         outlier_count = sum(1 for label in labels if label == -1)
         cluster_count = len([cluster for cluster in clusters if cluster.get("cluster_id", -1) >= 0])
         outlier_pct = (outlier_count / total_files * 100) if total_files else 0.0
+        largest_cluster_size = max(
+            (cluster.get("size", 0) for cluster in clusters),
+            default=0,
+        )
+        largest_cluster_share = (
+            largest_cluster_size / total_files if total_files else 0.0
+        )
 
-        metrics_cols = st.columns(4)
+        metrics_cols = st.columns(5)
         metrics_cols[0].metric("Total files", total_files)
         metrics_cols[1].metric("Clusters", cluster_count)
         metrics_cols[2].metric("Outliers", outlier_count)
         metrics_cols[3].metric("Outlier %", f"{outlier_pct:.1f}%")
+        metrics_cols[4].metric("Largest cluster share", f"{largest_cluster_share:.1%}")
 
         st.subheader("Cluster summary")
         cluster_rows = sorted(
