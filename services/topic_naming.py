@@ -378,7 +378,7 @@ def _scrub_text(text: str) -> str:
 
 def _split_snippets(text: str) -> list[str]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if lines:
+    if len(lines) > 1:
         return lines
     sentences = re.split(r"(?<=[.!?])\s+", text)
     return [sentence.strip() for sentence in sentences if sentence.strip()]
