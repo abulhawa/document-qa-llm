@@ -297,6 +297,12 @@ def _l2_normalize_vector(vector: np.ndarray) -> np.ndarray:
 
 def _apply_umap(matrix: np.ndarray, config: dict) -> np.ndarray:
     sample_count = matrix.shape[0]
+    if sample_count < 3:
+        logger.warning(
+            "Skipping UMAP reduction for vector count=%s; need at least 3 samples.",
+            sample_count,
+        )
+        return matrix
     defaults = {
         "n_components": 10,
         "n_neighbors": 30,
@@ -305,8 +311,8 @@ def _apply_umap(matrix: np.ndarray, config: dict) -> np.ndarray:
         "random_state": 42,
     }
     params = {**defaults, **config}
-    max_neighbors = max(1, sample_count - 1)
-    n_neighbors = min(int(params["n_neighbors"]), max_neighbors)
+    max_neighbors = max(2, sample_count - 1)
+    n_neighbors = max(2, min(int(params["n_neighbors"]), max_neighbors))
     n_components = min(int(params["n_components"]), max(2, sample_count))
     if n_neighbors != params["n_neighbors"] or n_components != params["n_components"]:
         logger.warning(
