@@ -10,3 +10,4 @@ qdrant_threshold_eval.py
 artifacts/
 *.ipynb
 opensearch-backups/
+data/topic_discovery/
