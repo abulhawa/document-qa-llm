@@ -9,6 +9,7 @@ from typing import Iterable
 
 import hdbscan
 import numpy as np
+from umap import UMAP
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
@@ -51,6 +52,9 @@ def run_hdbscan(
     min_cluster_size: int,
     min_samples: int,
     metric: str = "cosine",
+    *,
+    use_umap: bool = False,
+    umap_config: dict | None = None,
 ) -> tuple[list[int], list[float], list[dict]]:
     vector_count = len(vectors)
     if not vectors:
@@ -77,8 +81,12 @@ def run_hdbscan(
         )
     data = np.asarray(vectors, dtype=np.float32)
     normalized = _l2_normalize_matrix(data)
+    hdbscan_data = normalized
     effective_metric = metric
-    if metric.lower() == "cosine":
+    if use_umap:
+        hdbscan_data = _apply_umap(normalized, umap_config or {})
+        effective_metric = "euclidean"
+    elif metric.lower() == "cosine":
         # HDBSCAN's BallTree backend does not accept cosine; for unit vectors,
         # Euclidean distance is monotonic with cosine distance.
         effective_metric = "euclidean"
@@ -87,7 +95,7 @@ def run_hdbscan(
         min_samples=effective_min_samples,
         metric=effective_metric,
     )
-    labels = clusterer.fit_predict(normalized)
+    labels = clusterer.fit_predict(hdbscan_data)
     probs = clusterer.probabilities_
 
     clusters: list[dict] = []
@@ -285,3 +293,35 @@ def _l2_normalize_vector(vector: np.ndarray) -> np.ndarray:
     if norm == 0.0:
         return vector
     return vector / norm
+
+
+def _apply_umap(matrix: np.ndarray, config: dict) -> np.ndarray:
+    sample_count = matrix.shape[0]
+    defaults = {
+        "n_components": 10,
+        "n_neighbors": 30,
+        "min_dist": 0.1,
+        "metric": "cosine",
+        "random_state": 42,
+    }
+    params = {**defaults, **config}
+    max_neighbors = max(1, sample_count - 1)
+    n_neighbors = min(int(params["n_neighbors"]), max_neighbors)
+    n_components = min(int(params["n_components"]), max(2, sample_count))
+    if n_neighbors != params["n_neighbors"] or n_components != params["n_components"]:
+        logger.warning(
+            "Adjusting UMAP params for vector count=%s: n_neighbors=%s->%s, n_components=%s->%s",
+            sample_count,
+            params["n_neighbors"],
+            n_neighbors,
+            params["n_components"],
+            n_components,
+        )
+    reducer = UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=float(params["min_dist"]),
+        metric=str(params["metric"]),
+        random_state=params["random_state"],
+    )
+    return reducer.fit_transform(matrix)
