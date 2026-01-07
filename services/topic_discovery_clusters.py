@@ -463,25 +463,68 @@ def enforce_max_parent_share(
     if len(parent_topics) < 2:
         return macro_result
     centroids = np.asarray([cluster["centroid"] for cluster in parent_topics], dtype=np.float32)
-    if "metric" in inspect.signature(AgglomerativeClustering).parameters:
-        model = AgglomerativeClustering(n_clusters=2, linkage="average", metric="cosine")
-        labels = model.fit_predict(centroids)
-    else:
-        distances = cosine_distances(centroids)
-        model = AgglomerativeClustering(
-            n_clusters=2,
-            linkage="average",
-            affinity="precomputed",
-        )
-        labels = model.fit_predict(distances)
+    parent_total = sum(int(cluster.get("size", 0)) for cluster in parent_topics)
+    if parent_total <= 0:
+        return macro_result
+
+    def _cluster_parent(n_clusters: int) -> dict:
+        if "metric" in inspect.signature(AgglomerativeClustering).parameters:
+            model = AgglomerativeClustering(n_clusters=n_clusters, linkage="average", metric="cosine")
+            labels = model.fit_predict(centroids)
+        else:
+            distances = cosine_distances(centroids)
+            model = AgglomerativeClustering(
+                n_clusters=n_clusters,
+                linkage="average",
+                affinity="precomputed",
+            )
+            labels = model.fit_predict(distances)
+        unique_labels = sorted(set(int(label) for label in labels))
+        label_to_index = {label: idx for idx, label in enumerate(unique_labels)}
+        child_totals = [0] * len(unique_labels)
+        for cluster, label in zip(parent_topics, labels, strict=False):
+            topic_id = int(cluster.get("cluster_id", -1))
+            if topic_id < 0:
+                continue
+            child_totals[label_to_index[int(label)]] += int(cluster.get("size", 0))
+        child_shares = [total / parent_total for total in child_totals] if parent_total else []
+        max_child_share = max(child_shares) if child_shares else 0.0
+        return {
+            "labels": labels,
+            "label_to_index": label_to_index,
+            "child_shares": child_shares,
+            "max_child_share": max_child_share,
+            "cluster_count": len(unique_labels),
+        }
+
+    split_k2 = _cluster_parent(2)
+    fallback_note = None
+    selected_split = split_k2
+    if split_k2["max_child_share"] > 0.9:
+        split_k3 = _cluster_parent(3)
+        if split_k3["max_child_share"] < split_k2["max_child_share"]:
+            selected_split = split_k3
+            fallback_note = (
+                "Auto-split fallback applied (k=3) to parent "
+                f"{largest_parent_id}; max child share reduced from "
+                f"{split_k2['max_child_share']:.1%} \u2192 {split_k3['max_child_share']:.1%}."
+            )
+        else:
+            fallback_note = (
+                "Auto-split fallback evaluated (k=3) for parent "
+                f"{largest_parent_id}; kept k=2 (max child share "
+                f"{split_k2['max_child_share']:.1%} vs {split_k3['max_child_share']:.1%})."
+            )
+
     new_parent_base = max(topic_parent_map.values(), default=-1) + 1
-    new_parent_ids = (new_parent_base, new_parent_base + 1)
+    new_parent_ids = tuple(range(new_parent_base, new_parent_base + selected_split["cluster_count"]))
     updated_parent_map = dict(topic_parent_map)
-    for cluster, label in zip(parent_topics, labels, strict=False):
+    for cluster, label in zip(parent_topics, selected_split["labels"], strict=False):
         topic_id = int(cluster.get("cluster_id", -1))
         if topic_id < 0:
             continue
-        updated_parent_map[topic_id] = new_parent_ids[int(label)]
+        label_index = selected_split["label_to_index"][int(label)]
+        updated_parent_map[topic_id] = new_parent_ids[label_index]
     parent_summaries = _build_parent_summaries(
         clusters=clusters,
         topic_parent_map=updated_parent_map,
@@ -500,8 +543,10 @@ def enforce_max_parent_share(
         "original_parent_id": largest_parent_id,
         "original_share": largest_share,
         "new_parent_ids": new_parent_ids,
-        "new_shares": [new_share_lookup.get(new_parent_ids[0], 0.0), new_share_lookup.get(new_parent_ids[1], 0.0)],
+        "new_shares": [new_share_lookup.get(parent_id, 0.0) for parent_id in new_parent_ids],
     }
+    if fallback_note:
+        macro_metrics["auto_split"]["note"] = fallback_note
     return {
         "topic_parent_map": updated_parent_map,
         "parent_summaries": parent_summaries,
