@@ -500,7 +500,7 @@ def enforce_max_parent_share(
     split_k2 = _cluster_parent(2)
     fallback_note = None
     selected_split = split_k2
-    if split_k2["max_child_share"] > 0.9:
+    if split_k2["max_child_share"] > 0.9 and len(parent_topics) >= 3:
         split_k3 = _cluster_parent(3)
         if split_k3["max_child_share"] < split_k2["max_child_share"]:
             selected_split = split_k3
