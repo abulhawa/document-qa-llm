@@ -334,6 +334,9 @@ def ensure_macro_grouping(
     return _ensure_macro_grouping(result, macro_k_range=macro_k_range)
 
 
+TARGET_MAX_PARENT_SHARE = 0.40
+
+
 def _macro_group_topics(
     *,
     clusters: list[dict],
@@ -374,6 +377,7 @@ def _macro_group_topics(
 
     candidate_metrics: list[dict] = []
     best_choice: dict | None = None
+    best_labels: np.ndarray | None = None
     for k in candidates:
         model = _build_agglomerative_model(k)
         labels = model.fit_predict(centroids)
@@ -388,21 +392,36 @@ def _macro_group_topics(
             "k": int(k),
             "silhouette": silhouette,
             "largest_parent_share": largest_parent_share,
+            "labels": labels,
         }
         candidate_metrics.append(metrics)
-        if best_choice is None:
-            best_choice = metrics
-            best_labels = labels
-        else:
-            if silhouette > best_choice["silhouette"] or (
-                silhouette == best_choice["silhouette"]
-                and largest_parent_share < best_choice["largest_parent_share"]
-            ):
-                best_choice = metrics
-                best_labels = labels
+    eligible_metrics = [
+        metrics
+        for metrics in candidate_metrics
+        if metrics["largest_parent_share"] <= TARGET_MAX_PARENT_SHARE
+    ]
+    if eligible_metrics:
+        best_choice = max(
+            eligible_metrics,
+            key=lambda metrics: (
+                metrics["silhouette"],
+                -metrics["largest_parent_share"],
+                -metrics["k"],
+            ),
+        )
+    else:
+        best_choice = max(
+            candidate_metrics,
+            key=lambda metrics: (
+                metrics["silhouette"],
+                -metrics["largest_parent_share"],
+                -metrics["k"],
+            ),
+        )
+    best_labels = best_choice["labels"] if best_choice else None
     parent_map = {
         topic_id: int(parent_id)
-        for topic_id, parent_id in zip(topic_ids, best_labels, strict=False)
+        for topic_id, parent_id in zip(topic_ids, best_labels or [], strict=False)
     }
     parent_summaries = _build_parent_summaries(
         clusters=clusters,
