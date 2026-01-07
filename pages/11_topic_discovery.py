@@ -1,4 +1,9 @@
 import json
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
 
 import streamlit as st
 
@@ -16,13 +21,209 @@ from services.topic_discovery_clusters import (
     load_last_cluster_cache,
     run_topic_discovery_clustering,
 )
+from services import topic_naming
+from services.topic_naming import (
+    ClusterProfile,
+    ParentProfile,
+    build_cluster_profile,
+    build_parent_profile,
+    get_significant_keywords_from_os,
+    hash_profile,
+    suggest_child_name_with_llm,
+    suggest_parent_name_with_llm,
+)
+
+from core.llm import check_llm_status
 
 st.set_page_config(page_title="Topic Discovery", layout="wide")
 
 st.title("Topic Discovery")
 
+def _format_file_label(payload: dict[str, Any], checksum: str) -> str:
+    path = payload.get("path") or payload.get("file_path")
+    filename = payload.get("filename") or payload.get("file_name")
+    ext = payload.get("ext")
+    if path:
+        return f"{checksum} • {path}"
+    if filename and ext:
+        return f"{checksum} • {filename}.{ext}"
+    if filename:
+        return f"{checksum} • {filename}"
+    return checksum
 
-tabs = st.tabs(["Overview", "Admin"])
+
+def _format_label(identifier: int, name: str, hide_ids: bool) -> str:
+    return name if hide_ids else f"{identifier} — {name}"
+
+
+def _cluster_profile(
+    cluster: dict[str, Any],
+    payload_lookup: dict[str, dict[str, Any]],
+    include_snippets: bool,
+) -> ClusterProfile:
+    base = build_cluster_profile(cluster, payload_lookup)
+    if include_snippets:
+        return base
+    keywords = get_significant_keywords_from_os(base.representative_checksums, snippets=None)
+    return ClusterProfile(
+        cluster_id=base.cluster_id,
+        size=base.size,
+        avg_prob=base.avg_prob,
+        centroid=list(base.centroid),
+        representative_checksums=list(base.representative_checksums),
+        representative_files=list(base.representative_files),
+        representative_snippets=[],
+        keywords=keywords,
+    )
+
+
+def _parent_profile(parent_id: int, child_profiles: list[ClusterProfile]) -> ParentProfile:
+    return build_parent_profile(parent_id, child_profiles)
+
+
+def _cache_hit(profile: ClusterProfile | ParentProfile, model_id: str) -> bool:
+    cache_key = hash_profile(
+        profile,
+        topic_naming.DEFAULT_PROMPT_VERSION,
+        model_id,
+        language=topic_naming.DEFAULT_LANGUAGE,
+    )
+    cache_path = Path(topic_naming.CACHE_DIR) / f"{cache_key}.json"
+    return cache_path.exists()
+
+
+def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
+    payload = asdict(profile)
+    keywords = ", ".join(payload.get("keywords", [])[:10])
+    lines = []
+    if keywords:
+        lines.append(f"Keywords: {keywords}")
+    if isinstance(profile, ClusterProfile):
+        files = payload.get("representative_files", [])
+        if files:
+            names = [
+                entry.get("filename") or entry.get("path") or entry.get("checksum")
+                for entry in files
+                if entry
+            ]
+            if names:
+                lines.append(f"Representative files: {', '.join(names[:6])}")
+        snippets = payload.get("representative_snippets", [])
+        if snippets:
+            lines.append("Snippets:\n" + "\n".join(snippets[:3]))
+        lines.append(f"Cluster size: {payload.get('size')}")
+        lines.append(f"Avg prob: {payload.get('avg_prob'):.3f}")
+    else:
+        lines.append(f"Parent size: {payload.get('size')}")
+        cluster_ids = payload.get("cluster_ids", [])
+        if cluster_ids:
+            lines.append(f"Child clusters: {', '.join(str(cid) for cid in cluster_ids)}")
+        lines.append(f"Avg prob: {payload.get('avg_prob'):.3f}")
+    return "\n".join(lines)
+
+
+def _build_rows(
+    *,
+    child_profiles: list[ClusterProfile],
+    parent_profiles: list[ParentProfile],
+    llm_status: dict[str, Any],
+) -> list[dict[str, Any]]:
+    model_id = llm_status.get("current_model") or "default"
+    rows: list[dict[str, Any]] = []
+
+    for profile in parent_profiles:
+        cache_hit = _cache_hit(profile, model_id)
+        suggestion = suggest_parent_name_with_llm(
+            profile,
+            model_id=model_id,
+            allow_cache=True,
+        )
+        rows.append(
+            {
+                "id": profile.parent_id,
+                "level": "parent",
+                "proposed_name": suggestion.name,
+                "confidence": suggestion.confidence or profile.avg_prob,
+                "warnings": (suggestion.metadata or {}).get("warning", ""),
+                "rationale": _profile_rationale(profile),
+                "cache_hit": cache_hit,
+                "source": suggestion.source,
+            }
+        )
+
+    for profile in child_profiles:
+        cache_hit = _cache_hit(profile, model_id)
+        suggestion = suggest_child_name_with_llm(
+            profile,
+            model_id=model_id,
+            allow_cache=True,
+        )
+        rows.append(
+            {
+                "id": profile.cluster_id,
+                "level": "child",
+                "proposed_name": suggestion.name,
+                "confidence": suggestion.confidence or profile.avg_prob,
+                "warnings": (suggestion.metadata or {}).get("warning", ""),
+                "rationale": _profile_rationale(profile),
+                "cache_hit": cache_hit,
+                "source": suggestion.source,
+            }
+        )
+
+    return rows
+
+
+def _update_session_rows(rows: list[dict[str, Any]]) -> None:
+    st.session_state["topic_naming_rows"] = rows
+
+
+def _apply_names(
+    *,
+    rows: list[dict[str, Any]],
+    payload_lookup: dict[str, dict[str, Any]],
+    file_assignments: dict[str, dict[str, Any]],
+    hide_ids: bool,
+) -> None:
+    parent_names: dict[int, str] = {}
+    child_names: dict[int, str] = {}
+    for row in rows:
+        identifier = int(row["id"])
+        name = str(row["proposed_name"]).strip() or "Untitled"
+        if row["level"] == "parent":
+            parent_names[identifier] = name
+        else:
+            child_names[identifier] = name
+
+    move_plan: list[dict[str, Any]] = []
+    for checksum, assignment in file_assignments.items():
+        payload = payload_lookup.get(checksum, {})
+        topic_id = int(assignment.get("topic_id", -1))
+        parent_id = int(assignment.get("parent_id", -1))
+        topic_name = child_names.get(topic_id, f"Topic {topic_id}")
+        parent_name = parent_names.get(parent_id, f"Parent {parent_id}")
+        combined = (
+            f"{_format_label(parent_id, parent_name, hide_ids)} / "
+            f"{_format_label(topic_id, topic_name, hide_ids)}"
+        )
+        move_plan.append(
+            {
+                "checksum": checksum,
+                "file": _format_file_label(payload, checksum),
+                "parent": _format_label(parent_id, parent_name, hide_ids),
+                "topic": _format_label(topic_id, topic_name, hide_ids),
+                "combined_label": combined,
+                "prob": assignment.get("prob"),
+            }
+        )
+
+    st.session_state["topic_discovery_name_map"] = {
+        "parents": parent_names,
+        "children": child_names,
+    }
+    st.session_state["topic_discovery_move_plan"] = move_plan
+
+tabs = st.tabs(["Overview", "Naming", "Admin"])
 
 with tabs[0]:
     st.caption("Discover document topics and prepare file-level vectors for clustering.")
@@ -162,19 +363,6 @@ with tabs[0]:
             for idx, checksum in enumerate(checksums)
         }
 
-        def _format_file_label(checksum: str) -> str:
-            payload = payload_lookup.get(checksum, {})
-            path = payload.get("path") or payload.get("file_path")
-            filename = payload.get("filename") or payload.get("file_name")
-            ext = payload.get("ext")
-            if path:
-                return f"{checksum} • {path}"
-            if filename and ext:
-                return f"{checksum} • {filename}.{ext}"
-            if filename:
-                return f"{checksum} • {filename}"
-            return checksum
-
         if parent_rows:
             parent_ids = [row["parent_id"] for row in parent_rows]
             selected_parent_id = st.selectbox("Select a parent group", options=parent_ids)
@@ -245,7 +433,17 @@ with tabs[0]:
                 if selected_cluster:
                     rep_checksums = selected_cluster.get("representative_checksums", [])
                     if rep_checksums:
-                        st.table([{"file": _format_file_label(checksum)} for checksum in rep_checksums])
+                        st.table(
+                            [
+                                {
+                                    "file": _format_file_label(
+                                        payload_lookup.get(checksum, {}),
+                                        checksum,
+                                    )
+                                }
+                                for checksum in rep_checksums
+                            ]
+                        )
                     else:
                         st.info("No representatives found for this topic.")
             else:
@@ -255,7 +453,10 @@ with tabs[0]:
             outlier_rows = sorted(
                 [
                     {
-                        "file": _format_file_label(checksums[idx]),
+                        "file": _format_file_label(
+                            payload_lookup.get(checksums[idx], {}),
+                            checksums[idx],
+                        ),
                         "prob": round(float(probs[idx]), 3),
                     }
                     for idx, label in enumerate(labels)
@@ -300,6 +501,129 @@ with tabs[0]:
                 st.dataframe(candidate_rows, use_container_width=True)
 
 with tabs[1]:
+    st.subheader("Topic naming")
+    st.caption("Generate and edit names for parent and child clusters.")
+
+    cluster_result = st.session_state.get("topic_discovery_clusters")
+    if not cluster_result:
+        st.info("Run clustering in the Overview tab to generate results before naming topics.")
+    else:
+        llm_status = check_llm_status()
+
+        controls = st.columns(3)
+        with controls[0]:
+            include_snippets = st.toggle("Include content snippets", value=True)
+        with controls[1]:
+            hide_ids = st.toggle("Hide numeric IDs", value=False)
+        with controls[2]:
+            generate_clicked = st.button(
+                "Generate names (LLM)",
+                type="primary",
+                disabled=not llm_status.get("active"),
+            )
+
+        if not llm_status.get("active"):
+            st.warning("LLM is inactive. Load a model to enable LLM naming.")
+
+        payloads = cluster_result.get("payloads", [])
+        checksums = cluster_result.get("checksums", [])
+        clusters = cluster_result.get("clusters", [])
+        parent_summaries = cluster_result.get("parent_summaries", [])
+        file_assignments = cluster_result.get("file_assignments", {})
+
+        payload_lookup = {
+            checksum: payloads[idx] if idx < len(payloads) else {}
+            for idx, checksum in enumerate(checksums)
+        }
+
+        topic_parent_map = {
+            int(key): int(value)
+            for key, value in cluster_result.get("topic_parent_map", {}).items()
+        }
+
+        if generate_clicked:
+            child_profiles: list[ClusterProfile] = []
+            for cluster in clusters:
+                profile = _cluster_profile(cluster, payload_lookup, include_snippets)
+                child_profiles.append(profile)
+
+            parent_profiles: list[ParentProfile] = []
+            child_profiles_by_parent: dict[int, list[ClusterProfile]] = {}
+            for profile in child_profiles:
+                parent_id = topic_parent_map.get(profile.cluster_id, -1)
+                child_profiles_by_parent.setdefault(parent_id, []).append(profile)
+
+            for parent in parent_summaries:
+                parent_id = int(parent.get("parent_id", -1))
+                child_group = child_profiles_by_parent.get(parent_id, [])
+                if not child_group:
+                    continue
+                parent_profiles.append(_parent_profile(parent_id, child_group))
+
+            rows = _build_rows(
+                child_profiles=child_profiles,
+                parent_profiles=parent_profiles,
+                llm_status=llm_status,
+            )
+            if any(row["source"] != "llm" for row in rows):
+                st.warning("LLM naming unavailable for some rows; baseline names were used.")
+            _update_session_rows(rows)
+
+        rows_state = st.session_state.get("topic_naming_rows", [])
+
+        if not rows_state:
+            st.info("Generate names to populate the editable table.")
+        else:
+            rows_df = pd.DataFrame(rows_state)
+
+            if "source" in rows_df.columns:
+                rows_df = rows_df.drop(columns=["source"])
+
+            st.subheader("Topic naming table")
+
+            edited_df = st.data_editor(
+                rows_df,
+                use_container_width=True,
+                num_rows="fixed",
+                column_config={
+                    "id": st.column_config.NumberColumn("id", disabled=True),
+                    "level": st.column_config.TextColumn("level", disabled=True),
+                    "proposed_name": st.column_config.TextColumn("proposed_name"),
+                    "confidence": st.column_config.NumberColumn("confidence", disabled=True),
+                    "warnings": st.column_config.TextColumn("warnings", disabled=True),
+                    "rationale": st.column_config.TextColumn("rationale", disabled=True),
+                    "cache_hit": st.column_config.CheckboxColumn("cache_hit", disabled=True),
+                },
+                disabled=["id", "level", "confidence", "warnings", "rationale", "cache_hit"],
+            )
+
+            _update_session_rows(edited_df.to_dict(orient="records"))
+
+            st.caption("Rationale details")
+            for row in edited_df.to_dict(orient="records"):
+                label = f"{row['level'].title()} {row['id']}"
+                with st.expander(label, expanded=False):
+                    st.text(row.get("rationale", ""))
+
+            apply_cols = st.columns(2)
+            with apply_cols[0]:
+                apply_clicked = st.button("Apply names")
+
+            if apply_clicked:
+                _apply_names(
+                    rows=st.session_state.get("topic_naming_rows", []),
+                    payload_lookup=payload_lookup,
+                    file_assignments=file_assignments,
+                    hide_ids=hide_ids,
+                )
+                st.success("Applied names to the dry-run move plan.")
+
+            move_plan = st.session_state.get("topic_discovery_move_plan")
+            if move_plan:
+                st.subheader("Dry-run move plan")
+                st.dataframe(pd.DataFrame(move_plan).head(200), use_container_width=True)
+
+with tabs[2]:
     st.subheader("File vectors")
 
     status_placeholder = st.empty()
