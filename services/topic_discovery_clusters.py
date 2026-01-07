@@ -12,6 +12,7 @@ import hdbscan
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
+from sklearn.metrics.pairwise import cosine_distances
 from umap import UMAP
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -225,6 +226,18 @@ def run_topic_discovery_clustering(
         clusters=clusters,
         macro_k_range=macro_k_range,
     )
+    enforced = enforce_max_parent_share(
+        {
+            "clusters": clusters,
+            "topic_parent_map": topic_parent_map,
+            "parent_summaries": parent_summaries,
+            "macro_metrics": macro_metrics,
+        }
+    )
+    if enforced:
+        topic_parent_map = enforced["topic_parent_map"]
+        parent_summaries = enforced["parent_summaries"]
+        macro_metrics = enforced["macro_metrics"]
     file_assignments = _build_file_assignments(
         checksums=checksums,
         labels=labels,
@@ -268,18 +281,30 @@ def _ensure_macro_grouping(
     *,
     macro_k_range: tuple[int, int],
 ) -> dict:
-    if (
-        result.get("topic_parent_map") is not None
-        and result.get("parent_summaries") is not None
-        and result.get("file_assignments") is not None
-        and result.get("macro_metrics") is not None
-    ):
-        return result
     clusters = result.get("clusters", [])
-    topic_parent_map, parent_summaries, macro_metrics = _macro_group_topics(
-        clusters=clusters,
-        macro_k_range=macro_k_range,
+    topic_parent_map = {
+        int(topic_id): int(parent_id)
+        for topic_id, parent_id in (result.get("topic_parent_map") or {}).items()
+    }
+    parent_summaries = result.get("parent_summaries")
+    macro_metrics = result.get("macro_metrics")
+    if not topic_parent_map or parent_summaries is None or macro_metrics is None:
+        topic_parent_map, parent_summaries, macro_metrics = _macro_group_topics(
+            clusters=clusters,
+            macro_k_range=macro_k_range,
+        )
+    enforced = enforce_max_parent_share(
+        {
+            "clusters": clusters,
+            "topic_parent_map": topic_parent_map,
+            "parent_summaries": parent_summaries,
+            "macro_metrics": macro_metrics,
+        }
     )
+    if enforced:
+        topic_parent_map = enforced["topic_parent_map"]
+        parent_summaries = enforced["parent_summaries"]
+        macro_metrics = enforced["macro_metrics"]
     file_assignments = _build_file_assignments(
         checksums=result.get("checksums", []),
         labels=result.get("labels", []),
@@ -399,6 +424,89 @@ def _build_agglomerative_model(n_clusters: int) -> AgglomerativeClustering:
     else:
         kwargs["affinity"] = "cosine"
     return AgglomerativeClustering(**kwargs)
+
+
+def enforce_max_parent_share(
+    macro_result: dict,
+    *,
+    max_share: float = 0.35,
+) -> dict:
+    macro_metrics = macro_result.get("macro_metrics", {})
+    if macro_metrics.get("auto_split", {}).get("applied"):
+        return macro_result
+    topic_parent_map = {
+        int(topic_id): int(parent_id)
+        for topic_id, parent_id in macro_result.get("topic_parent_map", {}).items()
+    }
+    clusters = macro_result.get("clusters", [])
+    if not topic_parent_map or not clusters:
+        return macro_result
+    parent_totals: dict[int, int] = {}
+    for cluster in clusters:
+        topic_id = int(cluster.get("cluster_id", -1))
+        if topic_id not in topic_parent_map:
+            continue
+        parent_id = int(topic_parent_map[topic_id])
+        parent_totals[parent_id] = parent_totals.get(parent_id, 0) + int(cluster.get("size", 0))
+    total_files = sum(parent_totals.values())
+    if total_files <= 0 or not parent_totals:
+        return macro_result
+    largest_parent_id = max(parent_totals, key=parent_totals.get)
+    largest_share = parent_totals[largest_parent_id] / total_files if total_files else 0.0
+    if largest_share <= max_share:
+        return macro_result
+    parent_topics = [
+        cluster
+        for cluster in clusters
+        if topic_parent_map.get(int(cluster.get("cluster_id", -1))) == largest_parent_id
+    ]
+    if len(parent_topics) < 2:
+        return macro_result
+    centroids = np.asarray([cluster["centroid"] for cluster in parent_topics], dtype=np.float32)
+    if "metric" in inspect.signature(AgglomerativeClustering).parameters:
+        model = AgglomerativeClustering(n_clusters=2, linkage="average", metric="cosine")
+        labels = model.fit_predict(centroids)
+    else:
+        distances = cosine_distances(centroids)
+        model = AgglomerativeClustering(
+            n_clusters=2,
+            linkage="average",
+            affinity="precomputed",
+        )
+        labels = model.fit_predict(distances)
+    new_parent_base = max(topic_parent_map.values(), default=-1) + 1
+    new_parent_ids = (new_parent_base, new_parent_base + 1)
+    updated_parent_map = dict(topic_parent_map)
+    for cluster, label in zip(parent_topics, labels, strict=False):
+        topic_id = int(cluster.get("cluster_id", -1))
+        if topic_id < 0:
+            continue
+        updated_parent_map[topic_id] = new_parent_ids[int(label)]
+    parent_summaries = _build_parent_summaries(
+        clusters=clusters,
+        topic_parent_map=updated_parent_map,
+    )
+    largest_parent_share = (
+        max((summary["total_files"] for summary in parent_summaries), default=0) / total_files
+        if total_files
+        else 0.0
+    )
+    new_share_lookup = {summary["parent_id"]: summary["total_files"] / total_files for summary in parent_summaries}
+    macro_metrics = dict(macro_metrics)
+    macro_metrics["selected_k"] = len(parent_summaries)
+    macro_metrics["largest_parent_share"] = largest_parent_share
+    macro_metrics["auto_split"] = {
+        "applied": True,
+        "original_parent_id": largest_parent_id,
+        "original_share": largest_share,
+        "new_parent_ids": new_parent_ids,
+        "new_shares": [new_share_lookup.get(new_parent_ids[0], 0.0), new_share_lookup.get(new_parent_ids[1], 0.0)],
+    }
+    return {
+        "topic_parent_map": updated_parent_map,
+        "parent_summaries": parent_summaries,
+        "macro_metrics": macro_metrics,
+    }
 
 
 def _build_parent_summaries(
