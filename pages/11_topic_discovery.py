@@ -143,7 +143,11 @@ def _build_rows(
                 "id": profile.parent_id,
                 "level": "parent",
                 "proposed_name": suggestion.name,
-                "confidence": suggestion.confidence or profile.avg_prob,
+                "confidence": (
+                    suggestion.confidence
+                    if suggestion.confidence is not None
+                    else profile.avg_prob
+                ),
                 "warnings": (suggestion.metadata or {}).get("warning", ""),
                 "rationale": _profile_rationale(profile),
                 "cache_hit": cache_hit,
@@ -163,7 +167,11 @@ def _build_rows(
                 "id": profile.cluster_id,
                 "level": "child",
                 "proposed_name": suggestion.name,
-                "confidence": suggestion.confidence or profile.avg_prob,
+                "confidence": (
+                    suggestion.confidence
+                    if suggestion.confidence is not None
+                    else profile.avg_prob
+                ),
                 "warnings": (suggestion.metadata or {}).get("warning", ""),
                 "rationale": _profile_rationale(profile),
                 "cache_hit": cache_hit,
