@@ -9,6 +9,7 @@ import re
 from typing import Any, Iterable, Sequence
 
 from config import logger
+from core.llm import ask_llm, check_llm_status
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
 
@@ -16,6 +17,9 @@ from utils.opensearch.fulltext import get_fulltext_by_checksum
 CACHE_DIR = Path(".cache") / "topic_naming"
 DEFAULT_PROMPT_VERSION = "v1"
 DEFAULT_LANGUAGE = "en"
+LLM_UNAVAILABLE_WARNING = (
+    "LLM unavailable (model not loaded). Naming skipped or using baseline names."
+)
 
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 _LONG_NUMBER_RE = re.compile(r"\b\d{6,}\b")
@@ -258,18 +262,30 @@ def suggest_child_name_with_llm(
         cached = _load_cached_suggestion(cache_key)
         if cached:
             return cached
-    if llm_callable:
-        suggestion = llm_callable(profile)
-        if isinstance(suggestion, NameSuggestion):
-            return _cache_suggestion(cache_key, suggestion)
-    name = _fallback_name(profile.keywords)
-    suggestion = NameSuggestion(
-        name=postprocess_name(name),
-        confidence=None,
-        source="heuristic",
-        cache_key=cache_key,
-        metadata={"cluster_id": profile.cluster_id},
-    )
+    if not _is_llm_ready():
+        suggestion = _baseline_suggestion(
+            profile,
+            cache_key=cache_key,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_unavailable",
+        )
+        return _cache_suggestion(cache_key, suggestion)
+    try:
+        suggestion = _suggest_name_with_llm(
+            profile,
+            model_id=model_id,
+            prompt_version=prompt_version,
+            language=language,
+            llm_callable=llm_callable,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM naming failed for cluster %s: %s", profile.cluster_id, exc)
+        suggestion = _baseline_suggestion(
+            profile,
+            cache_key=cache_key,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_exception",
+        )
     return _cache_suggestion(cache_key, suggestion)
 
 
@@ -287,18 +303,30 @@ def suggest_parent_name_with_llm(
         cached = _load_cached_suggestion(cache_key)
         if cached:
             return cached
-    if llm_callable:
-        suggestion = llm_callable(profile)
-        if isinstance(suggestion, NameSuggestion):
-            return _cache_suggestion(cache_key, suggestion)
-    name = _fallback_name(profile.keywords)
-    suggestion = NameSuggestion(
-        name=postprocess_name(name),
-        confidence=None,
-        source="heuristic",
-        cache_key=cache_key,
-        metadata={"parent_id": profile.parent_id},
-    )
+    if not _is_llm_ready():
+        suggestion = _baseline_suggestion(
+            profile,
+            cache_key=cache_key,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_unavailable",
+        )
+        return _cache_suggestion(cache_key, suggestion)
+    try:
+        suggestion = _suggest_name_with_llm(
+            profile,
+            model_id=model_id,
+            prompt_version=prompt_version,
+            language=language,
+            llm_callable=llm_callable,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM naming failed for parent %s: %s", profile.parent_id, exc)
+        suggestion = _baseline_suggestion(
+            profile,
+            cache_key=cache_key,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_exception",
+        )
     return _cache_suggestion(cache_key, suggestion)
 
 
@@ -461,6 +489,170 @@ def _cache_profiles(cache_key: str, payload: dict[str, Any]) -> None:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to write topic naming cache %s: %s", cache_path, exc)
+
+
+def _is_llm_ready() -> bool:
+    status = check_llm_status()
+    if not status.get("active"):
+        logger.warning(LLM_UNAVAILABLE_WARNING)
+        return False
+    return True
+
+
+def _suggest_name_with_llm(
+    profile: ClusterProfile | ParentProfile,
+    *,
+    model_id: str,
+    prompt_version: str,
+    language: str,
+    llm_callable: Any | None,
+) -> NameSuggestion:
+    if llm_callable:
+        result = llm_callable(profile)
+        if isinstance(result, NameSuggestion):
+            return _ensure_llm_cache(result, profile=profile, used=True)
+        if isinstance(result, str) and result.strip():
+            return _suggestion_from_text(profile, result, cache_key=None, used=True)
+    prompt = _build_llm_prompt(profile, prompt_version=prompt_version, language=language)
+    response = ask_llm(
+        prompt,
+        mode="completion",
+        model=model_id,
+        max_tokens=24,
+        temperature=0.2,
+    )
+    if not response or response.strip() == "[LLM Error]":
+        return _baseline_suggestion(
+            profile,
+            cache_key=None,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_error",
+        )
+    cleaned = postprocess_name(response)
+    if language == "en" and not english_only_check(cleaned):
+        return _baseline_suggestion(
+            profile,
+            cache_key=None,
+            warning=LLM_UNAVAILABLE_WARNING,
+            reason="llm_non_english",
+        )
+    return _suggestion_from_text(profile, cleaned, cache_key=None, used=True)
+
+
+def _build_llm_prompt(
+    profile: ClusterProfile | ParentProfile,
+    *,
+    prompt_version: str,
+    language: str,
+) -> str:
+    keywords = ", ".join(profile.keywords[:12])
+    if isinstance(profile, ClusterProfile):
+        file_names = ", ".join(
+            _dedupe_keep_order(
+                [
+                    str(entry.get("filename") or entry.get("path") or "")
+                    for entry in profile.representative_files
+                ]
+            )
+        )
+        snippets = "\n".join(profile.representative_snippets[:6])
+        return (
+            f"Prompt version: {prompt_version}\n"
+            f"Language: {language}\n"
+            "You label document clusters with concise English names (2-6 words).\n"
+            f"Cluster size: {profile.size}\n"
+            f"Keywords: {keywords}\n"
+            f"Representative files: {file_names}\n"
+            f"Snippets:\n{snippets}\n"
+            "Return only the name."
+        )
+    return (
+        f"Prompt version: {prompt_version}\n"
+        f"Language: {language}\n"
+        "You label parent topic groups with concise English names (2-6 words).\n"
+        f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}\n"
+        f"Keywords: {keywords}\n"
+        "Return only the name."
+    )
+
+
+def _suggestion_from_text(
+    profile: ClusterProfile | ParentProfile,
+    name: str,
+    *,
+    cache_key: str | None,
+    used: bool,
+) -> NameSuggestion:
+    metadata = _profile_metadata(profile)
+    metadata["llm_cache"] = {"llm_used": used}
+    return NameSuggestion(
+        name=postprocess_name(name),
+        confidence=None,
+        source="llm" if used else "baseline",
+        cache_key=cache_key,
+        metadata=metadata,
+    )
+
+
+def _baseline_suggestion(
+    profile: ClusterProfile | ParentProfile,
+    *,
+    cache_key: str | None,
+    warning: str,
+    reason: str,
+) -> NameSuggestion:
+    metadata = _profile_metadata(profile)
+    metadata["warning"] = warning
+    metadata["llm_cache"] = {"llm_used": False, "reason": reason}
+    name = _baseline_name(profile)
+    return NameSuggestion(
+        name=postprocess_name(name),
+        confidence=None,
+        source="baseline",
+        cache_key=cache_key,
+        metadata=metadata,
+    )
+
+
+def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"keywords": list(profile.keywords)}
+    if isinstance(profile, ClusterProfile):
+        metadata["cluster_id"] = profile.cluster_id
+        metadata["size"] = profile.size
+    else:
+        metadata["parent_id"] = profile.parent_id
+        metadata["size"] = profile.size
+        metadata["cluster_ids"] = list(profile.cluster_ids)
+    return metadata
+
+
+def _baseline_name(profile: ClusterProfile | ParentProfile) -> str:
+    name = _fallback_name(profile.keywords)
+    if name != "General":
+        return name
+    if isinstance(profile, ClusterProfile):
+        return f"Cluster {profile.cluster_id}"
+    return f"Group {profile.parent_id}"
+
+
+def _ensure_llm_cache(
+    suggestion: NameSuggestion,
+    *,
+    profile: ClusterProfile | ParentProfile,
+    used: bool,
+) -> NameSuggestion:
+    metadata = dict(suggestion.metadata or {})
+    metadata = {**_profile_metadata(profile), **metadata}
+    metadata.setdefault("llm_cache", {"llm_used": used})
+    if used:
+        metadata["llm_cache"]["llm_used"] = True
+    return NameSuggestion(
+        name=suggestion.name,
+        confidence=suggestion.confidence,
+        source=suggestion.source,
+        cache_key=suggestion.cache_key,
+        metadata=metadata,
+    )
 
 
 __all__ = [
