@@ -262,7 +262,7 @@ def suggest_child_name_with_llm(
         cached = _load_cached_suggestion(cache_key)
         if cached:
             return cached
-    if not _is_llm_ready():
+    if not llm_callable and not _is_llm_ready():
         suggestion = _baseline_suggestion(
             profile,
             cache_key=cache_key,
@@ -303,7 +303,7 @@ def suggest_parent_name_with_llm(
         cached = _load_cached_suggestion(cache_key)
         if cached:
             return cached
-    if not _is_llm_ready():
+    if not llm_callable and not _is_llm_ready():
         suggestion = _baseline_suggestion(
             profile,
             cache_key=cache_key,
