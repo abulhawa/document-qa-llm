@@ -210,7 +210,6 @@ with tabs[0]:
                         "topic_id": cluster.get("cluster_id"),
                         "size": cluster.get("size"),
                         "avg_prob": round(float(cluster.get("avg_prob", 0.0)), 3),
-                        "centroid": cluster.get("centroid"),
                     }
                     for cluster in clusters
                 ],
