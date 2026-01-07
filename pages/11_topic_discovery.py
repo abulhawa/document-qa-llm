@@ -39,6 +39,36 @@ with tabs[0]:
         min_samples = st.slider("min_samples", min_value=1, max_value=30, value=10)
 
     use_umap = st.checkbox("Use UMAP before clustering", value=False)
+    umap_n_components = 10
+    umap_n_neighbors = 30
+    umap_min_dist = 0.1
+    if use_umap:
+        umap_cols = st.columns(3)
+        with umap_cols[0]:
+            umap_n_components = st.number_input(
+                "UMAP n_components",
+                min_value=2,
+                max_value=200,
+                value=10,
+                step=1,
+            )
+        with umap_cols[1]:
+            umap_n_neighbors = st.number_input(
+                "UMAP n_neighbors",
+                min_value=2,
+                max_value=200,
+                value=30,
+                step=1,
+            )
+        with umap_cols[2]:
+            umap_min_dist = st.number_input(
+                "UMAP min_dist",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.1,
+                step=0.05,
+                format="%.2f",
+            )
 
     action_cols = st.columns(2)
     run_clicked = action_cols[0].button("Run clustering", type="primary")
@@ -73,9 +103,9 @@ with tabs[0]:
                     metric="cosine",
                     use_umap=use_umap,
                     umap_config={
-                        "n_components": 10,
-                        "n_neighbors": 30,
-                        "min_dist": 0.1,
+                        "n_components": int(umap_n_components),
+                        "n_neighbors": int(umap_n_neighbors),
+                        "min_dist": float(umap_min_dist),
                         "metric": "cosine",
                     }
                     if use_umap
@@ -94,9 +124,9 @@ with tabs[0]:
                         "metric": "cosine",
                         "use_umap": use_umap,
                         "umap": {
-                            "n_components": 10,
-                            "n_neighbors": 30,
-                            "min_dist": 0.1,
+                            "n_components": int(umap_n_components),
+                            "n_neighbors": int(umap_n_neighbors),
+                            "min_dist": float(umap_min_dist),
                             "metric": "cosine",
                         }
                         if use_umap
