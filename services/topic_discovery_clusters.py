@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import Iterable
 
 import hdbscan
 import numpy as np
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.metrics import silhouette_score
 from umap import UMAP
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -147,9 +150,13 @@ def build_cluster_cache_result(
     probs: list[float],
     clusters: list[dict],
     params: dict,
+    topic_parent_map: dict[int, int] | None = None,
+    parent_summaries: list[dict] | None = None,
+    file_assignments: dict[str, dict] | None = None,
+    macro_metrics: dict | None = None,
 ) -> dict:
     checksums_hash = _hash_checksums(checksums)
-    return {
+    result = {
         "collection": QDRANT_FILE_VECTORS_COLLECTION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "params": params,
@@ -161,6 +168,291 @@ def build_cluster_cache_result(
         "probs": probs,
         "clusters": clusters,
     }
+    if topic_parent_map is not None:
+        result["topic_parent_map"] = {str(key): value for key, value in topic_parent_map.items()}
+    if parent_summaries is not None:
+        result["parent_summaries"] = parent_summaries
+    if file_assignments is not None:
+        result["file_assignments"] = file_assignments
+    if macro_metrics is not None:
+        result["macro_metrics"] = macro_metrics
+    return result
+
+
+def run_topic_discovery_clustering(
+    *,
+    min_cluster_size: int,
+    min_samples: int,
+    metric: str = "cosine",
+    use_umap: bool = False,
+    umap_config: dict | None = None,
+    macro_k_range: tuple[int, int] = (5, 10),
+    allow_cache: bool = True,
+) -> tuple[dict | None, bool]:
+    checksums, vectors, payloads = load_all_file_vectors()
+    if not checksums:
+        return None, False
+    vector_count = len(checksums)
+    checksums_hash = _hash_checksums(checksums)
+    params = {
+        "min_cluster_size": int(min_cluster_size),
+        "min_samples": int(min_samples),
+        "metric": metric,
+        "use_umap": use_umap,
+        "umap": umap_config if use_umap else None,
+        "macro_grouping": {"min_k": int(macro_k_range[0]), "max_k": int(macro_k_range[1])},
+    }
+    if allow_cache:
+        cached = load_last_cluster_cache()
+        if _is_cache_valid(cached, params, vector_count, checksums_hash):
+            upgraded = _ensure_macro_grouping(
+                cached,
+                macro_k_range=macro_k_range,
+            )
+            if upgraded is not cached:
+                save_cluster_cache(upgraded)
+            return upgraded, True
+    labels, probs, clusters = run_hdbscan(
+        vectors=vectors,
+        min_cluster_size=int(min_cluster_size),
+        min_samples=int(min_samples),
+        metric=metric,
+        use_umap=use_umap,
+        umap_config=umap_config,
+    )
+    clusters = attach_representative_checksums(clusters, checksums)
+    topic_parent_map, parent_summaries, macro_metrics = _macro_group_topics(
+        clusters=clusters,
+        macro_k_range=macro_k_range,
+    )
+    file_assignments = _build_file_assignments(
+        checksums=checksums,
+        labels=labels,
+        probs=probs,
+        topic_parent_map=topic_parent_map,
+    )
+    result = build_cluster_cache_result(
+        checksums=checksums,
+        payloads=payloads,
+        labels=labels,
+        probs=probs,
+        clusters=clusters,
+        params=params,
+        topic_parent_map=topic_parent_map,
+        parent_summaries=parent_summaries,
+        file_assignments=file_assignments,
+        macro_metrics=macro_metrics,
+    )
+    save_cluster_cache(result)
+    return result, False
+
+
+def _is_cache_valid(
+    cached: dict | None,
+    params: dict,
+    vector_count: int,
+    checksums_hash: str,
+) -> bool:
+    if not cached:
+        return False
+    return (
+        cached.get("collection") == QDRANT_FILE_VECTORS_COLLECTION
+        and cached.get("params") == params
+        and cached.get("vector_count") == vector_count
+        and cached.get("checksums_hash") == checksums_hash
+    )
+
+
+def _ensure_macro_grouping(
+    result: dict,
+    *,
+    macro_k_range: tuple[int, int],
+) -> dict:
+    if (
+        result.get("topic_parent_map") is not None
+        and result.get("parent_summaries") is not None
+        and result.get("file_assignments") is not None
+        and result.get("macro_metrics") is not None
+    ):
+        return result
+    clusters = result.get("clusters", [])
+    topic_parent_map, parent_summaries, macro_metrics = _macro_group_topics(
+        clusters=clusters,
+        macro_k_range=macro_k_range,
+    )
+    file_assignments = _build_file_assignments(
+        checksums=result.get("checksums", []),
+        labels=result.get("labels", []),
+        probs=result.get("probs", []),
+        topic_parent_map=topic_parent_map,
+    )
+    updated = dict(result)
+    updated.setdefault("params", {})
+    updated["params"].setdefault(
+        "macro_grouping",
+        {"min_k": int(macro_k_range[0]), "max_k": int(macro_k_range[1])},
+    )
+    updated["topic_parent_map"] = {
+        str(key): value for key, value in topic_parent_map.items()
+    }
+    updated["parent_summaries"] = parent_summaries
+    updated["file_assignments"] = file_assignments
+    updated["macro_metrics"] = macro_metrics
+    return updated
+
+
+def ensure_macro_grouping(
+    result: dict,
+    *,
+    macro_k_range: tuple[int, int],
+) -> dict:
+    return _ensure_macro_grouping(result, macro_k_range=macro_k_range)
+
+
+def _macro_group_topics(
+    *,
+    clusters: list[dict],
+    macro_k_range: tuple[int, int],
+) -> tuple[dict[int, int], list[dict], dict]:
+    topic_ids = [int(cluster["cluster_id"]) for cluster in clusters if cluster.get("cluster_id") is not None]
+    if not topic_ids:
+        return {}, [], {"selected_k": 0, "silhouette": None, "largest_parent_share": 0.0, "candidates": []}
+    centroids = np.array([cluster["centroid"] for cluster in clusters], dtype=np.float32)
+    topic_sizes = np.array([cluster.get("size", 0) for cluster in clusters], dtype=np.float32)
+    total_files = float(topic_sizes.sum()) if topic_sizes.size else 0.0
+    min_k = int(macro_k_range[0])
+    max_k = int(macro_k_range[1])
+    if min_k > max_k:
+        min_k, max_k = max_k, min_k
+    max_k = min(max_k, len(topic_ids))
+    candidates = [
+        k
+        for k in range(max(min_k, 2), max_k + 1)
+        if k < len(topic_ids)
+    ]
+    if not candidates:
+        parent_map = {topic_id: 0 for topic_id in topic_ids}
+        parent_summaries = _build_parent_summaries(
+            clusters=clusters,
+            topic_parent_map=parent_map,
+        )
+        largest_parent_share = (
+            parent_summaries[0]["total_files"] / total_files if parent_summaries and total_files else 0.0
+        )
+        macro_metrics = {
+            "selected_k": 1,
+            "silhouette": None,
+            "largest_parent_share": largest_parent_share,
+            "candidates": [],
+        }
+        return parent_map, parent_summaries, macro_metrics
+
+    candidate_metrics: list[dict] = []
+    best_choice: dict | None = None
+    for k in candidates:
+        model = _build_agglomerative_model(k)
+        labels = model.fit_predict(centroids)
+        silhouette = float(silhouette_score(centroids, labels, metric="cosine"))
+        parent_sizes = np.zeros(k, dtype=np.float32)
+        for label, size in zip(labels, topic_sizes, strict=False):
+            parent_sizes[int(label)] += float(size)
+        largest_parent_share = (
+            float(parent_sizes.max()) / total_files if total_files else 0.0
+        )
+        metrics = {
+            "k": int(k),
+            "silhouette": silhouette,
+            "largest_parent_share": largest_parent_share,
+        }
+        candidate_metrics.append(metrics)
+        if best_choice is None:
+            best_choice = metrics
+            best_labels = labels
+        else:
+            if silhouette > best_choice["silhouette"] or (
+                silhouette == best_choice["silhouette"]
+                and largest_parent_share < best_choice["largest_parent_share"]
+            ):
+                best_choice = metrics
+                best_labels = labels
+    parent_map = {
+        topic_id: int(parent_id)
+        for topic_id, parent_id in zip(topic_ids, best_labels, strict=False)
+    }
+    parent_summaries = _build_parent_summaries(
+        clusters=clusters,
+        topic_parent_map=parent_map,
+    )
+    macro_metrics = {
+        "selected_k": int(best_choice["k"]) if best_choice else 0,
+        "silhouette": best_choice["silhouette"] if best_choice else None,
+        "largest_parent_share": best_choice["largest_parent_share"] if best_choice else 0.0,
+        "candidates": sorted(candidate_metrics, key=lambda item: item["k"]),
+    }
+    return parent_map, parent_summaries, macro_metrics
+
+
+def _build_agglomerative_model(n_clusters: int) -> AgglomerativeClustering:
+    kwargs = {"n_clusters": n_clusters, "linkage": "average"}
+    if "metric" in inspect.signature(AgglomerativeClustering).parameters:
+        kwargs["metric"] = "cosine"
+    else:
+        kwargs["affinity"] = "cosine"
+    return AgglomerativeClustering(**kwargs)
+
+
+def _build_parent_summaries(
+    *,
+    clusters: list[dict],
+    topic_parent_map: dict[int, int],
+) -> list[dict]:
+    summaries: dict[int, dict] = {}
+    for cluster in clusters:
+        topic_id = int(cluster.get("cluster_id", -1))
+        if topic_id not in topic_parent_map:
+            continue
+        parent_id = int(topic_parent_map[topic_id])
+        size = int(cluster.get("size", 0))
+        avg_prob = float(cluster.get("avg_prob", 0.0))
+        summary = summaries.setdefault(
+            parent_id,
+            {"parent_id": parent_id, "total_files": 0, "n_topics": 0, "prob_sum": 0.0},
+        )
+        summary["total_files"] += size
+        summary["n_topics"] += 1
+        summary["prob_sum"] += avg_prob * size
+    parent_summaries: list[dict] = []
+    for parent_id, summary in summaries.items():
+        total_files = summary["total_files"]
+        avg_child_prob = summary["prob_sum"] / total_files if total_files else 0.0
+        parent_summaries.append(
+            {
+                "parent_id": parent_id,
+                "total_files": total_files,
+                "n_topics": summary["n_topics"],
+                "avg_child_prob": avg_child_prob,
+            }
+        )
+    return sorted(parent_summaries, key=lambda item: item["total_files"], reverse=True)
+
+
+def _build_file_assignments(
+    *,
+    checksums: list[str],
+    labels: list[int],
+    probs: list[float],
+    topic_parent_map: dict[int, int],
+) -> dict[str, dict]:
+    assignments: dict[str, dict] = {}
+    for checksum, label, prob in zip(checksums, labels, probs, strict=False):
+        topic_id = int(label)
+        parent_id = topic_parent_map.get(topic_id, -1) if topic_id >= 0 else -1
+        assignments[str(checksum)] = {
+            "topic_id": topic_id,
+            "parent_id": int(parent_id),
+            "prob": float(prob),
+        }
+    return assignments
 
 
 def save_cluster_cache(result: dict) -> Path:
