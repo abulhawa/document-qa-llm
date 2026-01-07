@@ -335,6 +335,7 @@ def ensure_macro_grouping(
     return _ensure_macro_grouping(result, macro_k_range=macro_k_range)
 
 
+SILHOUETTE_EPS = 0.005
 TARGET_MAX_PARENT_SHARE = 0.40
 
 
@@ -400,24 +401,17 @@ def _macro_group_topics(
         for metrics in candidate_metrics
         if metrics["largest_parent_share"] <= TARGET_MAX_PARENT_SHARE
     ]
-    if eligible_metrics:
-        best_choice = max(
-            eligible_metrics,
-            key=lambda metrics: (
-                metrics["silhouette"],
-                -metrics["largest_parent_share"],
-                -metrics["k"],
-            ),
-        )
-    else:
-        best_choice = max(
-            candidate_metrics,
-            key=lambda metrics: (
-                metrics["silhouette"],
-                -metrics["largest_parent_share"],
-                -metrics["k"],
-            ),
-        )
+    metrics_pool = eligible_metrics or candidate_metrics
+    best_silhouette = max(metrics["silhouette"] for metrics in metrics_pool)
+    silhouette_candidates = [
+        metrics
+        for metrics in metrics_pool
+        if (best_silhouette - metrics["silhouette"]) <= SILHOUETTE_EPS
+    ]
+    best_choice = min(
+        silhouette_candidates,
+        key=lambda metrics: (metrics["largest_parent_share"], metrics["k"]),
+    )
     best_labels = best_choice["labels"] if best_choice else None
     candidate_metrics_clean = [
         {key: value for key, value in metrics.items() if key != "labels"}
@@ -437,6 +431,9 @@ def _macro_group_topics(
         "silhouette": best_choice["silhouette"] if best_choice else None,
         "largest_parent_share": best_choice["largest_parent_share"] if best_choice else 0.0,
         "candidates": sorted(candidate_metrics_clean, key=lambda item: item["k"]),
+        "silhouette_best": best_silhouette,
+        "silhouette_eps": SILHOUETTE_EPS,
+        "candidate_ks": sorted({int(metrics["k"]) for metrics in silhouette_candidates}),
     }
     return parent_map, parent_summaries, macro_metrics
 
