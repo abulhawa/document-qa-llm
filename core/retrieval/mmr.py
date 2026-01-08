@@ -1,16 +1,19 @@
 from __future__ import annotations
-from typing import List, Callable, Sequence
+from typing import List, Callable, Sequence, Any
 import numpy as np
+from numpy.typing import NDArray
 from core.retrieval.types import DocHit
 
-def _l2(x: np.ndarray) -> np.ndarray:
+FloatArray = NDArray[np.floating[Any]]
+
+def _l2(x: FloatArray) -> FloatArray:
     n = np.linalg.norm(x, axis=-1, keepdims=True) + 1e-8
     return x / n
 
 def mmr_select(
     query: str,
     docs: Sequence[DocHit],
-    embed: Callable[[List[str]], np.ndarray],
+    embed: Callable[[List[str]], Any],
     k: int = 8,
     lambda_mult: float = 0.6,
 ) -> List[DocHit]:
@@ -23,8 +26,8 @@ def mmr_select(
 
     docs_list = list(docs)
     try:
-        q = _l2(embed([query]))[0]
-        D = _l2(embed([d.get("text", "") for d in docs_list]))
+        q = _l2(np.asarray(embed([query]), dtype=float))[0]
+        D = _l2(np.asarray(embed([d.get("text", "") for d in docs_list]), dtype=float))
     except Exception:
         # If embedding API is busy/unavailable, gracefully degrade.
         return docs_list[:k]

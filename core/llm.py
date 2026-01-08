@@ -1,7 +1,6 @@
 import requests
-import json
-from typing import List, Union, Dict, Optional
-from tracing import get_current_span, record_span_error, OUTPUT_VALUE
+from typing import List, Union, Dict, Optional, TypedDict
+from tracing import get_current_span
 from config import (
     logger,
     LLM_COMPLETION_ENDPOINT,
@@ -151,7 +150,15 @@ def ask_llm(
         return "[LLM Error]"
 
 
-def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
+class LLMStatus(TypedDict):
+    server_online: bool
+    model_loaded: bool
+    current_model: str | None
+    status_message: str
+    active: bool
+
+
+def check_llm_status(timeout: float = 0.3) -> LLMStatus:
     """Check if LLM server is online and a model is loaded.
     Returns:
         Dict with keys:
@@ -161,7 +168,7 @@ def check_llm_status(timeout: float = 0.3) -> Dict[str, Optional[str]]:
             - status_message: str
             - active: bool (server and model are ready)
     """
-    result = {
+    result: LLMStatus = {
         "server_online": False,
         "model_loaded": False,
         "current_model": None,

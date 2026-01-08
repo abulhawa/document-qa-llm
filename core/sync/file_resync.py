@@ -269,7 +269,7 @@ def _load_index_snapshot() -> tuple[dict[str, IndexedDoc], dict[str, list[str]],
         canonical = normalize_path(source.get("path") or "") or None
         aliases = [normalize_path(p) for p in (source.get("aliases") or []) if p]
         doc = IndexedDoc(
-            content_id=hit.get("_id"),
+            content_id=str(hit.get("_id") or ""),
             checksum=checksum,
             canonical_path=canonical,
             aliases=aliases,

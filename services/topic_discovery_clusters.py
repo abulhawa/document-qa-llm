@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import hdbscan
 import numpy as np
@@ -439,7 +439,7 @@ def _macro_group_topics(
 
 
 def _build_agglomerative_model(n_clusters: int) -> AgglomerativeClustering:
-    kwargs = {"n_clusters": n_clusters, "linkage": "average"}
+    kwargs: dict[str, Any] = {"n_clusters": n_clusters, "linkage": "average"}
     if "metric" in inspect.signature(AgglomerativeClustering).parameters:
         kwargs["metric"] = "cosine"
     else:
@@ -452,7 +452,7 @@ def enforce_max_parent_share(
     *,
     max_share: float = 0.35,
 ) -> dict:
-    macro_metrics = macro_result.get("macro_metrics", {})
+    macro_metrics: dict[str, Any] = dict(macro_result.get("macro_metrics", {}))
     if macro_metrics.get("auto_split", {}).get("applied"):
         return macro_result
     topic_parent_map = {
@@ -559,7 +559,7 @@ def enforce_max_parent_share(
     macro_metrics = dict(macro_metrics)
     macro_metrics["selected_k"] = len(parent_summaries)
     macro_metrics["largest_parent_share"] = largest_parent_share
-    macro_metrics["auto_split"] = {
+    auto_split: dict[str, Any] = {
         "applied": True,
         "original_parent_id": largest_parent_id,
         "original_share": largest_share,
@@ -567,7 +567,8 @@ def enforce_max_parent_share(
         "new_shares": [new_share_lookup.get(parent_id, 0.0) for parent_id in new_parent_ids],
     }
     if fallback_note:
-        macro_metrics["auto_split"]["note"] = fallback_note
+        auto_split["note"] = fallback_note
+    macro_metrics["auto_split"] = auto_split
     return {
         "topic_parent_map": updated_parent_map,
         "parent_summaries": parent_summaries,

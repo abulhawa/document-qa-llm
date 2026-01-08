@@ -1,11 +1,11 @@
-from typing import Any, Iterable, List, Dict
+from typing import Any, Iterable, List, Dict, cast
 from core.text_preprocess import preprocess_document, PreprocessConfig
 from langchain_core.documents import Document
 
 
 def _to_documents(obj: Any, source_path: str) -> List[Document]:
     """Coerce common loader outputs into List[Document] (preserving metadata when present)."""
-    seq: Iterable[Any] = obj if isinstance(obj, list) else [obj]
+    seq = cast(Iterable[Any], obj if isinstance(obj, list) else [obj])
     out: List[Document] = []
     for o in seq:
         if isinstance(o, Document):
@@ -20,11 +20,14 @@ def _to_documents(obj: Any, source_path: str) -> List[Document]:
             )
             continue
         if isinstance(o, dict):
-            text = str(o.get("text") or o.get("content") or "")
-            base_meta: Dict[str, Any] = dict(o.get("metadata", {}))
+            o_dict = cast(Dict[str, Any], o)
+            text = str(o_dict.get("text") or o_dict.get("content") or "")
+            base_meta: Dict[str, Any] = dict(o_dict.get("metadata", {}))
             # fold any extra keys into metadata to avoid data loss
             extras = {
-                k: v for k, v in o.items() if k not in ("text", "content", "metadata")
+                k: v
+                for k, v in o_dict.items()
+                if k not in ("text", "content", "metadata")
             }
             meta = {**extras, **base_meta}
             meta.setdefault("source", source_path)

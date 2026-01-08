@@ -24,7 +24,7 @@ def _default_deps() -> RetrievalDeps:
 
 
 def _apply_variant_weights(
-    variants_with_weights: Sequence[Tuple[str, float]],
+    variants_with_weights: Sequence[Tuple[str, float | None]],
     cfg: RetrievalConfig,
 ) -> List[Tuple[str, float]]:
     weighted: List[Tuple[str, float]] = []

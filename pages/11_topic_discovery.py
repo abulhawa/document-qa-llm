@@ -211,7 +211,7 @@ def _build_rows(
     *,
     child_profiles: list[ClusterProfile],
     parent_profiles: list[ParentProfile],
-    llm_status: dict[str, Any],
+    llm_status: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     model_id = llm_status.get("current_model") or "default"
     rows: list[dict[str, Any]] = []
@@ -748,7 +748,7 @@ with tabs[1]:
             )
             if any(row["source"] != "llm" for row in rows):
                 st.warning("LLM naming unavailable for some rows; baseline names were used.")
-            _update_session_rows(rows)
+            _update_session_rows(cast(Sequence[Mapping[Hashable, Any]], rows))
 
         rows_state = st.session_state.get("topic_naming_rows", [])
 

@@ -1,10 +1,14 @@
-from typing import Dict, Any, List, Tuple, cast
+from typing import Dict, Any, List, Tuple, cast, TypedDict
 import time, os, json, redis
 from opensearchpy import OpenSearch
 from ui.celery_client import get_ui_celery
 
 # --- fast inspector with tiny cache ---
-_LAST = {"t": 0.0, "payload": None}
+class _LastCache(TypedDict):
+    t: float
+    payload: dict[str, Any] | None
+
+_LAST: _LastCache = {"t": 0.0, "payload": None}
 
 
 def fetch_overview(timeout: float = 0.5, cache_ttl: float = 2.0) -> Dict[str, Any]:

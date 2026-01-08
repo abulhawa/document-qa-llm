@@ -7,6 +7,7 @@ import streamlit as st
 from core.sync.file_resync import (
     DEFAULT_ALLOWED_EXTENSIONS,
     ApplyOptions,
+    ApplyResult,
     apply_plan,
     build_reconciliation_plan,
     scan_files,
@@ -113,7 +114,7 @@ def _render_summary(counts: dict) -> None:
 
 
 def _render_table(rows: List[dict]) -> pd.DataFrame:
-    df = cast(pd.DataFrame, pd.DataFrame(rows))
+    df = pd.DataFrame(rows)
     if df.empty:
         st.info("No results to show yet. Run a scan to populate this table.")
         return df
@@ -283,7 +284,7 @@ if plan:
     filtered_df = _render_table(rows)
 
 if apply_safe_clicked and plan:
-    result = None
+    result: ApplyResult | None = None
     try:
         with st.spinner("Applying SAFE actions…"):
             result = apply_plan(
@@ -300,6 +301,7 @@ if apply_safe_clicked and plan:
         st.stop()
     if result is None:
         st.stop()
+    assert result is not None
     st.success("SAFE actions completed." if not result.errors else "SAFE actions completed with warnings.")
     st.json(
         {
@@ -313,7 +315,7 @@ if apply_safe_clicked and plan:
     )
 
 if apply_destructive_clicked and plan:
-    result = None
+    result: ApplyResult | None = None
     try:
         with st.spinner("Applying destructive actions…"):
             result = apply_plan(
@@ -330,6 +332,7 @@ if apply_destructive_clicked and plan:
         st.stop()
     if result is None:
         st.stop()
+    assert result is not None
     st.success("Destructive actions completed." if not result.errors else "Destructive actions completed with warnings.")
     st.json(
         {

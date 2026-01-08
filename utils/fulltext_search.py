@@ -29,7 +29,7 @@ def build_query(
 ) -> Dict[str, Any]:
     """Build an OpenSearch query for full-document search."""
 
-    base_bool = {
+    base_bool: Dict[str, Any] = {
         "must": [
             {
                 "simple_query_string": {
@@ -203,7 +203,7 @@ def search_documents(
     }
 
 
-def add_path_contains(base_bool: dict, path_contains: str | None) -> None:
+def add_path_contains(base_bool: Dict[str, Any], path_contains: str | None) -> None:
     if not path_contains:
         return
     s = path_contains.strip()

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, cast
+from typing import List, cast
 from core.retrieval.types import DocHit
 from core.opensearch_client import get_client
 from config import logger, CHUNKS_INDEX
@@ -28,7 +28,7 @@ def search(query: str, top_k: int = 10) -> List[DocHit]:
         span.set_attribute("raw_hits", len(hits))
 
         results: List[DocHit] = []
-        seen_checksums = set()
+        seen_checksums: set[object] = set()
         for hit in hits:
             src = hit.get("_source", {})
             checksum = src.get("checksum")

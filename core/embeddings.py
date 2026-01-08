@@ -1,4 +1,3 @@
-import os
 from config import EMBEDDING_API_URL, EMBEDDING_BATCH_SIZE, logger
 from typing import List
 import requests

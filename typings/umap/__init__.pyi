@@ -1,0 +1,6 @@
+from typing import Any
+
+class UMAP:
+    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+    def fit_transform(self, *args: Any, **kwargs: Any) -> Any: ...
+
