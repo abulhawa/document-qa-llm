@@ -579,6 +579,7 @@ def render_empty_state_for_files() -> None:
     st.stop()
 
 
+files = []
 try:
     files = _get_files_fast()  # ← the only line that touches OpenSearch
 except NotFoundError as e:
