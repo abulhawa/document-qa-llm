@@ -1,5 +1,7 @@
 import sys
 import types
+from types import ModuleType
+from typing import Callable
 
 import pytest
 
@@ -14,45 +16,79 @@ class _DummySession:
         )
 
 
-sys.modules.setdefault("requests", types.SimpleNamespace(Session=_DummySession))
-sys.modules.setdefault(
-    "requests.adapters",
-    types.SimpleNamespace(
-        HTTPAdapter=type("HTTPAdapter", (), {"__init__": lambda self, *args, **kwargs: None})
-    ),
+class _RequestsModule(ModuleType):
+    Session: type[_DummySession]
+
+
+class _RequestsAdaptersModule(ModuleType):
+    HTTPAdapter: type
+
+
+class _Urllib3RetryModule(ModuleType):
+    Retry: Callable[..., None]
+
+
+class _OpenSearchModule(ModuleType):
+    OpenSearch: type
+    RequestsHttpConnection: type
+
+
+class _QdrantModule(ModuleType):
+    QdrantClient: type
+    models: ModuleType
+
+
+class _QdrantHttpModelsModule(ModuleType):
+    PointStruct: type
+    PointIdsList: type
+    VectorParams: type
+    Distance: ModuleType
+
+
+class _QdrantDistanceModule(ModuleType):
+    COSINE: str
+
+
+class _RetrievalPipelineModule(ModuleType):
+    retrieve: Callable[..., list]
+
+
+requests_module = _RequestsModule("requests")
+requests_module.Session = _DummySession
+sys.modules.setdefault("requests", requests_module)
+requests_adapters_module = _RequestsAdaptersModule("requests.adapters")
+requests_adapters_module.HTTPAdapter = type(
+    "HTTPAdapter", (), {"__init__": lambda self, *args, **kwargs: None}
 )
-sys.modules.setdefault(
-    "urllib3.util.retry", types.SimpleNamespace(Retry=lambda **kwargs: None)
+sys.modules.setdefault("requests.adapters", requests_adapters_module)
+urllib3_retry_module = _Urllib3RetryModule("urllib3.util.retry")
+urllib3_retry_module.Retry = lambda **kwargs: None
+sys.modules.setdefault("urllib3.util.retry", urllib3_retry_module)
+opensearch_module = _OpenSearchModule("opensearchpy")
+opensearch_module.OpenSearch = type("OpenSearch", (), {})
+opensearch_module.RequestsHttpConnection = object
+sys.modules.setdefault("opensearchpy", opensearch_module)
+qdrant_module = _QdrantModule("qdrant_client")
+qdrant_module.QdrantClient = type(
+    "QdrantClient",
+    (),
+    {
+        "__init__": lambda self, *args, **kwargs: None,
+        "get_collections": lambda self: types.SimpleNamespace(collections=[]),
+        "create_collection": lambda self, *args, **kwargs: None,
+        "search": lambda self, **kwargs: [],
+    },
 )
-sys.modules.setdefault(
-    "opensearchpy",
-    types.SimpleNamespace(OpenSearch=type("OpenSearch", (), {}), RequestsHttpConnection=object),
-)
-sys.modules.setdefault(
-    "qdrant_client",
-    types.SimpleNamespace(
-        QdrantClient=type(
-            "QdrantClient",
-            (),
-            {
-                "__init__": lambda self, *args, **kwargs: None,
-                "get_collections": lambda self: types.SimpleNamespace(collections=[]),
-                "create_collection": lambda self, *args, **kwargs: None,
-                "search": lambda self, **kwargs: [],
-            },
-        ),
-        models=types.SimpleNamespace(),
-    ),
-)
-sys.modules.setdefault(
-    "qdrant_client.http.models",
-    types.SimpleNamespace(
-        PointStruct=type("PointStruct", (), {}),
-        PointIdsList=type("PointIdsList", (), {}),
-        VectorParams=type("VectorParams", (), {}),
-        Distance=types.SimpleNamespace(COSINE="cosine"),
-    ),
-)
+qdrant_module.models = ModuleType("qdrant_client.models")
+sys.modules.setdefault("qdrant_client", qdrant_module)
+qdrant_http_models = _QdrantHttpModelsModule("qdrant_client.http.models")
+qdrant_http_models.PointStruct = type("PointStruct", (), {})
+qdrant_http_models.PointIdsList = type("PointIdsList", (), {})
+qdrant_http_models.VectorParams = type("VectorParams", (), {})
+distance_module = _QdrantDistanceModule("qdrant_client.http.models.Distance")
+distance_module.COSINE = "cosine"
+qdrant_http_models.Distance = distance_module
+sys.modules.setdefault("qdrant_client.http.models", qdrant_http_models)
 
 
 class _Span:
@@ -86,7 +122,22 @@ def _build_tracing_module():
             self.status_code = status_code
             self.description = description
 
-    tracing_module = types.ModuleType("tracing")
+    class TracingModule(ModuleType):
+        start_span: Callable[..., _Span]
+        record_span_error: Callable[..., None]
+        get_current_span: Callable[..., _Span]
+        STATUS_OK: str
+        EMBEDDING: str
+        RETRIEVER: str
+        LLM: str
+        INPUT_VALUE: str
+        OUTPUT_VALUE: str
+        CHAIN: str
+        TOOL: str
+        StatusCode: type[_StatusCode]
+        Status: type[_Status]
+
+    tracing_module = TracingModule("tracing")
     tracing_module.start_span = _start_span
     tracing_module.record_span_error = (
         lambda span, err: span.set_status(_Status(_StatusCode.ERROR, str(err)))
@@ -110,11 +161,9 @@ def _stub_tracing(monkeypatch):
     """Provide a scoped tracing stub so other tests can import real tracing."""
 
     monkeypatch.setitem(sys.modules, "tracing", _build_tracing_module())
-    monkeypatch.setitem(
-        sys.modules,
-        "core.retrieval.pipeline",
-        types.SimpleNamespace(retrieve=lambda *_, **__: []),
-    )
+    pipeline_module = _RetrievalPipelineModule("core.retrieval.pipeline")
+    pipeline_module.retrieve = lambda *_, **__: []
+    monkeypatch.setitem(sys.modules, "core.retrieval.pipeline", pipeline_module)
 
 from qa_pipeline.coordinator import answer_question
 from qa_pipeline.types import QueryRewrite, RetrievalResult, RetrievedDocument
