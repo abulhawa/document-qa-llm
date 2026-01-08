@@ -103,6 +103,7 @@ def cluster_profile(cluster_cache_payload: dict) -> topic_naming.ClusterProfile:
         size=cluster["size"],
         avg_prob=cluster["avg_prob"],
         centroid=cluster["centroid"],
+        mixedness=0.12,
         representative_checksums=cluster["representative_checksums"],
         representative_files=representative_files,
         representative_paths=[entry["path"] for entry in representative_files],

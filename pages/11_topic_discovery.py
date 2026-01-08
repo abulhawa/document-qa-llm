@@ -45,6 +45,7 @@ DEFAULT_MAX_KEYWORDS = getattr(topic_naming, "DEFAULT_MAX_KEYWORDS", 20)
 DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
 DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
 DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
+MIXEDNESS_WARNING_THRESHOLD = 0.6
 TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
 )
@@ -98,6 +99,7 @@ def _cluster_profile(
         size=base.size,
         avg_prob=base.avg_prob,
         centroid=list(base.centroid),
+        mixedness=base.mixedness,
         representative_checksums=list(base.representative_checksums),
         representative_files=list(base.representative_files),
         representative_paths=list(base.representative_paths),
@@ -137,6 +139,9 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
     lines = []
     if keywords:
         lines.append(f"Keywords: {keywords}")
+    mixedness = payload.get("mixedness")
+    if mixedness is not None:
+        lines.append(f"Mixedness: {mixedness:.3f}")
     if isinstance(profile, ClusterProfile):
         files = payload.get("representative_files", [])
         if files:
@@ -179,6 +184,16 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
     return "\n".join(lines)
 
 
+def _mixedness_warning(profile: ClusterProfile | ParentProfile) -> str:
+    if profile.mixedness > MIXEDNESS_WARNING_THRESHOLD:
+        return f"High mixedness ({profile.mixedness:.2f})"
+    return ""
+
+
+def _merge_warnings(*messages: str) -> str:
+    return "; ".join([message for message in messages if message])
+
+
 def _build_rows(
     *,
     child_profiles: list[ClusterProfile],
@@ -205,7 +220,10 @@ def _build_rows(
                     if suggestion.confidence is not None
                     else profile.avg_prob
                 ),
-                "warnings": (suggestion.metadata or {}).get("warning", ""),
+                "warnings": _merge_warnings(
+                    (suggestion.metadata or {}).get("warning", ""),
+                    _mixedness_warning(profile),
+                ),
                 "rationale": _profile_rationale(profile),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
@@ -229,7 +247,10 @@ def _build_rows(
                     if suggestion.confidence is not None
                     else profile.avg_prob
                 ),
-                "warnings": (suggestion.metadata or {}).get("warning", ""),
+                "warnings": _merge_warnings(
+                    (suggestion.metadata or {}).get("warning", ""),
+                    _mixedness_warning(profile),
+                ),
                 "rationale": _profile_rationale(profile),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
