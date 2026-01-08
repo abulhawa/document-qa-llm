@@ -437,6 +437,11 @@ def postprocess_name(name: str) -> str:
     cleaned = re.sub(r"\s+", " ", name).strip()
     if not cleaned:
         return "Untitled"
+    if not re.search(r"[A-Za-z0-9]", cleaned):
+        return "Untitled"
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", cleaned).strip().lower()
+    if normalized in {"untitled", "misc", "miscellaneous"}:
+        return "Untitled"
     words = cleaned.split()
     truncated = " ".join(words[:_NAME_MAX_WORDS])
     titled = truncated.title()

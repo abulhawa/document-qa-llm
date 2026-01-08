@@ -138,6 +138,20 @@ def test_postprocess_name_title_case_and_word_limit() -> None:
     assert cleaned == "A Very Long Topic Name With"
 
 
+def test_postprocess_name_trims_and_title_cases() -> None:
+    cleaned = topic_naming.postprocess_name("  sales   pipeline   updates  ")
+    assert cleaned == "Sales Pipeline Updates"
+
+
+def test_postprocess_name_caps_length_and_handles_garbage() -> None:
+    long_name = "enterprise risk management and compliance overview" * 3
+    cleaned = topic_naming.postprocess_name(long_name)
+    assert len(cleaned) <= topic_naming._NAME_MAX_CHARS
+
+    assert topic_naming.postprocess_name("misc") == "Untitled"
+    assert topic_naming.postprocess_name("!!!") == "Untitled"
+
+
 def test_cache_key_stability_and_cache_hits(
     cluster_profile: topic_naming.ClusterProfile,
     tmp_path: Path,
