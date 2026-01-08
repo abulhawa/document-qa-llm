@@ -55,7 +55,12 @@ class IngestLogAdapter(IngestLogger):
         self._emitter.__enter__()
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: Any,
+    ) -> None:
         return self._emitter.__exit__(exc_type, exc, tb)
 
     def set(self, **fields: Any) -> None:  # noqa: D401

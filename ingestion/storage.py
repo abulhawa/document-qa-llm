@@ -51,7 +51,7 @@ def replace_existing_artifacts(normalized_path: str) -> None:
 def embed_and_store(
     chunks: Sequence[Dict[str, Any]],
     *,
-    os_index_batch,
+    os_index_batch: Any,
 ) -> bool:
     """Embed and upsert chunks, invoking OpenSearch batch indexing callback."""
 

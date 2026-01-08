@@ -1,9 +1,10 @@
+from typing import Any
 from config import logger
 from core.llm import ask_llm
 import json
 
 
-def rewrite_query(original_query: str, temperature: float = 0.2) -> dict:
+def rewrite_query(original_query: str, temperature: float = 0.2) -> dict[str, Any]:
     system_prompt = """
     You are an assistant that processes user queries into structured JSON output.
     

@@ -1,0 +1,6 @@
+from typing import Any
+
+class AgglomerativeClustering:
+    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
+    def fit_predict(self, *args: Any, **kwargs: Any) -> Any: ...
+

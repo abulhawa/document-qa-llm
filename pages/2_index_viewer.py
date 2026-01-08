@@ -174,7 +174,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     # Track if any non-table control changed this run (used to preserve selection)
     controls_changed = False
 
-    def _changed(k, v):
+    def _changed(k: str, v: Any) -> bool:
         prev = st.session_state.get(f"_prev_{k}", "__MISSING__")
         st.session_state[f"_prev_{k}"] = v
         return prev != "__MISSING__" and prev != v

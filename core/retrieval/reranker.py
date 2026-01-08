@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Any
 from core.retrieval.types import DocHit
 
 
@@ -20,7 +20,7 @@ class CrossEncoderReranker:
             raise RuntimeError(
                 "sentence-transformers is not installed; cross-encoder rerank is optional."
             ) from exc
-        self.model = CrossEncoder(model_name, device=device)
+        self.model: Any = CrossEncoder(model_name, device=device)
 
     def rerank(
         self, query: str, docs: Sequence[DocHit], top_n: Optional[int] = None
@@ -29,7 +29,7 @@ class CrossEncoderReranker:
             return []
         docs_list = list(docs)
         pairs = [(query, d.get("text", "")) for d in docs_list]
-        scores = self.model.predict(pairs).tolist()
+        scores = list(self.model.predict(pairs).tolist())
         for d, s in zip(docs_list, scores):
             d["rerank_score"] = float(s)
         docs_list.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)

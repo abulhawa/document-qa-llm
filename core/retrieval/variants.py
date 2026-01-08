@@ -3,7 +3,7 @@ from typing import List, Tuple, Dict, Any
 from config import logger
 from core.query_rewriter import rewrite_query
 
-Variant = Tuple[str, float]  # (query_text, bm25_weight)
+Variant = Tuple[str, float | None]  # (query_text, bm25_weight)
 
 
 def generate_variants(original: str, *, rewrite_temp: float = 0.15) -> Dict[str, Any]:

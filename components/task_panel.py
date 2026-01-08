@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, cast
 import streamlit as st
 from ui.task_status import fetch_states, clear_finished
 
@@ -32,7 +32,10 @@ def render_task_panel(records: List[Dict[str, Any]]) -> Tuple[bool, List[Dict[st
         res = states.get(tid, {}).get("result")
         if isinstance(res, dict) and res:
             # Show a few common fields if present
-            fields = {k: res[k] for k in ("status", "checksum", "n_chunks") if k in res}
+            res_dict = cast(dict[str, Any], res)
+            fields: dict[str, Any] = {
+                k: res_dict[k] for k in ("status", "checksum", "n_chunks") if k in res_dict
+            }
             if fields:
                 st.caption("  ↳ " + ", ".join(f"{k}={v}" for k, v in fields.items()))
 

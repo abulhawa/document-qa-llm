@@ -53,7 +53,7 @@ def fuse_semantic_and_bm25(
 def dedup_by_checksum(sorted_docs: Sequence[DocHit]) -> List[DocHit]:
     """Exact behavior of your checksum dedup step."""
     unique_docs: List[DocHit] = []
-    seen = set()
+    seen: set[object] = set()
     for d in sorted_docs:
         cs = d.get("checksum")
         if cs in seen:

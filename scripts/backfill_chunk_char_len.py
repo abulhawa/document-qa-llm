@@ -194,8 +194,7 @@ def backfill_chunk_char_len(
                     )
                     continue
                 try:
-                    ids_batch_typed = cast(list[ExtendedPointId], ids_batch)
-                    points_selector = PointIdsList(points=ids_batch_typed)
+                    points_selector = PointIdsList(points=ids_batch)
                     qdrant_client.set_payload(
                         collection_name=QDRANT_COLLECTION,
                         payload={"chunk_char_len": chunk_char_len},

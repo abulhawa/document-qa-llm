@@ -97,7 +97,7 @@ def preprocess_document(
 
     # 1) Normalize each page early (ftfy + Unicode)
     norm_pages = []
-    for i, p in enumerate(pages):
+    for p in pages:
         t = _normalize_text(p, cfg)
         norm_pages.append(t)
 
@@ -111,7 +111,7 @@ def preprocess_document(
 
     # 3) Per-page cleanup
     out_pages: List[str] = []
-    for idx, page in enumerate(norm_pages, start=1):
+    for page in norm_pages:
         t = page
 
         # Remove repeating headers/footers (exact match policy)
@@ -607,5 +607,5 @@ def _run_smoke_tests() -> None:  # pragma: no cover
     p1 = "HEADER\nBody A\n1"
     p2 = "HEADER\nBody B\n2"
     p3 = "HEADER\nBody C\n3"
-    txt5, pages5 = preprocess_document([p1, p2, p3], cfg, doc_type="pdf")
+    _txt5, pages5 = preprocess_document([p1, p2, p3], cfg, doc_type="pdf")
     assert all(not pg.split("\n", 1)[0].strip() for pg in pages5)  # header removed
