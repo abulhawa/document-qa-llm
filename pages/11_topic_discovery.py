@@ -1,4 +1,5 @@
 import json
+from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -297,8 +298,9 @@ def _build_rows(
     return rows
 
 
-def _update_session_rows(rows: list[dict[str, Any]]) -> None:
-    st.session_state["topic_naming_rows"] = rows
+def _update_session_rows(rows: Sequence[Mapping[Hashable, Any]]) -> None:
+    normalized_rows = [{str(key): value for key, value in row.items()} for row in rows]
+    st.session_state["topic_naming_rows"] = normalized_rows
 
 
 def _apply_names(
