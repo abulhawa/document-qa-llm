@@ -472,7 +472,7 @@ def enforce_max_parent_share(
     total_files = sum(parent_totals.values())
     if total_files <= 0 or not parent_totals:
         return macro_result
-    largest_parent_id = max(parent_totals, key=parent_totals.get)
+    largest_parent_id = max(parent_totals, key=parent_totals.__getitem__)
     largest_share = parent_totals[largest_parent_id] / total_files if total_files else 0.0
     if largest_share <= max_share:
         return macro_result
