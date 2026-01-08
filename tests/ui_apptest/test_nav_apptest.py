@@ -2,12 +2,13 @@ import re
 from pathlib import Path
 import sys
 import types
+from typing import Any, cast
 
 import pytest
 
 # provide a minimal opensearchpy stub so streamlit pages can be imported
-opensearchpy_stub = types.ModuleType("opensearchpy")
-opensearchpy_stub.exceptions = types.ModuleType("exceptions")
+opensearchpy_stub = cast(Any, types.ModuleType("opensearchpy"))
+opensearchpy_stub.exceptions = cast(Any, types.ModuleType("exceptions"))
 opensearchpy_stub.exceptions.NotFoundError = Exception
 opensearchpy_stub.exceptions.TransportError = Exception
 opensearchpy_stub.OpenSearch = object
