@@ -242,7 +242,11 @@ def list_watch_inventory_unindexed_paths_all(
     out: List[str] = []
     scroll_id = None
     try:
-        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        resp = client.search(
+            index=WATCH_INVENTORY_INDEX,
+            body=body,
+            params={"scroll": "2m"},
+        )
         scroll_id = resp.get("_scroll_id")
         hits = resp.get("hits", {}).get("hits", [])
         while hits and len(out) < limit:
@@ -256,7 +260,7 @@ def list_watch_inventory_unindexed_paths_all(
                 break
             if not scroll_id:
                 break
-            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            resp = client.scroll(scroll_id=scroll_id, params={"scroll": "2m"})
             scroll_id = resp.get("_scroll_id")
             hits = resp.get("hits", {}).get("hits", [])
     except Exception:
@@ -388,7 +392,11 @@ def list_watch_inventory_unindexed_paths_filtered(
     out: List[str] = []
     scroll_id = None
     try:
-        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        resp = client.search(
+            index=WATCH_INVENTORY_INDEX,
+            body=body,
+            params={"scroll": "2m"},
+        )
         scroll_id = resp.get("_scroll_id")
         hits = resp.get("hits", {}).get("hits", [])
         while hits and len(out) < limit:
@@ -402,7 +410,7 @@ def list_watch_inventory_unindexed_paths_filtered(
                 break
             if not scroll_id:
                 break
-            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            resp = client.scroll(scroll_id=scroll_id, params={"scroll": "2m"})
             scroll_id = resp.get("_scroll_id")
             hits = resp.get("hits", {}).get("hits", [])
     except Exception:
@@ -500,7 +508,11 @@ def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, p
     out: List[str] = []
     scroll_id = None
     try:
-        resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
+        resp = client.search(
+            index=WATCH_INVENTORY_INDEX,
+            body=body,
+            params={"scroll": "2m"},
+        )
         scroll_id = resp.get("_scroll_id")
         hits = resp.get("hits", {}).get("hits", [])
         while hits and len(out) < limit:
@@ -514,7 +526,7 @@ def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, p
                 break
             if not scroll_id:
                 break
-            resp = client.scroll(scroll_id=scroll_id, scroll="2m")
+            resp = client.scroll(scroll_id=scroll_id, params={"scroll": "2m"})
             scroll_id = resp.get("_scroll_id")
             hits = resp.get("hits", {}).get("hits", [])
     except Exception:
