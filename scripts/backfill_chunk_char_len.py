@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, cast
 
 from core.opensearch_client import get_client
 from qdrant_client import QdrantClient
+from qdrant_client.http.models import ExtendedPointId, PointIdsList
 
 from config import CHUNKS_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
 
@@ -193,10 +194,12 @@ def backfill_chunk_char_len(
                     )
                     continue
                 try:
+                    ids_batch_typed = cast(list[ExtendedPointId], ids_batch)
+                    points_selector = PointIdsList(points=ids_batch_typed)
                     qdrant_client.set_payload(
                         collection_name=QDRANT_COLLECTION,
                         payload={"chunk_char_len": chunk_char_len},
-                        points=ids_batch,
+                        points=points_selector,
                         wait=False,
                     )
                     batch_qdrant_updated += len(ids_batch)

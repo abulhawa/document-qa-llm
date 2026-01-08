@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 import hashlib
 import json
 import math
@@ -498,8 +498,7 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> dict[str, str]:
         os_client = get_client()
         response = os_client.mget(
             index=CHUNKS_INDEX,
-            body={"ids": list(chunk_ids)},
-            _source=["text"],
+            body={"ids": list(chunk_ids), "_source": ["text"]},
         )
     except Exception:  # noqa: BLE001
         return {}
@@ -719,7 +718,9 @@ def hash_profile(
     *,
     language: str = DEFAULT_LANGUAGE,
 ) -> str:
-    if hasattr(profile, "__dataclass_fields__"):
+    if isinstance(profile, dict):
+        profile_payload = profile
+    elif is_dataclass(profile):
         profile_payload = asdict(profile)
     else:
         profile_payload = dict(profile)

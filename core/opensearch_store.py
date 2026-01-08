@@ -35,7 +35,15 @@ def search(query: str, top_k: int = 10) -> List[DocHit]:
             if checksum in seen_checksums:
                 continue
             seen_checksums.add(checksum)
-            result = cast(DocHit, {**src, "score": hit.get("_score"), "_id": hit.get("_id")})
+            score = hit.get("_score")
+            result = cast(
+                DocHit,
+                {
+                    **src,
+                    "score": float(score) if isinstance(score, (int, float)) else 0.0,
+                    "_id": hit.get("_id"),
+                },
+            )
             results.append(result)
             if len(results) >= top_k:
                 break
@@ -43,16 +51,19 @@ def search(query: str, top_k: int = 10) -> List[DocHit]:
         logger.info(f"Returning {len(results)} results after deduplication.")
 
         for i, doc in enumerate(results):
-            span.set_attribute(f"retrieval.documents.{i}.document.id", doc.get("path"))
-            span.set_attribute(f"retrieval.documents.{i}.document.score", doc.get("score"))
+            doc_path = doc.get("path") or ""
+            doc_score = doc.get("score")
+            score_value = float(doc_score) if isinstance(doc_score, (int, float)) else 0.0
+            span.set_attribute(f"retrieval.documents.{i}.document.id", doc_path)
+            span.set_attribute(f"retrieval.documents.{i}.document.score", score_value)
             span.set_attribute(
-                f"retrieval.documents.{i}.document.content", doc.get("text")
+                f"retrieval.documents.{i}.document.content", doc.get("text") or ""
             )
             span.set_attribute(
                 f"retrieval.documents.{i}.document.metadata",
                 [
-                    f"Chunk index: {doc.get('chunk_index')}",
-                    f"Date modified: {doc.get('modified_at')}",
+                    f"Chunk index: {doc.get('chunk_index') or 'N/A'}",
+                    f"Date modified: {doc.get('modified_at') or 'N/A'}",
                 ],
             )
         span.set_status(STATUS_OK)

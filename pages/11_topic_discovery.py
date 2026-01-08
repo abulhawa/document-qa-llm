@@ -2,7 +2,7 @@ import json
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -778,7 +778,9 @@ with tabs[1]:
                 disabled=["id", "level", "confidence", "warnings", "rationale", "cache_hit"],
             )
 
-            _update_session_rows(edited_df.to_dict(orient="records"))
+            _update_session_rows(
+                cast(Sequence[Mapping[Hashable, Any]], edited_df.to_dict(orient="records"))
+            )
 
             st.caption("Rationale details")
             for row in edited_df.to_dict(orient="records"):

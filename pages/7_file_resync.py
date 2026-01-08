@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, cast
 
 import pandas as pd
 import streamlit as st
@@ -113,7 +113,7 @@ def _render_summary(counts: dict) -> None:
 
 
 def _render_table(rows: List[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(rows)
+    df = cast(pd.DataFrame, pd.DataFrame(rows))
     if df.empty:
         st.info("No results to show yet. Run a scan to populate this table.")
         return df
@@ -124,11 +124,12 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
         "Filter by bucket", options=bucket_options, default=default_selection
     )
     if selected:
-        df = df[df["bucket"].isin(selected)]
+        df = df.loc[df["bucket"].isin(selected)]
 
     df = df.copy()
-    df["reason_detail"] = df["reason"].apply(_map_reason_details)
-    df["apply_action"] = df["reason"].apply(_map_reason_actions)
+    reason_series = cast(pd.Series, df["reason"])
+    df["reason_detail"] = reason_series.apply(_map_reason_details)
+    df["apply_action"] = reason_series.apply(_map_reason_actions)
     preferred_cols = [
         "bucket",
         "reason",
@@ -147,7 +148,7 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
     st.dataframe(df, use_container_width=True, hide_index=True)
     csv_data = df.to_csv(index=False).encode("utf-8")
     st.download_button("Export CSV", data=csv_data, file_name="file_resync.csv")
-    return df
+    return cast(pd.DataFrame, df)
 
 
 with st.expander("Workflow & Safety", expanded=False):

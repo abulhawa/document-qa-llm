@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, Generator
 
 import pytest
 import requests
@@ -19,7 +20,7 @@ def _get_free_port() -> int:
 
 
 @pytest.fixture(scope="session")
-def streamlit_app() -> str:
+def streamlit_app() -> Generator[str, None, None]:
     """Start the Streamlit app on a free port and yield its URL.
 
     This allows running the E2E tests locally without having to manually
@@ -69,7 +70,7 @@ def streamlit_app() -> str:
 
 
 @pytest.fixture(scope="session")
-def browser():
+def browser() -> Generator[Any, None, None]:
     """Provide a headless Chromium browser for tests.
 
     If the required browser binaries are missing (e.g. when running locally

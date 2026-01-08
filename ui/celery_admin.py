@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, cast
 import time, os, json, redis
 from opensearchpy import OpenSearch
 from ui.celery_client import get_ui_celery
@@ -35,7 +35,7 @@ def redis_queue_depth(queue: str = "ingest") -> int:
     url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
     r = redis.from_url(url)
     try:
-        return r.llen(queue)
+        return cast(int, r.llen(queue))
     except Exception:
         return -1
 

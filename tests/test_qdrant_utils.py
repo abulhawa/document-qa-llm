@@ -11,8 +11,10 @@ if isinstance(sys.modules.get("qdrant_client"), types.SimpleNamespace):
     sys.modules.pop("qdrant_client.http.models", None)
 import qdrant_client
 sys.modules["qdrant_client"] = qdrant_client
-sys.modules["qdrant_client.http"] = qdrant_client.http
-sys.modules["qdrant_client.http.models"] = qdrant_client.http.models
+qdrant_http = importlib.import_module("qdrant_client.http")
+qdrant_http_models = importlib.import_module("qdrant_client.http.models")
+sys.modules["qdrant_client.http"] = qdrant_http
+sys.modules["qdrant_client.http.models"] = qdrant_http_models
 
 from utils import qdrant_utils as qdu
 importlib.reload(qdu)

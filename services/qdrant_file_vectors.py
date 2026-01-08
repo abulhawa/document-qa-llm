@@ -294,10 +294,13 @@ def _topk_mean_pool(
     normalized = [_l2_normalize(vec) for vec in vectors]
     scored: list[tuple[float, list[float]]] = []
     for vec, payload in zip(normalized, payloads):
-        score = payload.get("chunk_char_len")
-        try:
-            score = float(score)
-        except (TypeError, ValueError):
+        raw_score = payload.get("chunk_char_len")
+        if isinstance(raw_score, (int, float, str)):
+            try:
+                score = float(raw_score)
+            except ValueError:
+                score = 1.0
+        else:
             score = 1.0
         if score <= 0:
             score = 1.0
