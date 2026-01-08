@@ -7,7 +7,7 @@ import hashlib
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Tuple, TypedDict
 
 import streamlit as st
 
@@ -80,6 +80,42 @@ class SortOptions:
     use_llm_fallback: bool = False
     llm_confidence_floor: float = 0.65
     llm_max_items: int = 200
+
+
+@dataclass(frozen=True)
+class SortOptionsPayload:
+    include_content: bool
+    max_parent_levels: int
+    max_content_chars: int
+    max_content_mb: int
+    weight_meta: float
+    weight_content: float
+    weight_keyword: float
+    alias_map_text: str
+    max_files: Optional[int]
+    use_llm_fallback: bool
+    llm_confidence_floor: float
+    llm_max_items: int
+
+
+class SortOptionsPayloadDict(TypedDict):
+    include_content: bool
+    max_parent_levels: int
+    max_content_chars: int
+    max_content_mb: int
+    weight_meta: float
+    weight_content: float
+    weight_keyword: float
+    alias_map_text: str
+    max_files: Optional[int]
+    use_llm_fallback: bool
+    llm_confidence_floor: float
+    llm_max_items: int
+
+
+class LlmStatus(TypedDict):
+    active: bool
+    current_model: Optional[str]
 
 
 def _tokenize(text: str) -> List[str]:
@@ -323,6 +359,30 @@ def _settings_hash(options: SortOptions) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _coerce_sort_options_payload(payload: SortOptionsPayload) -> SortOptionsPayloadDict:
+    return {
+        "include_content": bool(payload.include_content),
+        "max_parent_levels": int(payload.max_parent_levels),
+        "max_content_chars": int(payload.max_content_chars),
+        "max_content_mb": int(payload.max_content_mb),
+        "weight_meta": float(payload.weight_meta),
+        "weight_content": float(payload.weight_content),
+        "weight_keyword": float(payload.weight_keyword),
+        "alias_map_text": str(payload.alias_map_text),
+        "max_files": int(payload.max_files) if payload.max_files is not None else None,
+        "use_llm_fallback": bool(payload.use_llm_fallback),
+        "llm_confidence_floor": float(payload.llm_confidence_floor),
+        "llm_max_items": int(payload.llm_max_items),
+    }
+
+
+def _coerce_llm_status(raw_status: Mapping[str, object]) -> LlmStatus:
+    active = bool(raw_status.get("active"))
+    raw_model = raw_status.get("current_model")
+    current_model = raw_model if isinstance(raw_model, str) else None
+    return {"active": active, "current_model": current_model}
+
+
 @st.cache_data(show_spinner=False)
 def _cached_scan_files(
     root: str,
@@ -349,14 +409,14 @@ def _cached_embed_batch(
 @st.cache_data(show_spinner=False)
 def _cached_build_sort_plan(
     root: str,
-    options_payload: Tuple[Tuple[str, object], ...],
+    options_payload: SortOptionsPayload,
     settings_hash: str,
     filesystem_fingerprint: str,
-    llm_cache_key: Optional[Tuple[Optional[bool], Optional[str]]],
+    llm_cache_key: Optional[Tuple[bool, Optional[str]]],
 ) -> List[SortPlanItem]:
     _ = (settings_hash, filesystem_fingerprint, llm_cache_key)
-    options = SortOptions(root=root, **dict(options_payload))
-    llm_status = None
+    options = SortOptions(root=root, **_coerce_sort_options_payload(options_payload))
+    llm_status: Optional[LlmStatus] = None
     if llm_cache_key is not None:
         llm_status = {"active": llm_cache_key[0], "current_model": llm_cache_key[1]}
     return _build_sort_plan_uncached(options, settings_hash, filesystem_fingerprint, llm_status)
@@ -401,7 +461,7 @@ def _build_sort_plan_uncached(
     options: SortOptions,
     settings_hash: str,
     filesystem_fingerprint: str,
-    llm_status: Optional[Dict[str, object]] = None,
+    llm_status: Optional[LlmStatus] = None,
 ) -> List[SortPlanItem]:
     targets = _list_topic_targets(options.root, options.alias_map_text)
     if not targets:
@@ -520,8 +580,8 @@ def _build_sort_plan_uncached(
 
     if options.use_llm_fallback:
         if llm_status is None:
-            llm_status = check_llm_status()
-        if not llm_status.get("active"):
+            llm_status = _coerce_llm_status(check_llm_status())
+        if not llm_status["active"]:
             logger.warning("LLM fallback requested but LLM is not active.")
             return plan
 
@@ -546,7 +606,7 @@ def _build_sort_plan_uncached(
             response = ask_llm(
                 prompt,
                 mode="completion",
-                model=llm_status.get("current_model"),
+                model=llm_status["current_model"],
                 max_tokens=32,
                 temperature=0.0,
             )
@@ -570,12 +630,25 @@ def build_sort_plan(
     progress_callback: Optional[Callable[[str, Dict[str, int]], None]] = None,
 ) -> List[SortPlanItem]:
     settings_hash = _settings_hash(options)
-    options_payload = tuple((key, value) for key, value in options.__dict__.items() if key != "root")
+    options_payload = SortOptionsPayload(
+        include_content=options.include_content,
+        max_parent_levels=options.max_parent_levels,
+        max_content_chars=options.max_content_chars,
+        max_content_mb=options.max_content_mb,
+        weight_meta=options.weight_meta,
+        weight_content=options.weight_content,
+        weight_keyword=options.weight_keyword,
+        alias_map_text=options.alias_map_text,
+        max_files=options.max_files,
+        use_llm_fallback=options.use_llm_fallback,
+        llm_confidence_floor=options.llm_confidence_floor,
+        llm_max_items=options.llm_max_items,
+    )
     filesystem_fingerprint = _filesystem_fingerprint(options.root, options.max_files)
     llm_cache_key = None
     if options.use_llm_fallback:
-        llm_status = check_llm_status()
-        llm_cache_key = (llm_status.get("active"), llm_status.get("current_model"))
+        llm_status = _coerce_llm_status(check_llm_status())
+        llm_cache_key = (llm_status["active"], llm_status["current_model"])
     token = _PROGRESS_CALLBACK.set(progress_callback)
     try:
         return _cached_build_sort_plan(
