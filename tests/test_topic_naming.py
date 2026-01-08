@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import types
+from typing import Any, cast
 
 import pytest
 
@@ -10,7 +11,7 @@ import pytest
 def _install_dependency_stubs() -> None:
     sys.modules.setdefault("requests", types.ModuleType("requests"))
 
-    tracing_stub = types.ModuleType("tracing")
+    tracing_stub = cast(Any, types.ModuleType("tracing"))
 
     class DummySpan:
         def set_attribute(self, *_args, **_kwargs):
@@ -27,7 +28,9 @@ def _install_dependency_stubs() -> None:
     tracing_stub.OUTPUT_VALUE = "output"
     sys.modules.setdefault("tracing", tracing_stub)
 
-    topic_discovery_stub = types.ModuleType("services.topic_discovery_clusters")
+    topic_discovery_stub = cast(
+        Any, types.ModuleType("services.topic_discovery_clusters")
+    )
 
     def load_last_cluster_cache():
         return {}
@@ -35,7 +38,7 @@ def _install_dependency_stubs() -> None:
     topic_discovery_stub.load_last_cluster_cache = load_last_cluster_cache
     sys.modules.setdefault("services.topic_discovery_clusters", topic_discovery_stub)
 
-    opensearch_fulltext_stub = types.ModuleType("utils.opensearch.fulltext")
+    opensearch_fulltext_stub = cast(Any, types.ModuleType("utils.opensearch.fulltext"))
 
     def get_fulltext_by_checksum(_checksum):
         return None
