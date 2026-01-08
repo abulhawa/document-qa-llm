@@ -689,11 +689,15 @@ def disambiguate_duplicate_names(
             continue
         used_names: set[str] = set()
         used_suffixes: set[str] = set()
+        per_base_candidates = [
+            _format_differentiator(disambiguators[idx]) for idx in indices
+        ]
+        candidate_iter = iter(per_base_candidates)
         first_idx = indices[0]
         unique[first_idx] = base
         used_names.add(base)
         for idx in indices[1:]:
-            candidate = _format_differentiator(disambiguators[idx])
+            candidate = next(candidate_iter, None)
             if candidate and candidate not in used_suffixes:
                 new_name = f"{base} ({candidate})"
                 used_suffixes.add(candidate)
