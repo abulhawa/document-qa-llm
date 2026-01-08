@@ -9,61 +9,22 @@ import pytest
 def _install_dependency_stubs() -> None:
     sys.modules.setdefault("requests", types.ModuleType("requests"))
 
-    phoenix = types.ModuleType("phoenix")
-    phoenix_otel = types.ModuleType("phoenix.otel")
+    tracing_stub = types.ModuleType("tracing")
 
     class DummySpan:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
         def set_attribute(self, *_args, **_kwargs):
             return None
 
-        def record_exception(self, *_args, **_kwargs):
-            return None
+    def get_current_span():
+        return DummySpan()
 
-        def set_status(self, *_args, **_kwargs):
-            return None
+    def record_span_error(*_args, **_kwargs):
+        return None
 
-    class DummyTracer:
-        def start_as_current_span(self, *_args, **_kwargs):
-            return DummySpan()
-
-    class DummyTracerProvider:
-        def get_tracer(self, _name):
-            return DummyTracer()
-
-    def register(**_kwargs):
-        return DummyTracerProvider()
-
-    phoenix_otel.register = register
-    sys.modules.setdefault("phoenix", phoenix)
-    sys.modules.setdefault("phoenix.otel", phoenix_otel)
-
-    openinference = types.ModuleType("openinference")
-    openinference_semconv = types.ModuleType("openinference.semconv")
-    openinference_semconv_trace = types.ModuleType("openinference.semconv.trace")
-
-    class DummySpanAttributes:
-        INPUT_VALUE = "input"
-        OUTPUT_VALUE = "output"
-        OPENINFERENCE_SPAN_KIND = "span.kind"
-
-    class DummySpanKindValues:
-        CHAIN = types.SimpleNamespace(value="chain")
-        LLM = types.SimpleNamespace(value="llm")
-        RETRIEVER = types.SimpleNamespace(value="retriever")
-        EMBEDDING = types.SimpleNamespace(value="embedding")
-        TOOL = types.SimpleNamespace(value="tool")
-
-    openinference_semconv_trace.SpanAttributes = DummySpanAttributes
-    openinference_semconv_trace.OpenInferenceSpanKindValues = DummySpanKindValues
-    sys.modules.setdefault("openinference", openinference)
-    sys.modules.setdefault("openinference.semconv", openinference_semconv)
-    sys.modules.setdefault("openinference.semconv.trace", openinference_semconv_trace)
+    tracing_stub.get_current_span = get_current_span
+    tracing_stub.record_span_error = record_span_error
+    tracing_stub.OUTPUT_VALUE = "output"
+    sys.modules.setdefault("tracing", tracing_stub)
 
     topic_discovery_stub = types.ModuleType("services.topic_discovery_clusters")
 
