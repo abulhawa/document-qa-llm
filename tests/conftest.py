@@ -1,6 +1,9 @@
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
+from typing import Callable
 
 # Ensure project root is on sys.path for direct test runs
 _ROOT = Path(__file__).resolve().parents[1]
@@ -25,9 +28,6 @@ def pytest_configure(config):
     else:
         os.environ.setdefault("TEST_MODE", "test")
     os.environ.setdefault("NAMESPACE", "test")
-import types
-import sys
-from contextlib import contextmanager
 
 
 class _DummySpan:
@@ -56,10 +56,17 @@ def _register(*args, **kwargs):
     return _DummyProvider()
 
 
-phoenix = types.ModuleType("phoenix")
-otel = types.ModuleType("phoenix.otel")
+class _PhoenixOtelModule(ModuleType):
+    register: Callable[..., _DummyProvider]
+
+
+class _PhoenixModule(ModuleType):
+    otel: _PhoenixOtelModule
+
+
+phoenix = _PhoenixModule("phoenix")
+otel = _PhoenixOtelModule("phoenix.otel")
 otel.register = _register
 phoenix.otel = otel
 sys.modules.setdefault("phoenix", phoenix)
 sys.modules.setdefault("phoenix.otel", otel)
-
