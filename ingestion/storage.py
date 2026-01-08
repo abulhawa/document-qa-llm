@@ -55,7 +55,9 @@ def embed_and_store(
 ) -> bool:
     """Embed and upsert chunks, invoking OpenSearch batch indexing callback."""
 
-    return qdrant_utils.index_chunks_in_batches(chunks, os_index_batch=os_index_batch)
+    return qdrant_utils.index_chunks_in_batches(
+        list(chunks), os_index_batch=os_index_batch
+    )
 
 
 def index_fulltext(full_doc: Dict[str, Any]) -> None:

@@ -61,20 +61,28 @@ def _search_missing_number_of_chunks(prefix: str, batch: int = 500) -> Tuple[str
         "_source": ["path"],
         "sort": [{"path": "asc"}],
     }
-    resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
-    return resp.get("_scroll_id", ""), [
-        (h.get("_source", {}) or {}).get("path") for h in resp.get("hits", {}).get("hits", [])
-        if (h.get("_source", {}) or {}).get("path")
-    ]
+    resp = client.search(
+        index=WATCH_INVENTORY_INDEX,
+        body=body,
+        params={"scroll": "2m"},
+    )
+    paths: List[str] = []
+    for hit in resp.get("hits", {}).get("hits", []):
+        path = (hit.get("_source", {}) or {}).get("path")
+        if isinstance(path, str) and path:
+            paths.append(path)
+    return resp.get("_scroll_id", ""), paths
 
 
 def _scroll_next(scroll_id: str) -> Tuple[str, List[str]]:
     client = get_client()
-    resp = client.scroll(scroll_id=scroll_id, scroll="2m")
-    return resp.get("_scroll_id", ""), [
-        (h.get("_source", {}) or {}).get("path") for h in resp.get("hits", {}).get("hits", [])
-        if (h.get("_source", {}) or {}).get("path")
-    ]
+    resp = client.scroll(scroll_id=scroll_id, params={"scroll": "2m"})
+    paths: List[str] = []
+    for hit in resp.get("hits", {}).get("hits", []):
+        path = (hit.get("_source", {}) or {}).get("path")
+        if isinstance(path, str) and path:
+            paths.append(path)
+    return resp.get("_scroll_id", ""), paths
 
 
 def _compute_expected_chunks(path: str) -> int:

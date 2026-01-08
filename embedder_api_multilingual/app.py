@@ -6,7 +6,7 @@ import torch
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer  # type: ignore[reportMissingImports]
 
 from config import EMBEDDING_MODEL_NAME, EMBEDDING_BATCH_SIZE
 

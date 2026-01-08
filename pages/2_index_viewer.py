@@ -6,7 +6,7 @@ import time
 import math
 from utils.file_utils import open_file_local, show_in_folder
 from opensearchpy.exceptions import NotFoundError, TransportError
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, cast
 
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 from utils.opensearch_utils import (
@@ -156,9 +156,13 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             trigger_refresh()
 
     # Apply filters
-    fdf = df.copy()
+    fdf: pd.DataFrame = df.copy()
     if path_filter:
-        fdf = fdf[fdf["Path"].str.contains(path_filter, case=False, na=False)]
+        path_series = cast(pd.Series, fdf["Path"])
+        fdf = cast(
+            pd.DataFrame,
+            fdf.loc[path_series.str.contains(path_filter, case=False, na=False)],
+        )
 
     # Decide if we need Qdrant counts for this view
     need_counts = only_missing
@@ -193,7 +197,8 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     if need_counts and not fdf.empty:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        visible_paths = fdf["Path"].dropna().astype(str).unique().tolist()
+        path_series = cast(pd.Series, fdf["Path"])
+        visible_paths = path_series.dropna().astype(str).unique().tolist()
         memo = st.session_state.setdefault("_qdrant_count_memo", {})
         missing = [cs for cs in visible_paths if cs not in memo]
         if missing:
@@ -209,13 +214,24 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         except Exception:
                             memo[cs] = 0
         # update counts in the DataFrame for filtering and display
+        path_series = cast(pd.Series, fdf["Path"])
+        existing_qdrant = (
+            cast(pd.Series, fdf["Qdrant Chunks"])
+            if "Qdrant Chunks" in fdf.columns
+            else 0
+        )
         fdf["Qdrant Chunks"] = (
-            fdf["Path"].astype(str).map(memo).fillna(fdf.get("Qdrant Chunks", 0))
+            path_series.astype(str).map(memo).fillna(existing_qdrant)
         )
 
     # Now that counts exist (if needed), apply the discrepancy filter
     if only_missing:
-        fdf = fdf[fdf["OpenSearch Chunks"].fillna(0) != fdf["Qdrant Chunks"].fillna(0)]
+        fdf = cast(
+            pd.DataFrame,
+            fdf.loc[
+                fdf["OpenSearch Chunks"].fillna(0) != fdf["Qdrant Chunks"].fillna(0)
+            ],
+        )
 
     # Sorting controls for the full dataset
     sort_cols = list(fdf.columns)
@@ -233,6 +249,8 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
             key="index_sort_col",
             on_change=_reset_page,
         )
+        if sort_col is None:
+            sort_col = sort_cols[0]
     with sc2:
         sort_dir = st.radio(
             "Order",

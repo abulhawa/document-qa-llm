@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
-import uvicorn
+import uvicorn  # type: ignore[reportMissingImports]
 
 app = FastAPI()
 

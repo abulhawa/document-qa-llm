@@ -206,7 +206,7 @@ def run_topic_discovery_clustering(
     }
     if allow_cache:
         cached = load_last_cluster_cache()
-        if _is_cache_valid(cached, params, vector_count, checksums_hash):
+        if cached and _is_cache_valid(cached, params, vector_count, checksums_hash):
             upgraded = _ensure_macro_grouping(
                 cached,
                 macro_k_range=macro_k_range,
@@ -497,7 +497,7 @@ def enforce_max_parent_share(
             model = AgglomerativeClustering(
                 n_clusters=n_clusters,
                 linkage="average",
-                affinity="precomputed",
+                affinity="precomputed",  # type: ignore[reportCallIssue]
             )
             labels = model.fit_predict(distances)
         unique_labels = sorted(set(int(label) for label in labels))
@@ -816,4 +816,5 @@ def _apply_umap(matrix: np.ndarray, config: dict) -> np.ndarray:
         metric=str(params["metric"]),
         random_state=params["random_state"],
     )
-    return reducer.fit_transform(matrix)
+    reduced = reducer.fit_transform(matrix)
+    return np.asarray(reduced)

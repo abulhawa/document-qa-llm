@@ -94,6 +94,7 @@ def test_get_fulltext_by_path_or_alias(monkeypatch):
     monkeypatch.setattr("utils.opensearch_utils.get_client", lambda: FakeClient())
     doc = osu.get_fulltext_by_path_or_alias("/other/location.txt")
 
+    assert doc is not None
     assert doc["id"] == "doc1"
     assert doc["path"] == "/foo/bar.txt"
     assert captured["body"]["query"]["bool"]["should"][1]["term"] == {

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import uvicorn
+import uvicorn  # type: ignore[reportMissingImports]
 
 class Req(BaseModel):
     texts: list[str]

@@ -37,7 +37,8 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
     try:
         os_client = get_client()
         response = os_client.mget(
-            index=CHUNKS_INDEX, body={"ids": list(chunk_ids)}, _source=["text"]
+            index=CHUNKS_INDEX,
+            body={"ids": list(chunk_ids), "_source": ["text"]},
         )
     except Exception as e:
         logger.warning(
@@ -82,11 +83,12 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
                 score_threshold=CHUNK_SCORE_THRESHOLD,
                 with_payload=True,
             )
-            chunk_ids = {
-                r.payload.get("id")
-                for r in results
-                if r.payload and r.payload.get("id")
-            }
+            chunk_ids: set[str] = set()
+            for r in results:
+                payload = r.payload or {}
+                chunk_id = payload.get("id")
+                if isinstance(chunk_id, str) and chunk_id:
+                    chunk_ids.add(chunk_id)
             chunk_texts = _fetch_chunk_texts(chunk_ids)
             retrieved_chunks: List[DocHit] = []
             seen_checksums = set()
@@ -97,26 +99,32 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
                     continue
                 seen_checksums.add(checksum)
                 chunk_id = payload.get("id")
-                text = chunk_texts.get(chunk_id, payload.get("text", ""))
+                if isinstance(chunk_id, str):
+                    text = chunk_texts.get(chunk_id, payload.get("text", ""))
+                else:
+                    text = payload.get("text", "")
                 retrieved_chunks.append({**payload, "score": r.score, "text": text})
                 if len(retrieved_chunks) >= top_k:
                     break
 
             for i, doc in enumerate(retrieved_chunks):
+                doc_path = doc.get("path") or ""
+                doc_score = doc.get("score")
+                score_value = float(doc_score) if isinstance(doc_score, (int, float)) else 0.0
                 span.set_attribute(
-                    f"retrieval.documents.{i}.document.id", doc.get("path")
+                    f"retrieval.documents.{i}.document.id", doc_path
                 )
                 span.set_attribute(
-                    f"retrieval.documents.{i}.document.score", doc.get("score")
+                    f"retrieval.documents.{i}.document.score", score_value
                 )
                 span.set_attribute(
-                    f"retrieval.documents.{i}.document.content", doc.get("text", "")
+                    f"retrieval.documents.{i}.document.content", doc.get("text") or ""
                 )
                 span.set_attribute(
                     f"retrieval.documents.{i}.document.metadata",
                     [
-                        f"Chunk index: {doc.get('chunk_index', 'N/A')}",
-                        f"Date modified: {doc.get('modified_at', 'N/A')}",
+                        f"Chunk index: {doc.get('chunk_index') or 'N/A'}",
+                        f"Date modified: {doc.get('modified_at') or 'N/A'}",
                     ],
                 )
             span.set_status(STATUS_OK)

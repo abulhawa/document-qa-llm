@@ -1,7 +1,7 @@
 import math
 import os
 import time
-from typing import List
+from typing import List, cast
 
 import altair as alt
 import pandas as pd
@@ -286,8 +286,8 @@ def _build_display_table(dataframe: pd.DataFrame, show_advanced: bool) -> pd.Dat
                 "reason": "Reason (raw)",
             }
         )
-    display = dataframe[columns].rename(columns=labels)
-    return display
+    display = cast(pd.DataFrame, dataframe[columns]).rename(columns=labels)
+    return cast(pd.DataFrame, display)
 
 
 if plan is not None:
@@ -398,20 +398,25 @@ if plan is not None:
             item for item in suspicious_items if "." in item and not item.startswith(".")
         }
 
-        filename_lower = df["filename"].str.lower()
-        extension_lower = df["extension"].str.lower()
+        filename_lower = cast(pd.Series, df["filename"]).str.lower()
+        extension_lower = cast(pd.Series, df["extension"]).str.lower()
         suspicious_mask = filename_lower.isin(suspicious_names) | extension_lower.isin(
             suspicious_extensions
         )
-        gray_mask = df["confidence"].between(gray_low, gray_high, inclusive="both")
-        if df["top2_margin"].notna().any():
-            margin_mask = df["top2_margin"].isna() | (df["top2_margin"] <= margin_threshold)
+        gray_mask = cast(pd.Series, df["confidence"]).between(
+            gray_low, gray_high, inclusive="both"
+        )
+        top2_margin = cast(pd.Series, df["top2_margin"])
+        if top2_margin.notna().any():
+            margin_mask = top2_margin.isna() | (top2_margin <= margin_threshold)
         else:
             margin_mask = pd.Series(True, index=df.index)
             st.caption("Top-2 margin is not available for this run.")
 
-        review_mask = (gray_mask & margin_mask) | suspicious_mask
-        review_df = df[review_mask].sort_values("confidence", ascending=True)
+        review_mask = cast(pd.Series, (gray_mask & margin_mask) | suspicious_mask)
+        review_df = cast(pd.DataFrame, df.loc[review_mask]).sort_values(
+            "confidence", ascending=True
+        )
         st.caption(f"{len(review_df)} file(s) flagged for review.")
         if review_df.empty:
             st.info("No files match the review queue criteria.")
@@ -435,11 +440,14 @@ if plan is not None:
             0.0,
             key="filter_confidence",
         )
-        target_options = ["All"] + sorted(df["target_label_display"].unique())
+        target_options = ["All"] + sorted(
+            cast(pd.Series, df["target_label_display"]).unique()
+        )
         target_filter = st.selectbox("Target folder", options=target_options, index=0)
         filename_filter = st.text_input("Filename contains", value="", key="filter_filename")
-        extension_options = sorted({ext for ext in df["extension"].unique() if ext})
-        if "" in df["extension"].unique():
+        extension_series = cast(pd.Series, df["extension"])
+        extension_options = sorted({ext for ext in extension_series.unique() if ext})
+        if "" in extension_series.unique():
             extension_options = extension_options + ["(none)"]
         selected_extensions = st.multiselect(
             "Extensions",
@@ -458,24 +466,37 @@ if plan is not None:
             key="filter_review_queue",
         )
 
-        filtered = df[df["confidence"] >= min_conf_filter].copy()
+        filtered = cast(pd.DataFrame, df.loc[df["confidence"] >= min_conf_filter]).copy()
         if target_filter != "All":
-            filtered = filtered[filtered["target_label_display"] == target_filter]
+            filtered = cast(
+                pd.DataFrame,
+                filtered.loc[filtered["target_label_display"] == target_filter],
+            )
         if filename_filter:
-            filtered = filtered[
-                filtered["filename"].str.contains(filename_filter, case=False, na=False)
-            ]
+            filtered = cast(
+                pd.DataFrame,
+                filtered.loc[
+                    cast(pd.Series, filtered["filename"]).str.contains(
+                        filename_filter, case=False, na=False
+                    )
+                ],
+            )
         if selected_extensions:
-            extension_mask = filtered["extension"].isin(
+            extension_mask = cast(pd.Series, filtered["extension"]).isin(
                 [ext for ext in selected_extensions if ext != "(none)"]
             )
             if "(none)" in selected_extensions:
-                extension_mask |= filtered["extension"] == ""
-            filtered = filtered[extension_mask]
+                extension_mask |= cast(pd.Series, filtered["extension"]) == ""
+            filtered = cast(pd.DataFrame, filtered.loc[extension_mask])
         if only_above_threshold:
-            filtered = filtered[filtered["confidence"] >= min_confidence]
+            filtered = cast(
+                pd.DataFrame, filtered.loc[filtered["confidence"] >= min_confidence]
+            )
         if only_review_queue and not review_mask.empty:
-            filtered = filtered[review_mask.reindex(filtered.index, fill_value=False)]
+            filtered = cast(
+                pd.DataFrame,
+                filtered.loc[review_mask.reindex(filtered.index, fill_value=False)],
+            )
 
         if filtered.empty:
             st.info("No files match the current filters.")
@@ -525,7 +546,10 @@ if plan is not None:
                     "Folder",
                     options=summary["target_label_display"].tolist(),
                 )
-                details = filtered[filtered["target_label_display"] == selected_folder]
+                details = cast(
+                    pd.DataFrame,
+                    filtered.loc[filtered["target_label_display"] == selected_folder],
+                )
                 paged = paginate_dataframe(details, f"page_folder_{selected_folder}")
                 details_display = _build_display_table(paged, show_advanced_columns)
                 st.dataframe(
@@ -537,10 +561,14 @@ if plan is not None:
                 export_df = details
             else:
                 if view_mode == "By confidence":
-                    view_df = filtered.sort_values("confidence", ascending=False)
+                    view_df = cast(pd.DataFrame, filtered).sort_values(
+                        "confidence", ascending=False
+                    )
                 else:
-                    view_df = filtered
-                paged = paginate_dataframe(view_df, f"page_{view_mode.lower().replace(' ', '_')}")
+                    view_df = cast(pd.DataFrame, filtered)
+                paged = paginate_dataframe(
+                    view_df, f"page_{view_mode.lower().replace(' ', '_')}"
+                )
                 view_display = _build_display_table(paged, show_advanced_columns)
                 st.dataframe(
                     view_display,
@@ -550,7 +578,7 @@ if plan is not None:
                 )
                 export_df = view_df
 
-            csv_data = export_df.to_csv(index=False).encode("utf-8")
+            csv_data = cast(pd.DataFrame, export_df).to_csv(index=False).encode("utf-8")
             st.download_button("Export CSV", data=csv_data, file_name="smart_sort_plan.csv")
 
     st.subheader("Apply Moves")
@@ -601,12 +629,35 @@ if plan is not None:
                     min_confidence=min_confidence,
                     dry_run=not enable_moving,
                 )
-            if enable_moving:
-                st.success(f"Moved {len(result['moved'])} file(s).")
+            moved_items = result.get("moved")
+            if isinstance(moved_items, list):
+                moved_list = moved_items
+            elif isinstance(moved_items, tuple):
+                moved_list = list(moved_items)
             else:
-                st.info(f"Dry run: would move {len(result['moved'])} file(s).")
-            if result["errors"]:
-                st.error(f"Errors: {len(result['errors'])}")
-                st.json(result["errors"])
-            if result["skipped"]:
-                st.info(f"Skipped: {len(result['skipped'])} below threshold.")
+                moved_list = []
+
+            error_items = result.get("errors")
+            if isinstance(error_items, list):
+                error_list = error_items
+            elif isinstance(error_items, tuple):
+                error_list = list(error_items)
+            else:
+                error_list = []
+
+            skipped_items = result.get("skipped")
+            if isinstance(skipped_items, list):
+                skipped_list = skipped_items
+            elif isinstance(skipped_items, tuple):
+                skipped_list = list(skipped_items)
+            else:
+                skipped_list = []
+            if enable_moving:
+                st.success(f"Moved {len(moved_list)} file(s).")
+            else:
+                st.info(f"Dry run: would move {len(moved_list)} file(s).")
+            if error_list:
+                st.error(f"Errors: {len(error_list)}")
+                st.json(error_list)
+            if skipped_list:
+                st.info(f"Skipped: {len(skipped_list)} below threshold.")

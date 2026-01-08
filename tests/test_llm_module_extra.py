@@ -23,7 +23,7 @@ def test_check_llm_status_variants(monkeypatch):
     assert status["server_online"] is True
     assert status["model_loaded"] is False
     assert status["active"] is False
-    assert "No LLM model" in status["status_message"]
+    assert "No LLM model" in (status.get("status_message") or "")
 
     # 200 with model
     def get_info_loaded(url, timeout):

@@ -22,9 +22,9 @@ def _install_dependency_stubs() -> None:
     def record_span_error(*_args, **_kwargs):
         return None
 
-    tracing_stub.get_current_span = get_current_span
-    tracing_stub.record_span_error = record_span_error
-    tracing_stub.OUTPUT_VALUE = "output"
+    setattr(tracing_stub, "get_current_span", get_current_span)
+    setattr(tracing_stub, "record_span_error", record_span_error)
+    setattr(tracing_stub, "OUTPUT_VALUE", "output")
     sys.modules.setdefault("tracing", tracing_stub)
 
     topic_discovery_stub = types.ModuleType("services.topic_discovery_clusters")
@@ -32,7 +32,7 @@ def _install_dependency_stubs() -> None:
     def load_last_cluster_cache():
         return {}
 
-    topic_discovery_stub.load_last_cluster_cache = load_last_cluster_cache
+    setattr(topic_discovery_stub, "load_last_cluster_cache", load_last_cluster_cache)
     sys.modules.setdefault("services.topic_discovery_clusters", topic_discovery_stub)
 
     opensearch_fulltext_stub = types.ModuleType("utils.opensearch.fulltext")
@@ -40,7 +40,7 @@ def _install_dependency_stubs() -> None:
     def get_fulltext_by_checksum(_checksum):
         return None
 
-    opensearch_fulltext_stub.get_fulltext_by_checksum = get_fulltext_by_checksum
+    setattr(opensearch_fulltext_stub, "get_fulltext_by_checksum", get_fulltext_by_checksum)
     sys.modules.setdefault("utils.opensearch.fulltext", opensearch_fulltext_stub)
 
 

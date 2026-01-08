@@ -82,4 +82,4 @@ def test_duplicate_alias_locations_surface(monkeypatch):
         "/alias/second.txt",
     }
     alias_rows = df[df["Location Type"] == "Alias"]
-    assert alias_rows["Canonical Path"].unique().tolist() == ["/docs/main.txt"]
+    assert set(alias_rows["Canonical Path"]) == {"/docs/main.txt"}
