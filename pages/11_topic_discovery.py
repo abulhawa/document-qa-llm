@@ -39,6 +39,16 @@ st.set_page_config(page_title="Topic Discovery", layout="wide")
 
 st.title("Topic Discovery")
 
+DEFAULT_PROMPT_VERSION = getattr(topic_naming, "DEFAULT_PROMPT_VERSION", "v1")
+DEFAULT_LANGUAGE = getattr(topic_naming, "DEFAULT_LANGUAGE", "en")
+DEFAULT_MAX_KEYWORDS = getattr(topic_naming, "DEFAULT_MAX_KEYWORDS", 20)
+DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
+DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
+DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
+TOPIC_NAMING_CACHE_DIR = getattr(
+    topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
+)
+
 def _format_file_label(payload: dict[str, Any], checksum: str) -> str:
     path = payload.get("path") or payload.get("file_path")
     filename = payload.get("filename") or payload.get("file_name")
@@ -113,11 +123,11 @@ def _parent_profile(
 def _cache_hit(profile: ClusterProfile | ParentProfile, model_id: str) -> bool:
     cache_key = hash_profile(
         profile,
-        topic_naming.DEFAULT_PROMPT_VERSION,
+        DEFAULT_PROMPT_VERSION,
         model_id,
-        language=topic_naming.DEFAULT_LANGUAGE,
+        language=DEFAULT_LANGUAGE,
     )
-    cache_path = Path(topic_naming.CACHE_DIR) / f"{cache_key}.json"
+    cache_path = Path(TOPIC_NAMING_CACHE_DIR) / f"{cache_key}.json"
     return cache_path.exists()
 
 
@@ -572,24 +582,24 @@ with tabs[1]:
                     "Max keywords",
                     min_value=15,
                     max_value=30,
-                    value=topic_naming.DEFAULT_MAX_KEYWORDS,
+                    value=DEFAULT_MAX_KEYWORDS,
                 )
                 max_path_depth = st.number_input(
                     "Path segment depth (0 = no limit)",
                     min_value=0,
                     max_value=12,
-                    value=topic_naming.DEFAULT_MAX_PATH_DEPTH,
+                    value=DEFAULT_MAX_PATH_DEPTH,
                 )
             with settings_cols[1]:
                 root_path = st.text_input(
                     "Root path prefix to drop (optional)",
-                    value=topic_naming.DEFAULT_ROOT_PATH,
+                    value=DEFAULT_ROOT_PATH,
                 )
                 top_extension_count = st.number_input(
                     "Top extensions to include",
                     min_value=1,
                     max_value=10,
-                    value=topic_naming.DEFAULT_TOP_EXTENSION_COUNT,
+                    value=DEFAULT_TOP_EXTENSION_COUNT,
                 )
 
         max_path_depth_value = int(max_path_depth)
