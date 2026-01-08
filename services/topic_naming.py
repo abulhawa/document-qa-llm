@@ -17,6 +17,10 @@ from utils.opensearch.fulltext import get_fulltext_by_checksum
 CACHE_DIR = Path(".cache") / "topic_naming"
 DEFAULT_PROMPT_VERSION = "v1"
 DEFAULT_LANGUAGE = "en"
+DEFAULT_MAX_KEYWORDS = 20
+DEFAULT_MAX_PATH_DEPTH = 4
+DEFAULT_ROOT_PATH = ""
+DEFAULT_TOP_EXTENSION_COUNT = 5
 LLM_UNAVAILABLE_WARNING = (
     "LLM unavailable (model not loaded). Naming skipped or using baseline names."
 )
@@ -67,8 +71,10 @@ class ClusterProfile:
     centroid: list[float]
     representative_checksums: list[str] = field(default_factory=list)
     representative_files: list[dict[str, Any]] = field(default_factory=list)
+    representative_paths: list[str] = field(default_factory=list)
     representative_snippets: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
+    top_extensions: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -80,6 +86,7 @@ class ParentProfile:
     centroid: list[float]
     representative_checksums: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
+    top_extensions: list[dict[str, Any]] = field(default_factory=list)
 
 
 def tokenize_filename(filename: str) -> list[str]:
@@ -88,8 +95,24 @@ def tokenize_filename(filename: str) -> list[str]:
     return [tok for tok in tokens if tok not in _STOPWORDS]
 
 
-def extract_path_segments(path: str) -> list[str]:
-    parts = [part for part in Path(path).parts if part not in ("/", "")]
+def extract_path_segments(
+    path: str,
+    *,
+    max_depth: int | None = None,
+    root_path: str | None = None,
+) -> list[str]:
+    cleaned_path = path
+    if root_path:
+        try:
+            root_value = str(Path(root_path))
+            common = os.path.commonpath([root_value, str(path)])
+            if common == root_value:
+                cleaned_path = os.path.relpath(str(path), root_value)
+        except ValueError:
+            cleaned_path = path
+    parts = [part for part in Path(cleaned_path).parts if part not in ("/", "")]
+    if max_depth and max_depth > 0:
+        parts = parts[-max_depth:]
     segments: list[str] = []
     for part in parts:
         segments.extend(tokenize_filename(part))
@@ -99,6 +122,11 @@ def extract_path_segments(path: str) -> list[str]:
 def build_cluster_profile(
     cluster: dict[str, Any],
     checksum_payloads: dict[str, dict[str, Any]],
+    *,
+    max_keywords: int = DEFAULT_MAX_KEYWORDS,
+    max_path_depth: int | None = DEFAULT_MAX_PATH_DEPTH,
+    root_path: str | None = DEFAULT_ROOT_PATH,
+    top_extension_count: int = DEFAULT_TOP_EXTENSION_COUNT,
 ) -> ClusterProfile:
     representative_checksums = [
         str(checksum) for checksum in cluster.get("representative_checksums", [])
@@ -107,8 +135,19 @@ def build_cluster_profile(
         cluster,
         checksum_payloads,
     )
+    representative_paths = _extract_representative_paths(representative_files)
     snippets = select_representative_chunks_for_files(representative_files)
-    keywords = get_significant_keywords_from_os(representative_checksums, snippets)
+    keywords = get_significant_keywords_from_os(
+        representative_checksums,
+        snippets,
+        max_keywords=max_keywords,
+        max_path_depth=max_path_depth,
+        root_path=root_path,
+    )
+    top_extensions = _top_file_extensions(
+        representative_files,
+        limit=top_extension_count,
+    )
     centroid = [float(val) for val in cluster.get("centroid", [])]
     return ClusterProfile(
         cluster_id=int(cluster.get("cluster_id", -1)),
@@ -117,14 +156,18 @@ def build_cluster_profile(
         centroid=centroid,
         representative_checksums=representative_checksums,
         representative_files=representative_files,
+        representative_paths=representative_paths,
         representative_snippets=snippets,
         keywords=keywords,
+        top_extensions=top_extensions,
     )
 
 
 def build_parent_profile(
     parent_id: int,
     child_profiles: Sequence[ClusterProfile],
+    *,
+    top_extension_count: int = DEFAULT_TOP_EXTENSION_COUNT,
 ) -> ParentProfile:
     cluster_ids = [profile.cluster_id for profile in child_profiles]
     size = sum(profile.size for profile in child_profiles)
@@ -135,9 +178,16 @@ def build_parent_profile(
     centroid = compute_centroid([profile.centroid for profile in child_profiles])
     representative_checksums: list[str] = []
     keywords: list[str] = []
+    extension_counts: dict[str, int] = {}
     for profile in child_profiles:
         representative_checksums.extend(profile.representative_checksums)
         keywords.extend(profile.keywords)
+        for entry in profile.top_extensions:
+            ext = str(entry.get("extension") or "")
+            if not ext:
+                continue
+            extension_counts[ext] = extension_counts.get(ext, 0) + int(entry.get("count", 0))
+    top_extensions = _format_top_extensions(extension_counts, limit=top_extension_count)
     return ParentProfile(
         parent_id=parent_id,
         cluster_ids=cluster_ids,
@@ -146,6 +196,7 @@ def build_parent_profile(
         centroid=centroid,
         representative_checksums=_dedupe_keep_order(representative_checksums),
         keywords=_dedupe_keep_order(keywords),
+        top_extensions=top_extensions,
     )
 
 
@@ -223,7 +274,9 @@ def get_significant_keywords_from_os(
     checksums: Sequence[str],
     snippets: Sequence[str] | None = None,
     *,
-    max_keywords: int = 8,
+    max_keywords: int = DEFAULT_MAX_KEYWORDS,
+    max_path_depth: int | None = DEFAULT_MAX_PATH_DEPTH,
+    root_path: str | None = DEFAULT_ROOT_PATH,
 ) -> list[str]:
     tokens: list[str] = []
     for checksum in checksums:
@@ -232,7 +285,13 @@ def get_significant_keywords_from_os(
             continue
         path = fulltext.get("path") or ""
         filename = fulltext.get("filename") or ""
-        tokens.extend(extract_path_segments(path))
+        tokens.extend(
+            extract_path_segments(
+                path,
+                max_depth=max_path_depth,
+                root_path=root_path,
+            )
+        )
         tokens.extend(tokenize_filename(filename))
     if snippets:
         for snippet in snippets:
@@ -417,6 +476,57 @@ def _tokenize_text(text: str) -> list[str]:
     return [tok for tok in tokens if tok not in _STOPWORDS]
 
 
+def _extract_representative_paths(files: Sequence[dict[str, Any]]) -> list[str]:
+    paths = [
+        str(entry.get("path"))
+        for entry in files
+        if entry.get("path")
+    ]
+    return _dedupe_keep_order(paths)
+
+
+def _extract_extension(entry: dict[str, Any]) -> str | None:
+    path_value = entry.get("path") or entry.get("filename") or ""
+    suffix = Path(str(path_value)).suffix.lower()
+    if suffix:
+        return suffix
+    filetype = entry.get("filetype")
+    if not filetype:
+        return None
+    filetype_str = str(filetype).lower().strip()
+    if not filetype_str:
+        return None
+    if not filetype_str.startswith("."):
+        return f".{filetype_str}"
+    return filetype_str
+
+
+def _format_top_extensions(
+    counts: dict[str, int],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [
+        {"extension": ext, "count": count}
+        for ext, count in ranked[:limit]
+    ]
+
+
+def _top_file_extensions(
+    files: Sequence[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for entry in files:
+        ext = _extract_extension(entry)
+        if not ext:
+            continue
+        counts[ext] = counts.get(ext, 0) + 1
+    return _format_top_extensions(counts, limit=limit)
+
+
 def _safe_fetch_fulltext(checksum: str) -> dict[str, Any] | None:
     try:
         return get_fulltext_by_checksum(checksum)
@@ -555,6 +665,12 @@ def _build_llm_prompt(
                 ]
             )
         )
+        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
+        top_extensions = ", ".join(
+            f"{entry.get('extension')} ({entry.get('count')})"
+            for entry in profile.top_extensions
+            if entry.get("extension")
+        )
         snippets = "\n".join(profile.representative_snippets[:6])
         return (
             f"Prompt version: {prompt_version}\n"
@@ -563,15 +679,23 @@ def _build_llm_prompt(
             f"Cluster size: {profile.size}\n"
             f"Keywords: {keywords}\n"
             f"Representative files: {file_names}\n"
+            f"Representative paths: {representative_paths}\n"
+            f"Top extensions: {top_extensions}\n"
             f"Snippets:\n{snippets}\n"
             "Return only the name."
         )
+    top_extensions = ", ".join(
+        f"{entry.get('extension')} ({entry.get('count')})"
+        for entry in profile.top_extensions
+        if entry.get("extension")
+    )
     return (
         f"Prompt version: {prompt_version}\n"
         f"Language: {language}\n"
         "You label parent topic groups with concise English names (2-6 words).\n"
         f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}\n"
         f"Keywords: {keywords}\n"
+        f"Top extensions: {top_extensions}\n"
         "Return only the name."
     )
 
@@ -619,10 +743,13 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
     if isinstance(profile, ClusterProfile):
         metadata["cluster_id"] = profile.cluster_id
         metadata["size"] = profile.size
+        metadata["representative_paths"] = list(profile.representative_paths)
+        metadata["top_extensions"] = list(profile.top_extensions)
     else:
         metadata["parent_id"] = profile.parent_id
         metadata["size"] = profile.size
         metadata["cluster_ids"] = list(profile.cluster_ids)
+        metadata["top_extensions"] = list(profile.top_extensions)
     return metadata
 
 
