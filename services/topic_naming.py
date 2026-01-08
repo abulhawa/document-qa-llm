@@ -9,10 +9,13 @@ from pathlib import Path
 import re
 from typing import Any, Iterable, Sequence
 
-from config import logger
+from config import CHUNKS_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
 from core.llm import ask_llm, check_llm_status
+from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
 
 
 CACHE_DIR = Path(".cache") / "topic_naming"
@@ -127,6 +130,7 @@ class ClusterProfile:
     representative_files: list[dict[str, Any]] = field(default_factory=list)
     representative_paths: list[str] = field(default_factory=list)
     representative_snippets: list[str] = field(default_factory=list)
+    representative_snippet_metadata: dict[str, Any] = field(default_factory=dict)
     keywords: list[str] = field(default_factory=list)
     top_extensions: list[dict[str, Any]] = field(default_factory=list)
 
@@ -191,7 +195,7 @@ def build_cluster_profile(
         checksum_payloads,
     )
     representative_paths = _extract_representative_paths(representative_files)
-    snippets = select_representative_chunks_for_files(representative_files)
+    snippets, snippet_metadata = select_representative_chunks_for_files(representative_files)
     keyword_counts = _keyword_counts_from_os(
         representative_checksums,
         snippets,
@@ -216,6 +220,7 @@ def build_cluster_profile(
         representative_files=representative_files,
         representative_paths=representative_paths,
         representative_snippets=snippets,
+        representative_snippet_metadata=snippet_metadata,
         keywords=keywords,
         top_extensions=top_extensions,
     )
@@ -314,6 +319,94 @@ def select_representative_chunks_for_files(
     *,
     max_chunks_per_file: int = 2,
     max_chars: int = 200,
+) -> tuple[list[str], dict[str, Any]]:
+    snippet_metadata: dict[str, Any] = {}
+    checksums = [str(entry.get("checksum")) for entry in files if entry.get("checksum")]
+    embedding_payloads = _load_chunk_embeddings(checksums)
+    if not embedding_payloads:
+        snippet_metadata = {
+            "method": "fallback_text",
+            "reason": "embeddings_unavailable",
+        }
+        return (
+            _fallback_snippets_from_text(files, max_chunks_per_file=max_chunks_per_file, max_chars=max_chars),
+            snippet_metadata,
+        )
+
+    all_vectors = [payload["vector"] for chunks in embedding_payloads.values() for payload in chunks]
+    centroid = compute_centroid(all_vectors)
+    if not centroid:
+        snippet_metadata = {
+            "method": "fallback_text",
+            "reason": "empty_centroid",
+        }
+        return (
+            _fallback_snippets_from_text(files, max_chunks_per_file=max_chunks_per_file, max_chars=max_chars),
+            snippet_metadata,
+        )
+
+    centroid = _l2_normalize(centroid)
+    chunk_ids = {
+        payload["chunk_id"]
+        for chunks in embedding_payloads.values()
+        for payload in chunks
+        if payload.get("chunk_id")
+    }
+    chunk_texts = _fetch_chunk_texts(chunk_ids)
+
+    snippets: list[str] = []
+    fallback_files: list[str] = []
+    for file_entry in files:
+        checksum = str(file_entry.get("checksum") or "")
+        if not checksum:
+            continue
+        candidates = embedding_payloads.get(checksum, [])
+        if not candidates:
+            fallback_files.append(checksum)
+            snippets.extend(
+                _fallback_snippets_from_text(
+                    [file_entry],
+                    max_chunks_per_file=1,
+                    max_chars=max_chars,
+                )
+            )
+            continue
+        best = max(
+            candidates,
+            key=lambda payload: _cosine_similarity(centroid, payload["vector"]),
+        )
+        chunk_id = best.get("chunk_id")
+        text = chunk_texts.get(chunk_id) if chunk_id else None
+        if not text:
+            fallback_files.append(checksum)
+            snippets.extend(
+                _fallback_snippets_from_text(
+                    [file_entry],
+                    max_chunks_per_file=1,
+                    max_chars=max_chars,
+                )
+            )
+            continue
+        sanitized = _scrub_text(str(text)).strip()
+        if sanitized:
+            snippets.append(sanitized[:max_chars])
+
+    snippet_metadata = {
+        "method": "centroid_medoid",
+        "source": "qdrant",
+        "files_total": len(checksums),
+        "files_with_embeddings": len(embedding_payloads),
+        "chunks_considered": len(all_vectors),
+        "fallback_files": fallback_files,
+    }
+    return snippets, snippet_metadata
+
+
+def _fallback_snippets_from_text(
+    files: Sequence[dict[str, Any]],
+    *,
+    max_chunks_per_file: int,
+    max_chars: int,
 ) -> list[str]:
     snippets: list[str] = []
     for file_entry in files:
@@ -331,6 +424,106 @@ def select_representative_chunks_for_files(
             if chunks_added >= max_chunks_per_file:
                 break
     return snippets
+
+
+def _load_chunk_embeddings(
+    checksums: Sequence[str],
+) -> dict[str, list[dict[str, Any]]]:
+    if not checksums:
+        return {}
+    client = QdrantClient(url=QDRANT_URL)
+    try:
+        collections = client.get_collections().collections
+        if QDRANT_COLLECTION not in [collection.name for collection in collections]:
+            return {}
+    except Exception:  # noqa: BLE001
+        return {}
+    embedding_payloads: dict[str, list[dict[str, Any]]] = {}
+    for checksum in checksums:
+        scroll_filter = models.Filter(
+            must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
+        )
+        offset = None
+        while True:
+            points, offset = client.scroll(
+                collection_name=QDRANT_COLLECTION,
+                scroll_filter=scroll_filter,
+                limit=256,
+                with_vectors=True,
+                with_payload=True,
+                offset=offset,
+            )
+            for point in points:
+                vector = _extract_vector(point)
+                if not vector:
+                    continue
+                payload = _extract_payload(point)
+                chunk_id = payload.get("id")
+                entry = {
+                    "vector": _l2_normalize(vector),
+                    "chunk_id": str(chunk_id) if chunk_id else None,
+                }
+                embedding_payloads.setdefault(checksum, []).append(entry)
+            if offset is None:
+                break
+    return embedding_payloads
+
+
+def _extract_payload(point: models.Record) -> dict:
+    if isinstance(point, dict):
+        return point.get("payload", {}) or {}
+    payload = getattr(point, "payload", None)
+    return payload or {}
+
+
+def _extract_vector(point: models.Record) -> list[float] | None:
+    vector = None
+    if isinstance(point, dict):
+        vector = point.get("vector")
+    else:
+        vector = getattr(point, "vector", None)
+    if vector is None:
+        return None
+    if isinstance(vector, dict):
+        if vector:
+            return list(next(iter(vector.values())))
+        return None
+    return list(vector)
+
+
+def _fetch_chunk_texts(chunk_ids: set[str]) -> dict[str, str]:
+    if not chunk_ids:
+        return {}
+    try:
+        os_client = get_client()
+        response = os_client.mget(
+            index=CHUNKS_INDEX,
+            body={"ids": list(chunk_ids)},
+            _source=["text"],
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+    texts: dict[str, str] = {}
+    for doc in response.get("docs", []):
+        if not doc.get("found"):
+            continue
+        chunk_id = doc.get("_id")
+        if chunk_id:
+            texts[str(chunk_id)] = doc.get("_source", {}).get("text", "")
+    return texts
+
+
+def _l2_normalize(vec: Sequence[float]) -> list[float]:
+    norm = math.sqrt(sum(float(val) * float(val) for val in vec))
+    if norm == 0.0:
+        return [0.0 for _ in vec]
+    return [float(val) / norm for val in vec]
+
+
+def _cosine_similarity(vec_a: Sequence[float], vec_b: Sequence[float]) -> float:
+    if len(vec_a) != len(vec_b):
+        return float("-inf")
+    return sum(float(a) * float(b) for a, b in zip(vec_a, vec_b))
 
 
 def get_significant_keywords_from_os(
@@ -905,6 +1098,7 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
         metadata["cluster_id"] = profile.cluster_id
         metadata["size"] = profile.size
         metadata["representative_paths"] = list(profile.representative_paths)
+        metadata["snippet_selection"] = dict(profile.representative_snippet_metadata)
         metadata["top_extensions"] = list(profile.top_extensions)
     else:
         metadata["parent_id"] = profile.parent_id
