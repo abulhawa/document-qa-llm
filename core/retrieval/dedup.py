@@ -1,6 +1,7 @@
 from __future__ import annotations
-from typing import Callable, List, Dict, Any, Tuple
+from typing import Callable, List, Tuple, Sequence
 import numpy as np
+from core.retrieval.types import DocHit
 
 
 def _l2_norm(x: np.ndarray) -> np.ndarray:
@@ -13,11 +14,11 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def collapse_near_duplicates(
-    docs: List[Dict[str, Any]],
+    docs: Sequence[DocHit],
     embed_texts: Callable[[List[str]], np.ndarray],
     sim_threshold: float = 0.90,
     keep_limit: int = 64,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> Tuple[List[DocHit], List[DocHit]]:
     """
     Collapse near-duplicate passages by cosine similarity on embeddings.
     Returns (kept, duplicates). Keep one representative from each near-dup set.
@@ -29,9 +30,9 @@ def collapse_near_duplicates(
     embs = embed_texts([d.get("text", "") for d in docs])
     embs = _l2_norm(embs)
 
-    kept: List[Dict[str, Any]] = []
+    kept: List[DocHit] = []
     kept_e: List[np.ndarray] = []
-    dups: List[Dict[str, Any]] = []
+    dups: List[DocHit] = []
 
     for d, e in zip(docs, embs):
         is_dup = any(_cos(e, ke) >= sim_threshold for ke in kept_e)

@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import List, Dict, Any, Optional
+from typing import List, Optional, Sequence
+from core.retrieval.types import DocHit
 
 
 class CrossEncoderReranker:
@@ -22,13 +23,14 @@ class CrossEncoderReranker:
         self.model = CrossEncoder(model_name, device=device)
 
     def rerank(
-        self, query: str, docs: List[Dict[str, Any]], top_n: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, docs: Sequence[DocHit], top_n: Optional[int] = None
+    ) -> List[DocHit]:
         if not docs:
             return []
-        pairs = [(query, d.get("text", "")) for d in docs]
+        docs_list = list(docs)
+        pairs = [(query, d.get("text", "")) for d in docs_list]
         scores = self.model.predict(pairs).tolist()
-        for d, s in zip(docs, scores):
+        for d, s in zip(docs_list, scores):
             d["rerank_score"] = float(s)
-        docs.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
-        return docs[:top_n] if top_n else docs
+        docs_list.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        return docs_list[:top_n] if top_n else docs_list

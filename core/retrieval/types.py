@@ -1,25 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Dict, List, Optional, TypedDict
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
-
-class DocHit(TypedDict, total=False):
-    id: str  # semantic id
-    _id: str  # bm25 id
-    path: str
-    text: str
-    score: float
-    chunk_index: int
-    modified_at: str
-    checksum: str
-    # retrieval fields
-    score_vector: float
-    score_bm25: float
-    retrieval_score: float
-    source: str  # "semantic" | "keyword" | "semantic/keyword"
-    rerank_score: float
-    page: int
-    location_percent: float
+DocHit = Dict[str, Any]
 
 
 @dataclass
@@ -48,8 +31,8 @@ class RetrievalConfig:
 
 @dataclass
 class RetrievalDeps:
-    semantic_retriever: Callable[[str, int], List[Dict[str, Any]]]
-    keyword_retriever: Callable[[str, int], List[Dict[str, Any]]]
+    semantic_retriever: Callable[[str, int], Sequence[DocHit]]
+    keyword_retriever: Callable[[str, int], Sequence[DocHit]]
     embed_texts: Optional[Callable[[List[str]], Any]] = None
     cross_encoder: Any = None
 
