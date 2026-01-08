@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Optional, Tuple, Sequence
 
 from config import logger
 
@@ -24,7 +24,7 @@ def _default_deps() -> RetrievalDeps:
 
 
 def _apply_variant_weights(
-    variants_with_weights: List[Tuple[str, float]],
+    variants_with_weights: Sequence[Tuple[str, float]],
     cfg: RetrievalConfig,
 ) -> List[Tuple[str, float]]:
     weighted: List[Tuple[str, float]] = []
@@ -69,14 +69,14 @@ def retrieve(
     variants_with_weights = _apply_variant_weights(variants_with_weights, cfg)
 
     # 2) Retrieve per variant and collect with weights
-    vector_results_all: List[Dict[str, Any]] = []
-    bm25_results_all: List[Dict[str, Any]] = []
+    vector_results_all: List[DocHit] = []
+    bm25_results_all: List[DocHit] = []
 
     for idx, (qv, weight_override) in enumerate(variants_with_weights):
-        v = deps.semantic_retriever(qv, top_k=cfg.top_k_each)
+        v = deps.semantic_retriever(qv, cfg.top_k_each)
         vector_results_all.extend(v)
 
-        b = deps.keyword_retriever(qv, top_k=cfg.top_k_each)
+        b = deps.keyword_retriever(qv, cfg.top_k_each)
         for hit in b:
             hit["_bm25_variant_weight"] = weight_override
             hit["_variant_rank"] = idx
@@ -142,4 +142,3 @@ def retrieve(
     )
 
     return RetrievalOutput(documents=docs_for_answer, clarify=clarify_msg)
-

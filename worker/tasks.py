@@ -8,20 +8,28 @@ from requests.exceptions import ReadTimeout, ConnectionError
 
 @task_prerun.connect
 def _audit_start(task_id=None, task=None, args=None, kwargs=None, **_):
-    if task and getattr(task, "name", "").startswith(("tasks.", "core.")):
-        log_task("start", task_id, task.name)
+    name = getattr(task, "name", "")
+    if not task_id or not name:
+        return
+    if name.startswith(("tasks.", "core.")):
+        log_task("start", str(task_id), name)
 
 
 @task_postrun.connect
 def _audit_done(task_id=None, task=None, retval=None, state=None, **_):
-    if task and getattr(task, "name", "").startswith(("tasks.", "core.")):
-        log_task("success", task_id, task.name, state=state, result=retval)
+    name = getattr(task, "name", "")
+    if not task_id or not name:
+        return
+    if name.startswith(("tasks.", "core.")):
+        log_task("success", str(task_id), name, state=state, result=retval)
 
 
 @task_failure.connect
 def _audit_fail(task_id=None, exception=None, sender=None, **_):
-    name = getattr(sender, "name", "unknown")
-    log_task("failure", task_id, name, state="FAILURE", error=str(exception))
+    name = getattr(sender, "name", "")
+    if not task_id or not name:
+        return
+    log_task("failure", str(task_id), name, state="FAILURE", error=str(exception))
 
 
 # --- tiny mapper: host (Windows) -> container path (e.g., /host-c) ---

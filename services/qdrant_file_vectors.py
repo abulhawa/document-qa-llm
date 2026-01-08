@@ -213,9 +213,12 @@ def sample_file_vectors(limit: int = 5) -> list[dict]:
         vector = _extract_vector(point)
         if not vector:
             continue
+        checksum = _extract_payload(point).get("checksum") or _extract_id(point)
+        if not checksum:
+            continue
         sampled.append(
             {
-                "checksum": _extract_payload(point).get("checksum") or _extract_id(point),
+                "checksum": str(checksum),
                 "dim": len(vector),
                 "norm": _l2_norm(vector),
             }
@@ -263,7 +266,10 @@ def _extract_vector(point: models.Record) -> list[float] | None:
         return None
     if isinstance(vector, dict):
         if vector:
-            return list(next(iter(vector.values())))
+            value = next(iter(vector.values()))
+            if value is None:
+                return None
+            return list(value)
         return None
     return list(vector)
 
