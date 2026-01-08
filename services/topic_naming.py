@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -108,6 +109,7 @@ class ClusterProfile:
     size: int
     avg_prob: float
     centroid: list[float]
+    mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
     representative_files: list[dict[str, Any]] = field(default_factory=list)
     representative_paths: list[str] = field(default_factory=list)
@@ -123,6 +125,7 @@ class ParentProfile:
     size: int
     avg_prob: float
     centroid: list[float]
+    mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     top_extensions: list[dict[str, Any]] = field(default_factory=list)
@@ -176,13 +179,15 @@ def build_cluster_profile(
     )
     representative_paths = _extract_representative_paths(representative_files)
     snippets = select_representative_chunks_for_files(representative_files)
-    keywords = get_significant_keywords_from_os(
+    keyword_counts = _keyword_counts_from_os(
         representative_checksums,
         snippets,
         max_keywords=max_keywords,
         max_path_depth=max_path_depth,
         root_path=root_path,
     )
+    keywords = _top_keywords_from_counts(keyword_counts, max_keywords=max_keywords)
+    mixedness = _keyword_mixedness(keyword_counts, max_keywords=max_keywords)
     top_extensions = _top_file_extensions(
         representative_files,
         limit=top_extension_count,
@@ -193,6 +198,7 @@ def build_cluster_profile(
         size=int(cluster.get("size", 0)),
         avg_prob=float(cluster.get("avg_prob", 0.0)),
         centroid=centroid,
+        mixedness=mixedness,
         representative_checksums=representative_checksums,
         representative_files=representative_files,
         representative_paths=representative_paths,
@@ -215,6 +221,10 @@ def build_parent_profile(
         [profile.size for profile in child_profiles],
     )
     centroid = compute_centroid([profile.centroid for profile in child_profiles])
+    mixedness = _weighted_avg(
+        [profile.mixedness for profile in child_profiles],
+        [profile.size for profile in child_profiles],
+    )
     representative_checksums: list[str] = []
     keywords: list[str] = []
     extension_counts: dict[str, int] = {}
@@ -233,6 +243,7 @@ def build_parent_profile(
         size=size,
         avg_prob=avg_prob,
         centroid=centroid,
+        mixedness=mixedness,
         representative_checksums=_dedupe_keep_order(representative_checksums),
         keywords=_dedupe_keep_order(keywords),
         top_extensions=top_extensions,
@@ -317,33 +328,14 @@ def get_significant_keywords_from_os(
     max_path_depth: int | None = DEFAULT_MAX_PATH_DEPTH,
     root_path: str | None = DEFAULT_ROOT_PATH,
 ) -> list[str]:
-    tokens: list[str] = []
-    for checksum in checksums:
-        fulltext = _safe_fetch_fulltext(checksum)
-        if not fulltext:
-            continue
-        path = fulltext.get("path") or ""
-        filename = fulltext.get("filename") or ""
-        tokens.extend(
-            extract_path_segments(
-                path,
-                max_depth=max_path_depth,
-                root_path=root_path,
-            )
-        )
-        tokens.extend(tokenize_filename(filename))
-    if snippets:
-        for snippet in snippets:
-            tokens.extend(_tokenize_text(snippet))
-    if not tokens:
-        return []
-    counts: dict[str, int] = {}
-    for token in tokens:
-        if token in _STOPWORDS or len(token) < 3:
-            continue
-        counts[token] = counts.get(token, 0) + 1
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-    return [token for token, _ in ranked[:max_keywords]]
+    counts = _keyword_counts_from_os(
+        checksums,
+        snippets,
+        max_keywords=max_keywords,
+        max_path_depth=max_path_depth,
+        root_path=root_path,
+    )
+    return _top_keywords_from_counts(counts, max_keywords=max_keywords)
 
 
 def suggest_child_name_with_llm(
@@ -786,7 +778,10 @@ def _baseline_suggestion(
 
 
 def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]:
-    metadata: dict[str, Any] = {"keywords": list(profile.keywords)}
+    metadata: dict[str, Any] = {
+        "keywords": list(profile.keywords),
+        "mixedness": profile.mixedness,
+    }
     if isinstance(profile, ClusterProfile):
         metadata["cluster_id"] = profile.cluster_id
         metadata["size"] = profile.size
@@ -798,6 +793,73 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
         metadata["cluster_ids"] = list(profile.cluster_ids)
         metadata["top_extensions"] = list(profile.top_extensions)
     return metadata
+
+
+def _keyword_counts_from_os(
+    checksums: Sequence[str],
+    snippets: Sequence[str] | None,
+    *,
+    max_keywords: int,
+    max_path_depth: int | None,
+    root_path: str | None,
+) -> dict[str, int]:
+    tokens: list[str] = []
+    for checksum in checksums:
+        fulltext = _safe_fetch_fulltext(checksum)
+        if not fulltext:
+            continue
+        path = fulltext.get("path") or ""
+        filename = fulltext.get("filename") or ""
+        tokens.extend(
+            extract_path_segments(
+                path,
+                max_depth=max_path_depth,
+                root_path=root_path,
+            )
+        )
+        tokens.extend(tokenize_filename(filename))
+    if snippets:
+        for snippet in snippets:
+            tokens.extend(_tokenize_text(snippet))
+    if not tokens:
+        return {}
+    counts: dict[str, int] = {}
+    for token in tokens:
+        if token in _STOPWORDS or len(token) < 3:
+            continue
+        counts[token] = counts.get(token, 0) + 1
+    if not counts:
+        return {}
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    limited = ranked[:max_keywords]
+    return {token: count for token, count in limited}
+
+
+def _top_keywords_from_counts(counts: dict[str, int], *, max_keywords: int) -> list[str]:
+    if not counts:
+        return []
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [token for token, _ in ranked[:max_keywords]]
+
+
+def _keyword_mixedness(counts: dict[str, int], *, max_keywords: int) -> float:
+    if not counts:
+        return 0.0
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    top = ranked[:max_keywords]
+    total = sum(count for _, count in top)
+    if total <= 0 or len(top) <= 1:
+        return 0.0
+    entropy = 0.0
+    for _, count in top:
+        prob = count / total
+        if prob <= 0:
+            continue
+        entropy -= prob * math.log(prob)
+    normalizer = math.log(len(top))
+    if normalizer <= 0:
+        return 0.0
+    return float(entropy / normalizer)
 
 
 def _baseline_name(profile: ClusterProfile | ParentProfile) -> str:
