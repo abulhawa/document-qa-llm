@@ -1,3 +1,4 @@
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -191,6 +192,57 @@ def test_cache_key_stability_and_cache_hits(
     assert second.name == "finance overview"
 
 
+def test_hash_profile_changes_with_model_prompt_and_profile(
+    cluster_profile: topic_naming.ClusterProfile,
+) -> None:
+    base = topic_naming.hash_profile(cluster_profile, "v1", "model-a")
+    assert base == topic_naming.hash_profile(cluster_profile, "v1", "model-a")
+    assert base != topic_naming.hash_profile(cluster_profile, "v2", "model-a")
+    assert base != topic_naming.hash_profile(cluster_profile, "v1", "model-b")
+
+    updated_profile = replace(
+        cluster_profile,
+        representative_checksums=cluster_profile.representative_checksums + ["new"],
+    )
+    assert base != topic_naming.hash_profile(updated_profile, "v1", "model-a")
+
+
+def test_cache_miss_when_disabled(
+    cluster_profile: topic_naming.ClusterProfile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "CACHE_DIR", tmp_path)
+    calls = {"count": 0}
+
+    def fake_llm(profile: topic_naming.ClusterProfile) -> topic_naming.NameSuggestion:
+        calls["count"] += 1
+        payload = json.dumps({"name": "risk review", "confidence": 0.88})
+        parsed = json.loads(payload)
+        return topic_naming.NameSuggestion(
+            name=parsed["name"],
+            confidence=parsed["confidence"],
+            source="llm",
+        )
+
+    first = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        llm_callable=fake_llm,
+        allow_cache=False,
+    )
+    second = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        llm_callable=fake_llm,
+        allow_cache=False,
+    )
+
+    assert calls["count"] == 2
+    assert first.name == "risk review"
+    assert second.name == "risk review"
+
+
 def test_disambiguate_duplicate_names() -> None:
     names = topic_naming.disambiguate_duplicate_names(
         ["Alpha", "Beta", "Alpha", "Alpha"]
@@ -204,6 +256,14 @@ def test_disambiguate_duplicate_names_with_differentiators() -> None:
         differentiators=["finance", ".pdf", None],
     )
     assert names == ["Alpha", "Alpha (Finance)", "Alpha (Pdf)"]
+
+
+def test_disambiguate_duplicate_names_collision_fallback() -> None:
+    names = topic_naming.disambiguate_duplicate_names(
+        ["Alpha", "Alpha", "Alpha"],
+        differentiators=["finance", "finance", None],
+    )
+    assert names == ["Alpha", "Alpha (Finance)", "Alpha (2)"]
 
 
 def test_mock_llm_uses_deterministic_response(
@@ -220,3 +280,12 @@ def test_mock_llm_uses_deterministic_response(
     )
 
     assert suggestion.name == "Finance Review"
+
+
+def test_keyword_mixedness_heuristic() -> None:
+    assert topic_naming._keyword_mixedness({}, max_keywords=5) == 0.0
+    assert topic_naming._keyword_mixedness({"alpha": 10}, max_keywords=5) == 0.0
+    balanced = topic_naming._keyword_mixedness({"alpha": 5, "beta": 5}, max_keywords=5)
+    assert balanced == pytest.approx(1.0)
+    skewed = topic_naming._keyword_mixedness({"alpha": 9, "beta": 1}, max_keywords=5)
+    assert 0.0 < skewed < 1.0
