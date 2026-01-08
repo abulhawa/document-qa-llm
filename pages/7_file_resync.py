@@ -282,6 +282,7 @@ if plan:
     filtered_df = _render_table(rows)
 
 if apply_safe_clicked and plan:
+    result = None
     try:
         with st.spinner("Applying SAFE actions…"):
             result = apply_plan(
@@ -296,6 +297,8 @@ if apply_safe_clicked and plan:
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "SAFE apply")
         st.stop()
+    if result is None:
+        st.stop()
     st.success("SAFE actions completed." if not result.errors else "SAFE actions completed with warnings.")
     st.json(
         {
@@ -309,6 +312,7 @@ if apply_safe_clicked and plan:
     )
 
 if apply_destructive_clicked and plan:
+    result = None
     try:
         with st.spinner("Applying destructive actions…"):
             result = apply_plan(
@@ -322,6 +326,8 @@ if apply_destructive_clicked and plan:
             )
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "Destructive apply")
+        st.stop()
+    if result is None:
         st.stop()
     st.success("Destructive actions completed." if not result.errors else "Destructive actions completed with warnings.")
     st.json(

@@ -240,6 +240,7 @@ def list_watch_inventory_unindexed_paths_all(
         "sort": [{"path": "asc"}],
     }
     out: List[str] = []
+    scroll_id = None
     try:
         resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
         scroll_id = resp.get("_scroll_id")
@@ -262,7 +263,7 @@ def list_watch_inventory_unindexed_paths_all(
         return out
     finally:
         try:
-            if 'scroll_id' in locals() and scroll_id:
+            if scroll_id:
                 client.clear_scroll(scroll_id=scroll_id)
         except Exception:
             pass
@@ -385,6 +386,7 @@ def list_watch_inventory_unindexed_paths_filtered(
         "sort": [{"path": "asc"}],
     }
     out: List[str] = []
+    scroll_id = None
     try:
         resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
         scroll_id = resp.get("_scroll_id")
@@ -407,7 +409,7 @@ def list_watch_inventory_unindexed_paths_filtered(
         return out
     finally:
         try:
-            if 'scroll_id' in locals() and scroll_id:
+            if scroll_id:
                 client.clear_scroll(scroll_id=scroll_id)
         except Exception:
             pass
@@ -496,6 +498,7 @@ def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, p
         "sort": [{"path": "asc"}],
     }
     out: List[str] = []
+    scroll_id = None
     try:
         resp = client.search(index=WATCH_INVENTORY_INDEX, body=body, scroll="2m")
         scroll_id = resp.get("_scroll_id")
@@ -518,7 +521,7 @@ def list_inventory_paths_needing_reingest(path_prefix: str, limit: int = 2000, p
         return out
     finally:
         try:
-            if 'scroll_id' in locals() and scroll_id:
+            if scroll_id:
                 client.clear_scroll(scroll_id=scroll_id)
         except Exception:
             pass
@@ -546,6 +549,7 @@ def scan_watch_inventory_for_prefix(
     found_paths: List[str] = []
     actions: List[Dict[str, Any]] = []
 
+    allowed_set: Optional[set[str]] = None
     # Walk filesystem
     try:
         # Normalize allowed suffix set (default: pdf/docx/txt)

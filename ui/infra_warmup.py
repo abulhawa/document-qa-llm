@@ -25,5 +25,9 @@ def warmup_infra_once() -> bool:
 
 def force_warmup():
     """Manual reset if the user deleted indices while the app is open."""
-    warmup_infra_once.clear()
+    clear_fn = getattr(warmup_infra_once, "clear", None)
+    if callable(clear_fn):
+        clear_fn()
+    else:
+        st.cache_resource.clear()
     warmup_infra_once()

@@ -89,6 +89,7 @@ else:
         with st.container(border=True):
             st.subheader(pref)
             # Show current remaining for context
+            remaining_now = 0
             try:
                 remaining_now = count_watch_inventory_remaining(pref)
                 st.metric("Unindexed files", remaining_now)
