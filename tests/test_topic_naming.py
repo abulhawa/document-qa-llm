@@ -43,27 +43,6 @@ def _install_dependency_stubs() -> None:
     sys.modules.setdefault("phoenix", phoenix)
     sys.modules.setdefault("phoenix.otel", phoenix_otel)
 
-    opentelemetry = types.ModuleType("opentelemetry")
-    opentelemetry_trace = types.ModuleType("opentelemetry.trace")
-
-    def get_current_span():
-        return DummySpan()
-
-    class DummyStatus:
-        def __init__(self, *_args, **_kwargs):
-            return None
-
-    class DummyStatusCode:
-        OK = "OK"
-        ERROR = "ERROR"
-
-    opentelemetry.trace = opentelemetry_trace
-    opentelemetry_trace.get_current_span = get_current_span
-    opentelemetry_trace.Status = DummyStatus
-    opentelemetry_trace.StatusCode = DummyStatusCode
-    sys.modules.setdefault("opentelemetry", opentelemetry)
-    sys.modules.setdefault("opentelemetry.trace", opentelemetry_trace)
-
     openinference = types.ModuleType("openinference")
     openinference_semconv = types.ModuleType("openinference.semconv")
     openinference_semconv_trace = types.ModuleType("openinference.semconv.trace")
