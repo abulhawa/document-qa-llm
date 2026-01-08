@@ -457,17 +457,61 @@ def english_only_check(name: str) -> bool:
     return not any(token in _GERMAN_STOPWORDS for token in tokens)
 
 
-def disambiguate_duplicate_names(names: Sequence[str]) -> list[str]:
-    seen: dict[str, int] = {}
-    unique: list[str] = []
-    for name in names:
-        base = name
-        count = seen.get(base, 0) + 1
-        seen[base] = count
-        if count == 1:
-            unique.append(base)
-        else:
-            unique.append(f"{base} ({count})")
+def _format_differentiator(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    if not cleaned:
+        return None
+    if cleaned.startswith(".") and len(cleaned) > 1:
+        cleaned = cleaned[1:]
+    formatted = postprocess_name(cleaned)
+    if formatted == "Untitled":
+        return None
+    return formatted
+
+
+def disambiguate_duplicate_names(
+    names: Sequence[str],
+    *,
+    differentiators: Sequence[str | None] | None = None,
+) -> list[str]:
+    disambiguators: list[str | None]
+    if differentiators is None:
+        disambiguators = [None] * len(names)
+    else:
+        disambiguators = list(differentiators)
+        if len(disambiguators) < len(names):
+            disambiguators.extend([None] * (len(names) - len(disambiguators)))
+        elif len(disambiguators) > len(names):
+            disambiguators = disambiguators[: len(names)]
+
+    indices_by_name: dict[str, list[int]] = {}
+    for idx, name in enumerate(names):
+        indices_by_name.setdefault(name, []).append(idx)
+
+    unique = list(names)
+    for base, indices in indices_by_name.items():
+        if len(indices) == 1:
+            continue
+        used_names: set[str] = set()
+        used_suffixes: set[str] = set()
+        first_idx = indices[0]
+        unique[first_idx] = base
+        used_names.add(base)
+        for idx in indices[1:]:
+            candidate = _format_differentiator(disambiguators[idx])
+            if candidate and candidate not in used_suffixes:
+                new_name = f"{base} ({candidate})"
+                used_suffixes.add(candidate)
+            else:
+                counter = 2
+                new_name = f"{base} ({counter})"
+                while new_name in used_names:
+                    counter += 1
+                    new_name = f"{base} ({counter})"
+            unique[idx] = new_name
+            used_names.add(new_name)
     return unique
 
 
