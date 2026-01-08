@@ -509,7 +509,7 @@ def enforce_max_parent_share(
                 continue
             child_totals[label_to_index[int(label)]] += int(cluster.get("size", 0))
         child_shares = [total / parent_total for total in child_totals] if parent_total else []
-        max_child_share = max(child_shares) if child_shares else 0.0
+        max_child_share = max(child_shares, default=0.0)
         return {
             "labels": labels,
             "label_to_index": label_to_index,
