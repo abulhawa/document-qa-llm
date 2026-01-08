@@ -13,6 +13,7 @@ from config import (
     logger,
 )
 from core.embeddings import embed_texts
+from core.retrieval.types import DocHit
 from tracing import (
     start_span,
     EMBEDDING,
@@ -55,7 +56,7 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
     return texts
 
 
-def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
     with start_span("Semantic retriever", kind=RETRIEVER) as span:
         span.set_attribute(INPUT_VALUE, query)
         with start_span("Embed query", EMBEDDING) as espan:
@@ -87,7 +88,7 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
                 if r.payload and r.payload.get("id")
             }
             chunk_texts = _fetch_chunk_texts(chunk_ids)
-            retrieved_chunks = []
+            retrieved_chunks: List[DocHit] = []
             seen_checksums = set()
             for r in results:
                 payload = r.payload or {}

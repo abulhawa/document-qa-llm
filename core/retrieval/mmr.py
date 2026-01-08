@@ -1,6 +1,7 @@
 from __future__ import annotations
-from typing import List, Dict, Any, Callable
+from typing import List, Callable, Sequence
 import numpy as np
+from core.retrieval.types import DocHit
 
 def _l2(x: np.ndarray) -> np.ndarray:
     n = np.linalg.norm(x, axis=-1, keepdims=True) + 1e-8
@@ -8,11 +9,11 @@ def _l2(x: np.ndarray) -> np.ndarray:
 
 def mmr_select(
     query: str,
-    docs: List[Dict[str, Any]],
+    docs: Sequence[DocHit],
     embed: Callable[[List[str]], np.ndarray],
     k: int = 8,
     lambda_mult: float = 0.6,
-) -> List[Dict[str, Any]]:
+) -> List[DocHit]:
     """
     MMR over embeddings of doc['text'] with the query embedding.
     Assumes 'text' exists. Falls back to first-k if embed fails.
@@ -20,15 +21,16 @@ def mmr_select(
     if not docs:
         return []
 
+    docs_list = list(docs)
     try:
         q = _l2(embed([query]))[0]
-        D = _l2(embed([d.get("text", "") for d in docs]))
+        D = _l2(embed([d.get("text", "") for d in docs_list]))
     except Exception:
         # If embedding API is busy/unavailable, gracefully degrade.
-        return docs[:k]
+        return docs_list[:k]
 
     selected: List[int] = []
-    candidates = list(range(len(docs)))
+    candidates = list(range(len(docs_list)))
 
     # sim to query
     sims_q = (D @ q).tolist()
@@ -45,4 +47,4 @@ def mmr_select(
         selected.append(best)           # type: ignore
         candidates.remove(best)         # type: ignore
 
-    return [docs[i] for i in selected]
+    return [docs_list[i] for i in selected]

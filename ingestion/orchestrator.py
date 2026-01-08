@@ -168,7 +168,7 @@ def ingest_one(
             raise RuntimeError(f"Failed to load document {normalized_path}: {e}") from e
 
         logger.info("🧼 Preprocessing %s documents", len(docs))
-        docs_list = preprocess.preprocess_documents(docs, normalized_path, ext)
+        docs_list = list(preprocess.preprocess_documents(docs, normalized_path, ext))
 
         logger.info("📝 Indexing full document text")
         full_text = preprocess.build_full_text(docs_list)
