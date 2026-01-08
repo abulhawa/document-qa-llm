@@ -195,6 +195,17 @@ def _merge_warnings(*messages: str) -> str:
     return "; ".join([message for message in messages if message])
 
 
+def _profile_differentiator(profile: ClusterProfile | ParentProfile) -> str | None:
+    for keyword in profile.keywords:
+        if keyword:
+            return keyword
+    for entry in profile.top_extensions:
+        extension = entry.get("extension")
+        if extension:
+            return str(extension)
+    return None
+
+
 def _build_rows(
     *,
     child_profiles: list[ClusterProfile],
@@ -203,6 +214,8 @@ def _build_rows(
 ) -> list[dict[str, Any]]:
     model_id = llm_status.get("current_model") or "default"
     rows: list[dict[str, Any]] = []
+    parent_rows: list[dict[str, Any]] = []
+    parent_differentiators: list[str | None] = []
 
     for profile in parent_profiles:
         cache_hit = _cache_hit(profile, model_id)
@@ -211,7 +224,7 @@ def _build_rows(
             model_id=model_id,
             allow_cache=True,
         )
-        rows.append(
+        parent_rows.append(
             {
                 "id": profile.parent_id,
                 "level": "parent",
@@ -230,7 +243,18 @@ def _build_rows(
                 "source": suggestion.source,
             }
         )
+        parent_differentiators.append(_profile_differentiator(profile))
 
+    if parent_rows:
+        unique_names = topic_naming.disambiguate_duplicate_names(
+            [row["proposed_name"] for row in parent_rows],
+            differentiators=parent_differentiators,
+        )
+        for row, name in zip(parent_rows, unique_names, strict=False):
+            row["proposed_name"] = name
+
+    child_rows: list[dict[str, Any]] = []
+    child_differentiators: list[str | None] = []
     for profile in child_profiles:
         cache_hit = _cache_hit(profile, model_id)
         suggestion = suggest_child_name_with_llm(
@@ -238,7 +262,7 @@ def _build_rows(
             model_id=model_id,
             allow_cache=True,
         )
-        rows.append(
+        child_rows.append(
             {
                 "id": profile.cluster_id,
                 "level": "child",
@@ -257,6 +281,18 @@ def _build_rows(
                 "source": suggestion.source,
             }
         )
+        child_differentiators.append(_profile_differentiator(profile))
+
+    if child_rows:
+        unique_names = topic_naming.disambiguate_duplicate_names(
+            [row["proposed_name"] for row in child_rows],
+            differentiators=child_differentiators,
+        )
+        for row, name in zip(child_rows, unique_names, strict=False):
+            row["proposed_name"] = name
+
+    rows.extend(parent_rows)
+    rows.extend(child_rows)
 
     return rows
 

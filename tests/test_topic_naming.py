@@ -198,6 +198,14 @@ def test_disambiguate_duplicate_names() -> None:
     assert names == ["Alpha", "Beta", "Alpha (2)", "Alpha (3)"]
 
 
+def test_disambiguate_duplicate_names_with_differentiators() -> None:
+    names = topic_naming.disambiguate_duplicate_names(
+        ["Alpha", "Alpha", "Alpha"],
+        differentiators=["finance", ".pdf", None],
+    )
+    assert names == ["Alpha", "Alpha (Finance)", "Alpha (Pdf)"]
+
+
 def test_mock_llm_uses_deterministic_response(
     cluster_profile: topic_naming.ClusterProfile,
     monkeypatch: pytest.MonkeyPatch,
