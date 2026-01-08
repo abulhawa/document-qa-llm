@@ -52,6 +52,45 @@ _STOPWORDS = {
     "to",
     "with",
 }
+_GERMAN_STOPWORDS = {
+    "aber",
+    "auf",
+    "aus",
+    "bei",
+    "bin",
+    "bis",
+    "das",
+    "dem",
+    "den",
+    "der",
+    "des",
+    "die",
+    "doch",
+    "ein",
+    "eine",
+    "einem",
+    "einen",
+    "einer",
+    "für",
+    "hat",
+    "im",
+    "in",
+    "ist",
+    "mit",
+    "nach",
+    "nicht",
+    "oder",
+    "sein",
+    "sind",
+    "und",
+    "von",
+    "war",
+    "wie",
+    "zu",
+}
+
+_NAME_MAX_WORDS = 6
+_NAME_MAX_CHARS = 60
 
 
 @dataclass(frozen=True)
@@ -393,11 +432,19 @@ def postprocess_name(name: str) -> str:
     cleaned = re.sub(r"\s+", " ", name).strip()
     if not cleaned:
         return "Untitled"
-    return cleaned
+    words = cleaned.split()
+    truncated = " ".join(words[:_NAME_MAX_WORDS])
+    titled = truncated.title()
+    if len(titled) > _NAME_MAX_CHARS:
+        titled = titled[:_NAME_MAX_CHARS].rstrip()
+    return titled
 
 
 def english_only_check(name: str) -> bool:
-    return bool(re.fullmatch(r"[A-Za-z0-9 .,&()\-']+", name))
+    if not re.fullmatch(r"[A-Za-z0-9 .,&()\-']+", name):
+        return False
+    tokens = _tokenize_text(name)
+    return not any(token in _GERMAN_STOPWORDS for token in tokens)
 
 
 def disambiguate_duplicate_names(names: Sequence[str]) -> list[str]:
