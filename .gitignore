@@ -11,3 +11,4 @@ artifacts/
 *.ipynb
 opensearch-backups/
 data/topic_discovery/
+.cache/topic_naming/
