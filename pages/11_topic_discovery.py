@@ -34,6 +34,7 @@ from services.topic_naming import (
 )
 
 from core.llm import check_llm_status
+from ui.ingestion_ui import run_root_picker
 
 st.set_page_config(page_title="Topic Discovery", layout="wide")
 
@@ -612,9 +613,20 @@ with tabs[1]:
                     value=DEFAULT_MAX_PATH_DEPTH,
                 )
             with settings_cols[1]:
+                if "topic_discovery_root_path" not in st.session_state:
+                    st.session_state["topic_discovery_root_path"] = DEFAULT_ROOT_PATH
+                root_action_cols = st.columns([1, 1], gap="small")
+                with root_action_cols[0]:
+                    if st.button("Select Root Folder", key="topic_discovery_root_pick"):
+                        picked = run_root_picker()
+                        if picked:
+                            st.session_state["topic_discovery_root_path"] = picked[0]
+                with root_action_cols[1]:
+                    if st.button("Clear Root", key="topic_discovery_root_clear"):
+                        st.session_state["topic_discovery_root_path"] = ""
                 root_path = st.text_input(
                     "Root path prefix to drop (optional)",
-                    value=DEFAULT_ROOT_PATH,
+                    key="topic_discovery_root_path",
                 )
                 top_extension_count = st.number_input(
                     "Top extensions to include",
