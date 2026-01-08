@@ -54,13 +54,19 @@ _STOPWORDS = {
     "with",
 }
 _GERMAN_STOPWORDS = {
+    "als",
     "aber",
+    "am",
+    "an",
+    "auch",
     "auf",
     "aus",
     "bei",
     "bin",
     "bis",
+    "da",
     "das",
+    "dass",
     "dem",
     "den",
     "der",
@@ -76,18 +82,25 @@ _GERMAN_STOPWORDS = {
     "hat",
     "im",
     "in",
+    "ins",
     "ist",
     "mit",
     "nach",
     "nicht",
+    "noch",
+    "nur",
     "oder",
+    "sich",
     "sein",
     "sind",
     "und",
     "von",
+    "vom",
     "war",
     "wie",
     "zu",
+    "zum",
+    "zur",
 }
 
 _NAME_MAX_WORDS = 6
@@ -435,7 +448,7 @@ def postprocess_name(name: str) -> str:
 def english_only_check(name: str) -> bool:
     if not re.fullmatch(r"[A-Za-z0-9 .,&()\-']+", name):
         return False
-    tokens = _tokenize_text(name)
+    tokens = [tok for tok in _NON_WORD_RE.split(name.lower()) if tok]
     return not any(token in _GERMAN_STOPWORDS for token in tokens)
 
 
@@ -679,11 +692,54 @@ def _suggest_name_with_llm(
         )
     cleaned = postprocess_name(response)
     if language == "en" and not english_only_check(cleaned):
-        return _baseline_suggestion(
-            profile,
-            cache_key=None,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_non_english",
+        retry_prompt = (
+            f"{prompt}\nEnglish only; no German words."
+        )
+        retry_response = ask_llm(
+            retry_prompt,
+            mode="completion",
+            model=model_id,
+            max_tokens=24,
+            temperature=0.2,
+        )
+        if not retry_response or retry_response.strip() == "[LLM Error]":
+            fallback = _baseline_suggestion(
+                profile,
+                cache_key=None,
+                warning=LLM_UNAVAILABLE_WARNING,
+                reason="llm_error",
+            )
+            return _with_llm_cache(
+                fallback,
+                {
+                    "retry_attempted": True,
+                    "retry_success": False,
+                    "retry_reason": "llm_error",
+                },
+            )
+        cleaned_retry = postprocess_name(retry_response)
+        if not english_only_check(cleaned_retry):
+            fallback = _baseline_suggestion(
+                profile,
+                cache_key=None,
+                warning=LLM_UNAVAILABLE_WARNING,
+                reason="llm_non_english",
+            )
+            return _with_llm_cache(
+                fallback,
+                {
+                    "retry_attempted": True,
+                    "retry_success": False,
+                    "retry_reason": "non_english",
+                },
+            )
+        suggestion = _suggestion_from_text(profile, cleaned_retry, cache_key=None, used=True)
+        return _with_llm_cache(
+            suggestion,
+            {
+                "retry_attempted": True,
+                "retry_success": True,
+            },
         )
     return _suggestion_from_text(profile, cleaned, cache_key=None, used=True)
 
@@ -753,6 +809,20 @@ def _suggestion_from_text(
         confidence=None,
         source="llm" if used else "baseline",
         cache_key=cache_key,
+        metadata=metadata,
+    )
+
+
+def _with_llm_cache(suggestion: NameSuggestion, updates: dict[str, Any]) -> NameSuggestion:
+    metadata = dict(suggestion.metadata or {})
+    llm_cache = dict(metadata.get("llm_cache", {}))
+    llm_cache.update(updates)
+    metadata["llm_cache"] = llm_cache
+    return NameSuggestion(
+        name=suggestion.name,
+        confidence=suggestion.confidence,
+        source=suggestion.source,
+        cache_key=suggestion.cache_key,
         metadata=metadata,
     )
 
