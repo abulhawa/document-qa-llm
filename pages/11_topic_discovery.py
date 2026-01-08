@@ -60,11 +60,29 @@ def _cluster_profile(
     cluster: dict[str, Any],
     payload_lookup: dict[str, dict[str, Any]],
     include_snippets: bool,
+    *,
+    max_keywords: int,
+    max_path_depth: int | None,
+    root_path: str | None,
+    top_extension_count: int,
 ) -> ClusterProfile:
-    base = build_cluster_profile(cluster, payload_lookup)
+    base = build_cluster_profile(
+        cluster,
+        payload_lookup,
+        max_keywords=max_keywords,
+        max_path_depth=max_path_depth,
+        root_path=root_path,
+        top_extension_count=top_extension_count,
+    )
     if include_snippets:
         return base
-    keywords = get_significant_keywords_from_os(base.representative_checksums, snippets=None)
+    keywords = get_significant_keywords_from_os(
+        base.representative_checksums,
+        snippets=None,
+        max_keywords=max_keywords,
+        max_path_depth=max_path_depth,
+        root_path=root_path,
+    )
     return ClusterProfile(
         cluster_id=base.cluster_id,
         size=base.size,
@@ -72,13 +90,24 @@ def _cluster_profile(
         centroid=list(base.centroid),
         representative_checksums=list(base.representative_checksums),
         representative_files=list(base.representative_files),
+        representative_paths=list(base.representative_paths),
         representative_snippets=[],
         keywords=keywords,
+        top_extensions=list(base.top_extensions),
     )
 
 
-def _parent_profile(parent_id: int, child_profiles: list[ClusterProfile]) -> ParentProfile:
-    return build_parent_profile(parent_id, child_profiles)
+def _parent_profile(
+    parent_id: int,
+    child_profiles: list[ClusterProfile],
+    *,
+    top_extension_count: int,
+) -> ParentProfile:
+    return build_parent_profile(
+        parent_id,
+        child_profiles,
+        top_extension_count=top_extension_count,
+    )
 
 
 def _cache_hit(profile: ClusterProfile | ParentProfile, model_id: str) -> bool:
@@ -111,6 +140,15 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
         snippets = payload.get("representative_snippets", [])
         if snippets:
             lines.append("Snippets:\n" + "\n".join(snippets[:3]))
+        top_extensions = payload.get("top_extensions", [])
+        if top_extensions:
+            formatted = ", ".join(
+                f"{entry.get('extension')} ({entry.get('count')})"
+                for entry in top_extensions
+                if entry.get("extension")
+            )
+            if formatted:
+                lines.append(f"Top extensions: {formatted}")
         lines.append(f"Cluster size: {payload.get('size')}")
         lines.append(f"Avg prob: {payload.get('avg_prob'):.3f}")
     else:
@@ -118,6 +156,15 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
         cluster_ids = payload.get("cluster_ids", [])
         if cluster_ids:
             lines.append(f"Child clusters: {', '.join(str(cid) for cid in cluster_ids)}")
+        top_extensions = payload.get("top_extensions", [])
+        if top_extensions:
+            formatted = ", ".join(
+                f"{entry.get('extension')} ({entry.get('count')})"
+                for entry in top_extensions
+                if entry.get("extension")
+            )
+            if formatted:
+                lines.append(f"Top extensions: {formatted}")
         lines.append(f"Avg prob: {payload.get('avg_prob'):.3f}")
     return "\n".join(lines)
 
@@ -518,6 +565,37 @@ with tabs[1]:
     else:
         llm_status = check_llm_status()
 
+        with st.expander("Naming settings", expanded=False):
+            settings_cols = st.columns(2)
+            with settings_cols[0]:
+                max_keywords = st.slider(
+                    "Max keywords",
+                    min_value=15,
+                    max_value=30,
+                    value=topic_naming.DEFAULT_MAX_KEYWORDS,
+                )
+                max_path_depth = st.number_input(
+                    "Path segment depth (0 = no limit)",
+                    min_value=0,
+                    max_value=12,
+                    value=topic_naming.DEFAULT_MAX_PATH_DEPTH,
+                )
+            with settings_cols[1]:
+                root_path = st.text_input(
+                    "Root path prefix to drop (optional)",
+                    value=topic_naming.DEFAULT_ROOT_PATH,
+                )
+                top_extension_count = st.number_input(
+                    "Top extensions to include",
+                    min_value=1,
+                    max_value=10,
+                    value=topic_naming.DEFAULT_TOP_EXTENSION_COUNT,
+                )
+
+        max_path_depth_value = int(max_path_depth)
+        max_path_depth_value = None if max_path_depth_value == 0 else max_path_depth_value
+        root_path_value = root_path.strip() or None
+
         controls = st.columns(3)
         with controls[0]:
             include_snippets = st.toggle("Include content snippets", value=True)
@@ -552,7 +630,15 @@ with tabs[1]:
         if generate_clicked:
             child_profiles: list[ClusterProfile] = []
             for cluster in clusters:
-                profile = _cluster_profile(cluster, payload_lookup, include_snippets)
+                profile = _cluster_profile(
+                    cluster,
+                    payload_lookup,
+                    include_snippets,
+                    max_keywords=int(max_keywords),
+                    max_path_depth=max_path_depth_value,
+                    root_path=root_path_value,
+                    top_extension_count=int(top_extension_count),
+                )
                 child_profiles.append(profile)
 
             parent_profiles: list[ParentProfile] = []
@@ -566,7 +652,13 @@ with tabs[1]:
                 child_group = child_profiles_by_parent.get(parent_id, [])
                 if not child_group:
                     continue
-                parent_profiles.append(_parent_profile(parent_id, child_group))
+                parent_profiles.append(
+                    _parent_profile(
+                        parent_id,
+                        child_group,
+                        top_extension_count=int(top_extension_count),
+                    )
+                )
 
             rows = _build_rows(
                 child_profiles=child_profiles,
