@@ -137,6 +137,7 @@ def ingest_one(
         all_paths.extend(existing_aliases)
         canonical_path = choose_canonical_path(all_paths)
         aliases = sorted({p for p in all_paths if p and p != canonical_path})
+        existing_paths = {p for p in [existing_path, *existing_aliases] if p}
 
         log.set(
             checksum=checksum,
@@ -145,9 +146,57 @@ def ingest_one(
             size=io_loader.format_file_size(size_bytes),
         )
 
+        created = timestamps.get("created")
+        modified = timestamps.get("modified")
+        indexed_at = datetime.now().astimezone().isoformat()
+
+        if not force and existing_fulltext:
+            if normalized_path in existing_paths:
+                logger.info("Checksum already indexed: %s", normalized_path)
+                log.done(status="Already indexed")
+                return {
+                    "success": True,
+                    "status": "Already indexed",
+                    "path": normalized_path,
+                }
+            logger.info(
+                "Checksum already indexed under a different path; skipping ingest for %s",
+                normalized_path,
+            )
+            full_doc_id = existing_fulltext.get("id") or checksum
+            full_doc = existing_fulltext or {}
+            full_doc.update(
+                {
+                    "id": full_doc_id,
+                    "path": canonical_path,
+                    "aliases": aliases,
+                    "filename": os.path.basename(canonical_path),
+                    "filetype": ext,
+                    "modified_at": modified,
+                    "created_at": created,
+                    "indexed_at": indexed_at,
+                    "size_bytes": size_bytes,
+                    "checksum": checksum,
+                }
+            )
+            try:
+                storage.index_fulltext(full_doc)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("OpenSearch full-text indexing failed: %s", e)
+                log.fail(stage="index_fulltext", error_type=e.__class__.__name__, reason=str(e))
+                raise RuntimeError(
+                    f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
+                ) from e
+            log.done(status="Duplicate checksum")
+            return {
+                "success": True,
+                "status": "Duplicate checksum",
+                "path": normalized_path,
+            }
+
         # Skip only if same path and checksum; allow duplicates across paths
         if not force and storage.is_file_up_to_date(checksum, normalized_path):
-            logger.info("✅ File already indexed and unchanged: %s", normalized_path)
+            logger.info("File already indexed and unchanged: %s", normalized_path)
             log.done(status="Already indexed")
             return {
                 "success": True,
@@ -157,12 +206,8 @@ def ingest_one(
 
         is_dup = False
         if not force and storage.is_duplicate_checksum(checksum, normalized_path):
-            logger.info("♻️ Duplicate file detected: %s", normalized_path)
+            logger.info("Duplicate file detected: %s", normalized_path)
             is_dup = True
-
-        created = timestamps.get("created")
-        modified = timestamps.get("modified")
-        indexed_at = datetime.now().astimezone().isoformat()
 
         logger.info("📄 Loading: %s (fs: %s)", normalized_path, io_path)
         try:
