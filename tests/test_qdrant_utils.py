@@ -104,27 +104,27 @@ def test_index_chunks_upsert_failure(monkeypatch):
         qdu.index_chunks_in_batches(chunks)
 
 
-def test_count_qdrant_chunks_by_path(monkeypatch):
+def test_count_qdrant_chunks_by_checksum(monkeypatch):
     mock_client = MagicMock()
     mock_client.count.return_value = DummyResult(3)
     monkeypatch.setattr(qdu, "client", mock_client)
     monkeypatch.setattr(qdu, "QDRANT_COLLECTION", "col")
 
-    assert qdu.count_qdrant_chunks_by_path("/p") == 3
+    assert qdu.count_qdrant_chunks_by_checksum("abc123") == 3
     call = mock_client.count.call_args
     assert call.kwargs["collection_name"] == "col"
     flt = call.kwargs["count_filter"]
     cond = flt.must[0]
-    assert cond.key == "path"
-    assert cond.match.value == "/p"
+    assert cond.key == "checksum"
+    assert cond.match.value == "abc123"
 
 
-def test_count_qdrant_chunks_by_path_failure(monkeypatch):
+def test_count_qdrant_chunks_by_checksum_failure(monkeypatch):
     mock_client = MagicMock()
     mock_client.count.side_effect = Exception("fail")
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    assert qdu.count_qdrant_chunks_by_path("/p") is None
+    assert qdu.count_qdrant_chunks_by_checksum("abc123") is None
 
 
 def test_delete_vectors_by_ids(monkeypatch):
