@@ -18,10 +18,10 @@ def render_task_panel(records: List[Dict[str, Any]]) -> Tuple[bool, List[Dict[st
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Refresh task status"):
+        if st.button("🔄 Refresh task status", key="top_refresh"):
             return True, records
     with col2:
-        if st.button("🧹 Clear finished"):
+        if st.button("🧹 Clear finished", key="top_clear"):
             return True, clear_finished(records, states)
 
     for r in records:
