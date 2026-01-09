@@ -13,7 +13,7 @@ from utils.opensearch_utils import (
     list_files_from_opensearch,
 )
 from utils.qdrant_utils import (
-    count_qdrant_chunks_by_path,
+    count_qdrant_chunks_by_checksum,
 )
 from utils.file_utils import format_file_size
 from ui.ingest_client import enqueue_paths, enqueue_delete_by_path
@@ -197,15 +197,15 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     if need_counts and not fdf.empty:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        path_series = cast(pd.Series, fdf["Path"])
-        visible_paths = path_series.dropna().astype(str).unique().tolist()
+        checksum_series = cast(pd.Series, fdf["Checksum"])
+        visible_checksums = checksum_series.dropna().astype(str).unique().tolist()
         memo = st.session_state.setdefault("_qdrant_count_memo", {})
-        missing = [cs for cs in visible_paths if cs not in memo]
+        missing = [cs for cs in visible_checksums if cs not in memo and cs]
         if missing:
             with st.spinner(f"Counting Qdrant chunks for {len(missing)} file(s)…"):
                 with ThreadPoolExecutor(max_workers=8) as ex:
                     futs = {
-                        ex.submit(count_qdrant_chunks_by_path, cs): cs for cs in missing
+                        ex.submit(count_qdrant_chunks_by_checksum, cs): cs for cs in missing
                     }
                     for fut in as_completed(futs):
                         cs = futs[fut]
@@ -214,14 +214,14 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         except Exception:
                             memo[cs] = 0
         # update counts in the DataFrame for filtering and display
-        path_series = cast(pd.Series, fdf["Path"])
+        checksum_series = cast(pd.Series, fdf["Checksum"])
         existing_qdrant = (
             cast(pd.Series, fdf["Qdrant Chunks"])
             if "Qdrant Chunks" in fdf.columns
             else 0
         )
         fdf["Qdrant Chunks"] = (
-            path_series.astype(str).map(memo).fillna(existing_qdrant)
+            checksum_series.astype(str).map(memo).fillna(existing_qdrant)
         )
 
     # Now that counts exist (if needed), apply the discrepancy filter

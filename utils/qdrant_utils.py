@@ -123,9 +123,9 @@ def index_chunks_in_batches(
     return True
 
 
-def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
+def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
     """
-    Return the number of chunks in Qdrant matching the given path.
+    Return the number of chunks in Qdrant matching the given checksum.
     """
     try:
         result = client.count(
@@ -133,7 +133,7 @@ def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
             count_filter=models.Filter(
                 must=[
                     models.FieldCondition(
-                        key="path", match=models.MatchValue(value=path)
+                        key="checksum", match=models.MatchValue(value=checksum)
                     ),
                 ]
             ),
@@ -141,7 +141,7 @@ def count_qdrant_chunks_by_path(path: str) -> Optional[int]:
         )
         return result.count
     except Exception as e:
-        logger.error("❌ Qdrant count error for path=%s: %s", path, e)
+        logger.error("❌ Qdrant count error for checksum=%s: %s", checksum, e)
         return None
 
 
