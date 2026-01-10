@@ -28,6 +28,10 @@ DEFAULT_TOP_EXTENSION_COUNT = 5
 LLM_UNAVAILABLE_WARNING = (
     "LLM inactive (model not loaded). Using baseline names instead of LLM suggestions."
 )
+CACHE_BYPASS_WARNING = "Cache bypassed (regenerated)"
+LLM_UNAVAILABLE_CACHE_BYPASS_WARNING = (
+    "LLM unavailable; regenerated baseline (cache bypassed)"
+)
 FALLBACK_REASON_MESSAGES = {
     "cache_hit_baseline": "Loaded cached baseline (LLM not called)",
     "llm_model_not_loaded": LLM_UNAVAILABLE_WARNING,
@@ -654,9 +658,10 @@ def suggest_child_name_with_llm(
     language: str = DEFAULT_LANGUAGE,
     llm_callable: Any | None = None,
     allow_cache: bool = True,
+    ignore_cache: bool = False,
 ) -> NameSuggestion:
     cache_key = hash_profile(profile, prompt_version, model_id, language=language)
-    if allow_cache:
+    if allow_cache and not ignore_cache:
         cached = _load_cached_suggestion(cache_key)
         if cached:
             logger.debug(
@@ -682,6 +687,11 @@ def suggest_child_name_with_llm(
                 fallback_reason="llm_model_not_loaded",
                 error_summary=llm_status.get("status_message"),
             )
+            if ignore_cache and allow_cache:
+                suggestion = _apply_cache_bypass_warning(
+                    suggestion,
+                    llm_state=llm_state,
+                )
             _log_naming_result(
                 profile.cluster_id,
                 "cluster",
@@ -706,6 +716,8 @@ def suggest_child_name_with_llm(
             fallback_reason="other_exception",
             error_summary=str(exc),
         )
+    if ignore_cache and allow_cache:
+        suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
     _log_naming_result(
         profile.cluster_id,
         "cluster",
@@ -724,9 +736,10 @@ def suggest_parent_name_with_llm(
     language: str = DEFAULT_LANGUAGE,
     llm_callable: Any | None = None,
     allow_cache: bool = True,
+    ignore_cache: bool = False,
 ) -> NameSuggestion:
     cache_key = hash_profile(profile, prompt_version, model_id, language=language)
-    if allow_cache:
+    if allow_cache and not ignore_cache:
         cached = _load_cached_suggestion(cache_key)
         if cached:
             logger.debug(
@@ -752,6 +765,11 @@ def suggest_parent_name_with_llm(
                 fallback_reason="llm_model_not_loaded",
                 error_summary=llm_status.get("status_message"),
             )
+            if ignore_cache and allow_cache:
+                suggestion = _apply_cache_bypass_warning(
+                    suggestion,
+                    llm_state=llm_state,
+                )
             _log_naming_result(
                 profile.parent_id,
                 "parent",
@@ -776,6 +794,8 @@ def suggest_parent_name_with_llm(
             fallback_reason="other_exception",
             error_summary=str(exc),
         )
+    if ignore_cache and allow_cache:
+        suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
     _log_naming_result(
         profile.parent_id,
         "parent",
@@ -1021,6 +1041,43 @@ def _format_fallback_warning(fallback_reason: str | None) -> str:
         return f"LLM request failed (HTTP {code}) (used baseline)"
     return FALLBACK_REASON_MESSAGES.get(
         fallback_reason, FALLBACK_REASON_MESSAGES["other_exception"]
+    )
+
+
+def _apply_cache_bypass_warning(
+    suggestion: NameSuggestion,
+    *,
+    llm_state: str | None,
+) -> NameSuggestion:
+    if llm_state == "not_loaded" and suggestion.source == "baseline":
+        return _with_warning(
+            suggestion,
+            LLM_UNAVAILABLE_CACHE_BYPASS_WARNING,
+            replace=True,
+        )
+    return _with_warning(suggestion, CACHE_BYPASS_WARNING)
+
+
+def _with_warning(
+    suggestion: NameSuggestion,
+    warning: str,
+    *,
+    replace: bool = False,
+) -> NameSuggestion:
+    if not warning:
+        return suggestion
+    metadata = dict(suggestion.metadata or {})
+    existing = metadata.get("warning")
+    if replace or not existing:
+        metadata["warning"] = warning
+    else:
+        metadata["warning"] = f"{warning}; {existing}"
+    return NameSuggestion(
+        name=suggestion.name,
+        confidence=suggestion.confidence,
+        source=suggestion.source,
+        cache_key=suggestion.cache_key,
+        metadata=metadata,
     )
 
 
