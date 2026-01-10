@@ -27,6 +27,9 @@ DEFAULT_MAX_KEYWORDS = 20
 DEFAULT_MAX_PATH_DEPTH = 4
 DEFAULT_ROOT_PATH = ""
 DEFAULT_TOP_EXTENSION_COUNT = 5
+MIXEDNESS_WARNING_THRESHOLD = 0.6
+MIXEDNESS_SAFE_NAME = "Review — Mixed"
+MIXEDNESS_MAX_TOKENS = 160
 MIXEDNESS_COMPONENT_WEIGHTS = {
     "keyword_entropy": 0.45,
     "extension_entropy": 0.2,
@@ -1149,6 +1152,36 @@ def _with_warning(
     )
 
 
+def _parse_json_payload(content: str) -> Any:
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+
+def _normalize_subthemes(subthemes: Any) -> list[str]:
+    if not subthemes:
+        return []
+    if isinstance(subthemes, str):
+        items = [item.strip() for item in subthemes.split(",") if item.strip()]
+    elif isinstance(subthemes, Sequence):
+        items = [str(item).strip() for item in subthemes if str(item).strip()]
+    else:
+        return []
+    normalized = []
+    for item in items:
+        cleaned = postprocess_name(item)
+        if cleaned != "Untitled":
+            normalized.append(cleaned)
+    return normalized[:4]
+
+
 def _map_llm_error_to_reason(error_type: str, status_code: int | None) -> str:
     if error_type == "timeout":
         return "llm_timeout"
@@ -1272,6 +1305,7 @@ def _suggest_name_with_llm(
     language: str,
     llm_callable: Any | None,
 ) -> NameSuggestion:
+    high_mixedness = profile.mixedness > MIXEDNESS_WARNING_THRESHOLD
     if llm_callable:
         result = llm_callable(profile)
         if isinstance(result, NameSuggestion):
@@ -1284,12 +1318,17 @@ def _suggest_name_with_llm(
                 used=True,
                 prompt_chars=None,
             )
-    prompt = _build_llm_prompt(profile, prompt_version=prompt_version, language=language)
+    prompt = _build_llm_prompt(
+        profile,
+        prompt_version=prompt_version,
+        language=language,
+        mixedness_mode=high_mixedness,
+    )
     response = ask_llm_with_status(
         prompt,
         mode="completion",
         model=model_id,
-        max_tokens=24,
+        max_tokens=MIXEDNESS_MAX_TOKENS if high_mixedness else 24,
         temperature=0.2,
     )
     if response["error"]:
@@ -1309,6 +1348,21 @@ def _suggest_name_with_llm(
             cache_key=None,
             fallback_reason="other_exception",
             error_summary="Empty LLM response",
+            prompt_chars=response["prompt_length"],
+        )
+    if high_mixedness:
+        mixedness_suggestion = _mixedness_suggestion_from_text(
+            profile,
+            response["content"],
+            prompt_chars=response["prompt_length"],
+        )
+        if mixedness_suggestion:
+            return mixedness_suggestion
+        return _baseline_suggestion(
+            profile,
+            cache_key=None,
+            fallback_reason="llm_invalid_json",
+            error_summary="Invalid mixedness response",
             prompt_chars=response["prompt_length"],
         )
     cleaned = postprocess_name(response["content"])
@@ -1403,7 +1457,14 @@ def _build_llm_prompt(
     *,
     prompt_version: str,
     language: str,
+    mixedness_mode: bool = False,
 ) -> str:
+    if mixedness_mode:
+        return _build_mixedness_prompt(
+            profile,
+            prompt_version=prompt_version,
+            language=language,
+        )
     keywords = ", ".join(profile.keywords[:12])
     if isinstance(profile, ClusterProfile):
         file_names = ", ".join(
@@ -1449,6 +1510,63 @@ def _build_llm_prompt(
     )
 
 
+def _build_mixedness_prompt(
+    profile: ClusterProfile | ParentProfile,
+    *,
+    prompt_version: str,
+    language: str,
+) -> str:
+    keywords = ", ".join(profile.keywords[:12])
+    base = [
+        f"Prompt version: {prompt_version}",
+        f"Language: {language}",
+        "The cluster appears highly mixed and needs review.",
+        f"Mixedness score: {profile.mixedness:.2f}",
+        f"Keywords: {keywords}",
+        "Respond with JSON only.",
+        f"JSON schema: {{\"name\": \"{MIXEDNESS_SAFE_NAME}\", \"subthemes\": [\"...\"], \"note\": \"...\"}}",
+        "Rules: name must be exactly 'Review — Mixed'; subthemes must be 2-4 short phrases; note is a short sentence explaining why it is mixed.",
+    ]
+    if isinstance(profile, ClusterProfile):
+        file_names = ", ".join(
+            _dedupe_keep_order(
+                [
+                    str(entry.get("filename") or entry.get("path") or "")
+                    for entry in profile.representative_files
+                ]
+            )
+        )
+        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
+        top_extensions = ", ".join(
+            f"{entry.get('extension')} ({entry.get('count')})"
+            for entry in profile.top_extensions
+            if entry.get("extension")
+        )
+        snippets = "\n".join(profile.representative_snippets[:6])
+        base.extend(
+            [
+                f"Cluster size: {profile.size}",
+                f"Representative files: {file_names}",
+                f"Representative paths: {representative_paths}",
+                f"Top extensions: {top_extensions}",
+                f"Snippets:\n{snippets}",
+            ]
+        )
+    else:
+        top_extensions = ", ".join(
+            f"{entry.get('extension')} ({entry.get('count')})"
+            for entry in profile.top_extensions
+            if entry.get("extension")
+        )
+        base.extend(
+            [
+                f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}",
+                f"Top extensions: {top_extensions}",
+            ]
+        )
+    return "\n".join(base)
+
+
 def _suggestion_from_text(
     profile: ClusterProfile | ParentProfile,
     name: str,
@@ -1470,6 +1588,36 @@ def _suggestion_from_text(
         confidence=None,
         source="llm" if used else "baseline",
         cache_key=cache_key,
+        metadata=metadata,
+    )
+
+
+def _mixedness_suggestion_from_text(
+    profile: ClusterProfile | ParentProfile,
+    content: str,
+    *,
+    prompt_chars: int | None,
+) -> NameSuggestion | None:
+    payload = _parse_json_payload(content)
+    if not isinstance(payload, dict):
+        return None
+    subthemes = _normalize_subthemes(payload.get("subthemes"))
+    note = str(payload.get("note") or "").strip()
+    metadata = _profile_metadata(profile)
+    metadata["mixedness_subthemes"] = subthemes
+    metadata["mixedness_note"] = note
+    metadata["llm_cache"] = {
+        "llm_used": True,
+        "fallback_reason": None,
+        "error_summary": None,
+        "cache_hit": False,
+        "prompt_chars": prompt_chars,
+    }
+    return NameSuggestion(
+        name=MIXEDNESS_SAFE_NAME,
+        confidence=None,
+        source="llm",
+        cache_key=None,
         metadata=metadata,
     )
 
