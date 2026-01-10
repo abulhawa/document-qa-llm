@@ -16,6 +16,7 @@ from core.llm import ask_llm, check_llm_status
 from core.embeddings import embed_texts
 from core.file_loader import load_documents
 from utils.file_utils import get_file_size, normalize_path
+from utils.timing import timed_block
 
 
 _TOPIC_PATTERN = re.compile(r"^[1-5]\.\s*")
@@ -213,18 +214,22 @@ def _scan_files(root: str, exclude_roots: Iterable[str], max_files: Optional[int
     root = os.path.abspath(root)
     exclude_norm = [os.path.abspath(p) for p in exclude_roots]
     files: List[str] = []
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-        if any(os.path.commonpath([dirpath, ex]) == ex for ex in exclude_norm):
-            dirnames[:] = []
-            continue
-        dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
-        for name in filenames:
-            if name.startswith("~$"):
+    with timed_block(
+        "step.files.enumerate",
+        extra={"root": root, "max_files": max_files, "exclude_roots": len(exclude_norm)},
+    ):
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+            if any(os.path.commonpath([dirpath, ex]) == ex for ex in exclude_norm):
+                dirnames[:] = []
                 continue
-            files.append(os.path.join(dirpath, name))
-            _notify_progress("scan", scanned=len(files))
-            if max_files is not None and len(files) >= max_files:
-                return files
+            dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
+            for name in filenames:
+                if name.startswith("~$"):
+                    continue
+                files.append(os.path.join(dirpath, name))
+                _notify_progress("scan", scanned=len(files))
+                if max_files is not None and len(files) >= max_files:
+                    return files
     return files
 
 
@@ -489,18 +494,22 @@ def _build_sort_plan_uncached(
     file_tokens: List[List[str]] = []
     content_texts: List[str] = []
     parsed_count = 0
-    for path in files:
-        meta_text, tokens = _build_meta_text(path, options.root, options.max_parent_levels)
-        meta_texts.append(meta_text)
-        file_tokens.append(tokens)
-        if options.include_content:
-            content_texts.append(
-                _load_content_text(path, options.max_content_chars, options.max_content_mb)
-            )
-        else:
-            content_texts.append("")
-        parsed_count += 1
-        _notify_progress("parse", parsed=parsed_count, total=len(files))
+    with timed_block(
+        "step.content.parse",
+        extra={"file_count": len(files), "include_content": options.include_content},
+    ):
+        for path in files:
+            meta_text, tokens = _build_meta_text(path, options.root, options.max_parent_levels)
+            meta_texts.append(meta_text)
+            file_tokens.append(tokens)
+            if options.include_content:
+                content_texts.append(
+                    _load_content_text(path, options.max_content_chars, options.max_content_mb)
+                )
+            else:
+                content_texts.append("")
+            parsed_count += 1
+            _notify_progress("parse", parsed=parsed_count, total=len(files))
 
     target_texts = [f"{t.label} {' '.join(t.keywords.keys())}".strip() for t in targets]
     embed_state = {"embedded": 0, "total": len(target_texts) + len(meta_texts)}
@@ -681,21 +690,30 @@ def apply_sort_plan(plan: List[SortPlanItem], min_confidence: float, dry_run: bo
     skipped: List[Dict[str, str]] = []
     errors: List[Dict[str, str]] = []
 
-    for item in plan:
-        if item.confidence < min_confidence:
-            skipped.append({"path": item.path, "reason": "below_threshold"})
-            continue
-        dest_dir = item.target_path
-        try:
-            if not dry_run:
-                os.makedirs(dest_dir, exist_ok=True)
-            dest_path = _resolve_collision(dest_dir, os.path.basename(item.path))
-            if dry_run:
-                moved.append({"from": item.path, "to": normalize_path(dest_path)})
-            else:
-                shutil.move(item.path, dest_path)
-                moved.append({"from": item.path, "to": normalize_path(dest_path)})
-        except Exception as exc:
-            errors.append({"path": item.path, "error": str(exc)})
+    with timed_block(
+        "action.apply_moves",
+        extra={
+            "dry_run": dry_run,
+            "min_confidence": min_confidence,
+            "plan_items": len(plan),
+        },
+        logger=logger,
+    ):
+        for item in plan:
+            if item.confidence < min_confidence:
+                skipped.append({"path": item.path, "reason": "below_threshold"})
+                continue
+            dest_dir = item.target_path
+            try:
+                if not dry_run:
+                    os.makedirs(dest_dir, exist_ok=True)
+                dest_path = _resolve_collision(dest_dir, os.path.basename(item.path))
+                if dry_run:
+                    moved.append({"from": item.path, "to": normalize_path(dest_path)})
+                else:
+                    shutil.move(item.path, dest_path)
+                    moved.append({"from": item.path, "to": normalize_path(dest_path)})
+            except Exception as exc:
+                errors.append({"path": item.path, "error": str(exc)})
 
     return {"moved": moved, "skipped": skipped, "errors": errors}

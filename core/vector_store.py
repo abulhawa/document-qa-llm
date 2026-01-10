@@ -23,6 +23,7 @@ from tracing import (
     record_span_error,
     STATUS_OK,
 )
+from utils.timing import timed_block
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
@@ -36,10 +37,15 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
 
     try:
         os_client = get_client()
-        response = os_client.mget(
-            index=CHUNKS_INDEX,
-            body={"ids": list(chunk_ids), "_source": ["text"]},
-        )
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": CHUNKS_INDEX, "operation": "mget", "ids": len(chunk_ids)},
+            logger=logger,
+        ):
+            response = os_client.mget(
+                index=CHUNKS_INDEX,
+                body={"ids": list(chunk_ids), "_source": ["text"]},
+            )
     except Exception as e:
         logger.warning(
             "❌ OpenSearch unavailable while fetching chunk text; proceeding with Qdrant payloads."
@@ -76,13 +82,18 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
             espan.set_status(STATUS_OK)
 
         try:
-            results = client.search(
-                collection_name=QDRANT_COLLECTION,
-                query_vector=query_embedding,
-                limit=top_k * 3,
-                score_threshold=CHUNK_SCORE_THRESHOLD,
-                with_payload=True,
-            )
+            with timed_block(
+                "step.qdrant.call",
+                extra={"operation": "search", "collection": QDRANT_COLLECTION, "top_k": top_k},
+                logger=logger,
+            ):
+                results = client.search(
+                    collection_name=QDRANT_COLLECTION,
+                    query_vector=query_embedding,
+                    limit=top_k * 3,
+                    score_threshold=CHUNK_SCORE_THRESHOLD,
+                    with_payload=True,
+                )
             chunk_ids: set[str] = set()
             for r in results:
                 payload = r.payload or {}
