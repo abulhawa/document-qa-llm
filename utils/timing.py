@@ -19,7 +19,7 @@ def _sanitize_extra(extra: Dict[str, Any] | None) -> Dict[str, Any]:
     for key, value in list(payload.items()):
         try:
             json.dumps(value)
-        except TypeError:
+        except (TypeError, ValueError):
             payload[key] = str(value)
     return payload
 
