@@ -494,6 +494,104 @@ def test_cache_baseline_warns_on_cache_hit(
     assert "cached baseline" in cached.metadata["warning"].lower()
 
 
+def test_cache_bypass_regenerates_child_name(
+    cluster_profile: topic_naming.ClusterProfile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "CACHE_DIR", tmp_path)
+
+    def first_llm(_profile: topic_naming.ClusterProfile) -> topic_naming.NameSuggestion:
+        return topic_naming.NameSuggestion(name="Cached Name", source="llm")
+
+    first = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=True,
+        llm_callable=first_llm,
+    )
+    assert first.name == "Cached Name"
+
+    def fail_if_called(*_args, **_kwargs) -> topic_naming.NameSuggestion:
+        raise AssertionError("LLM should not be called on cache hit.")
+
+    cached = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=True,
+        llm_callable=fail_if_called,
+    )
+    assert cached.metadata["llm_cache"]["cache_hit"] is True
+
+    def refreshed_llm(_profile: topic_naming.ClusterProfile) -> topic_naming.NameSuggestion:
+        return topic_naming.NameSuggestion(name="Fresh Name", source="llm")
+
+    refreshed = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=True,
+        ignore_cache=True,
+        llm_callable=refreshed_llm,
+    )
+
+    cache_key = topic_naming.hash_profile(
+        cluster_profile,
+        topic_naming.DEFAULT_PROMPT_VERSION,
+        "test-model",
+        language=topic_naming.DEFAULT_LANGUAGE,
+    )
+    payload = json.loads((tmp_path / f"{cache_key}.json").read_text(encoding="utf-8"))
+
+    assert refreshed.name == "Fresh Name"
+    assert refreshed.metadata["llm_cache"]["cache_hit"] is False
+    assert refreshed.metadata["llm_cache"]["llm_used"] is True
+    assert "cache bypassed" in refreshed.metadata["warning"].lower()
+    assert payload["name"] == "Fresh Name"
+
+
+def test_cache_bypass_regenerates_parent_name(
+    cluster_profile: topic_naming.ClusterProfile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "CACHE_DIR", tmp_path)
+    parent_profile = topic_naming.ParentProfile(
+        parent_id=10,
+        cluster_ids=[cluster_profile.cluster_id],
+        size=cluster_profile.size,
+        avg_prob=cluster_profile.avg_prob,
+        centroid=cluster_profile.centroid,
+        mixedness=cluster_profile.mixedness,
+        representative_checksums=cluster_profile.representative_checksums,
+        keywords=cluster_profile.keywords,
+        top_extensions=cluster_profile.top_extensions,
+    )
+
+    def cached_llm(_profile: topic_naming.ParentProfile) -> topic_naming.NameSuggestion:
+        return topic_naming.NameSuggestion(name="Parent Cached", source="llm")
+
+    topic_naming.suggest_parent_name_with_llm(
+        parent_profile,
+        model_id="test-model",
+        allow_cache=True,
+        llm_callable=cached_llm,
+    )
+
+    def refreshed_llm(_profile: topic_naming.ParentProfile) -> topic_naming.NameSuggestion:
+        return topic_naming.NameSuggestion(name="Parent Fresh", source="llm")
+
+    refreshed = topic_naming.suggest_parent_name_with_llm(
+        parent_profile,
+        model_id="test-model",
+        allow_cache=True,
+        ignore_cache=True,
+        llm_callable=refreshed_llm,
+    )
+
+    assert refreshed.name == "Parent Fresh"
+    assert "cache bypassed" in refreshed.metadata["warning"].lower()
+
+
 def test_keyword_mixedness_heuristic() -> None:
     assert topic_naming._keyword_mixedness({}, max_keywords=5) == 0.0
     assert topic_naming._keyword_mixedness({"alpha": 10}, max_keywords=5) == 0.0
