@@ -425,8 +425,8 @@ def select_representative_chunks_for_files(
             snippet_metadata,
         )
 
-    all_vectors = [payload["vector"] for chunks in embedding_payloads.values() for payload in chunks]
-    centroid = compute_centroid(all_vectors)
+    file_vectors = _compute_file_vectors(embedding_payloads)
+    centroid = compute_centroid(list(file_vectors.values()))
     if not centroid:
         snippet_metadata = {
             "method": "fallback_text",
@@ -485,10 +485,11 @@ def select_representative_chunks_for_files(
 
     snippet_metadata = {
         "method": "centroid_medoid",
+        "centroid_source": "file_vectors",
         "source": "qdrant",
         "files_total": len(checksums),
         "files_with_embeddings": len(embedding_payloads),
-        "chunks_considered": len(all_vectors),
+        "chunks_considered": sum(len(chunks) for chunks in embedding_payloads.values()),
         "fallback_files": fallback_files,
     }
     return snippets, snippet_metadata
