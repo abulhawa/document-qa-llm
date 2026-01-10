@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import re
+import time
 from typing import Any, Iterable, Sequence
 
 from config import CHUNKS_INDEX, FULLTEXT_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
@@ -52,6 +53,67 @@ FALLBACK_REASON_MESSAGES = {
     "skipped_due_to_prompt_too_long": "Skipped LLM because prompt was too long (used baseline)",
     "other_exception": "LLM request failed (used baseline)",
 }
+
+
+@dataclass
+class _OSKeywordMetrics:
+    request_count: int = 0
+    cache_hits: int = 0
+    total_time_s: float = 0.0
+    max_time_s: float = 0.0
+    query_keys: set[tuple[Any, ...]] = field(default_factory=set)
+
+
+_OS_KEYWORD_METRICS = _OSKeywordMetrics()
+_SIGNIFICANT_TERMS_CACHE: dict[tuple[Any, ...], dict[str, float]] = {}
+
+
+def reset_os_keyword_metrics(*, clear_cache: bool = False) -> None:
+    _OS_KEYWORD_METRICS.request_count = 0
+    _OS_KEYWORD_METRICS.cache_hits = 0
+    _OS_KEYWORD_METRICS.total_time_s = 0.0
+    _OS_KEYWORD_METRICS.max_time_s = 0.0
+    _OS_KEYWORD_METRICS.query_keys.clear()
+    if clear_cache:
+        _SIGNIFICANT_TERMS_CACHE.clear()
+
+
+def get_os_keyword_metrics() -> dict[str, float | int]:
+    return {
+        "request_count": _OS_KEYWORD_METRICS.request_count,
+        "cache_hits": _OS_KEYWORD_METRICS.cache_hits,
+        "total_time_s": _OS_KEYWORD_METRICS.total_time_s,
+        "max_time_s": _OS_KEYWORD_METRICS.max_time_s,
+        "unique_queries": len(_OS_KEYWORD_METRICS.query_keys),
+    }
+
+
+def log_os_keyword_metrics(*, run_id: str | None = None) -> None:
+    metrics = get_os_keyword_metrics()
+    request_count = int(metrics["request_count"])
+    total_time = float(metrics["total_time_s"])
+    max_time = float(metrics["max_time_s"])
+    cache_hits = int(metrics["cache_hits"])
+    avg_time = total_time / request_count if request_count else 0.0
+    total_queries = request_count + cache_hits
+    reduction_label = (
+        f"estimated reduction: ~{total_queries} -> ~{request_count}"
+        if total_queries
+        else "estimated reduction: n/a"
+    )
+    run_label = f" (run_id={run_id})" if run_id else ""
+    logger.info(
+        "OS keyword requests%s: %s | total: %.3fs | avg: %.3fs | max: %.3fs | "
+        "cache_hits: %s | unique_queries: %s | %s",
+        run_label,
+        request_count,
+        total_time,
+        avg_time,
+        max_time,
+        cache_hits,
+        metrics["unique_queries"],
+        reduction_label,
+    )
 
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 _LONG_NUMBER_RE = re.compile(r"\b\d{6,}\b")
@@ -1755,6 +1817,16 @@ def _significant_terms_from_os(
 ) -> dict[str, float]:
     if not checksums:
         return {}
+    cache_key = (
+        FULLTEXT_INDEX,
+        tuple(sorted(str(checksum) for checksum in checksums)),
+        int(max_keywords),
+    )
+    _OS_KEYWORD_METRICS.query_keys.add(cache_key)
+    cached = _SIGNIFICANT_TERMS_CACHE.get(cache_key)
+    if cached is not None:
+        _OS_KEYWORD_METRICS.cache_hits += 1
+        return cached
     size = max(15, min(max_keywords, 30))
     body = {
         "size": 0,
@@ -1769,6 +1841,7 @@ def _significant_terms_from_os(
             }
         },
     }
+    start = time.perf_counter()
     try:
         client = get_client()
         with timed_block(
@@ -1777,7 +1850,16 @@ def _significant_terms_from_os(
             logger=logger,
         ):
             response = client.search(index=FULLTEXT_INDEX, body=body)
+        elapsed = time.perf_counter() - start
+        _OS_KEYWORD_METRICS.request_count += 1
+        _OS_KEYWORD_METRICS.total_time_s += elapsed
+        _OS_KEYWORD_METRICS.max_time_s = max(_OS_KEYWORD_METRICS.max_time_s, elapsed)
     except Exception:  # noqa: BLE001
+        elapsed = time.perf_counter() - start
+        _OS_KEYWORD_METRICS.request_count += 1
+        _OS_KEYWORD_METRICS.total_time_s += elapsed
+        _OS_KEYWORD_METRICS.max_time_s = max(_OS_KEYWORD_METRICS.max_time_s, elapsed)
+        _SIGNIFICANT_TERMS_CACHE[cache_key] = {}
         return {}
     buckets = (
         response.get("aggregations", {})
@@ -1800,6 +1882,7 @@ def _significant_terms_from_os(
         if score is None:
             score = bucket.get("doc_count", 0)
         results[token] = float(score or 0)
+    _SIGNIFICANT_TERMS_CACHE[cache_key] = results
     return results
 
 
