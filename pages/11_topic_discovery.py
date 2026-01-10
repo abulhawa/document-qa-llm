@@ -1,4 +1,6 @@
 import json
+import math
+import time
 import uuid
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import asdict
@@ -33,7 +35,9 @@ from services.topic_naming import (
     get_significant_keywords_from_os,
     hash_profile,
     suggest_child_name_with_llm,
+    suggest_child_names_with_llm_batch,
     suggest_parent_name_with_llm,
+    suggest_parent_names_with_llm_batch,
 )
 
 from core.llm import check_llm_status
@@ -50,6 +54,7 @@ DEFAULT_MAX_KEYWORDS = getattr(topic_naming, "DEFAULT_MAX_KEYWORDS", 20)
 DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
 DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
 DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
+DEFAULT_LLM_BATCH_SIZE = getattr(topic_naming, "DEFAULT_LLM_BATCH_SIZE", 10)
 MIXEDNESS_WARNING_THRESHOLD = getattr(topic_naming, "MIXEDNESS_WARNING_THRESHOLD", 0.6)
 CONFIDENCE_MIXEDNESS_FACTOR = 0.5
 TOPIC_NAMING_CACHE_DIR = getattr(
@@ -256,20 +261,34 @@ def _build_rows(
     parent_profiles: list[ParentProfile],
     llm_status: Mapping[str, Any],
     ignore_cache: bool,
+    fast_mode: bool,
+    batch_size: int,
 ) -> list[dict[str, Any]]:
     model_id = llm_status.get("current_model") or "default"
     rows: list[dict[str, Any]] = []
     parent_rows: list[dict[str, Any]] = []
     parent_differentiators: list[str | None] = []
 
-    for profile in parent_profiles:
-        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
-        suggestion = suggest_parent_name_with_llm(
-            profile,
+    parent_suggestions: dict[int, Any] = {}
+    if fast_mode and parent_profiles:
+        parent_suggestions = suggest_parent_names_with_llm_batch(
+            parent_profiles,
             model_id=model_id,
             allow_cache=True,
             ignore_cache=ignore_cache,
+            batch_size=batch_size,
         )
+
+    for profile in parent_profiles:
+        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
+        suggestion = parent_suggestions.get(profile.parent_id)
+        if suggestion is None:
+            suggestion = suggest_parent_name_with_llm(
+                profile,
+                model_id=model_id,
+                allow_cache=True,
+                ignore_cache=ignore_cache,
+            )
         llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
         base_confidence = (
             suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
@@ -308,14 +327,25 @@ def _build_rows(
 
     child_rows: list[dict[str, Any]] = []
     child_differentiators: list[str | None] = []
-    for profile in child_profiles:
-        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
-        suggestion = suggest_child_name_with_llm(
-            profile,
+    child_suggestions: dict[int, Any] = {}
+    if fast_mode and child_profiles:
+        child_suggestions = suggest_child_names_with_llm_batch(
+            child_profiles,
             model_id=model_id,
             allow_cache=True,
             ignore_cache=ignore_cache,
+            batch_size=batch_size,
         )
+    for profile in child_profiles:
+        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
+        suggestion = child_suggestions.get(profile.cluster_id)
+        if suggestion is None:
+            suggestion = suggest_child_name_with_llm(
+                profile,
+                model_id=model_id,
+                allow_cache=True,
+                ignore_cache=ignore_cache,
+            )
         llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
         base_confidence = (
             suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
@@ -745,12 +775,19 @@ with tabs[1]:
                     max_value=10,
                     value=DEFAULT_TOP_EXTENSION_COUNT,
                 )
+                llm_batch_size = st.number_input(
+                    "LLM batch size",
+                    min_value=1,
+                    max_value=50,
+                    value=DEFAULT_LLM_BATCH_SIZE,
+                    help="Used in fast mode for batch LLM naming.",
+                )
 
         max_path_depth_value = int(max_path_depth)
         max_path_depth_value = None if max_path_depth_value == 0 else max_path_depth_value
         root_path_value = root_path.strip() or None
 
-        controls = st.columns(4)
+        controls = st.columns(5)
         with controls[0]:
             include_snippets = st.toggle("Include content snippets", value=True)
         with controls[1]:
@@ -762,6 +799,11 @@ with tabs[1]:
                 key="topic_naming_ignore_cache",
             )
         with controls[3]:
+            fast_mode = st.toggle(
+                "Fast mode (batch LLM naming)",
+                value=True,
+            )
+        with controls[4]:
             # Allow baseline naming even when the LLM is inactive.
             generate_clicked = st.button(
                 "Generate names (LLM)",
@@ -778,6 +820,16 @@ with tabs[1]:
         clusters = cluster_result.get("clusters", [])
         parent_summaries = cluster_result.get("parent_summaries", [])
         file_assignments = cluster_result.get("file_assignments", {})
+
+        estimated_llm_calls = 0
+        if fast_mode:
+            estimated_llm_calls = (
+                math.ceil(len(clusters) / max(int(llm_batch_size), 1))
+                + math.ceil(len(parent_summaries) / max(int(llm_batch_size), 1))
+            )
+        else:
+            estimated_llm_calls = len(clusters) + len(parent_summaries)
+        st.caption(f"LLM calls: ~{estimated_llm_calls}")
 
         payload_lookup = {
             checksum: payloads[idx] if idx < len(payloads) else {}
@@ -797,6 +849,7 @@ with tabs[1]:
             st.session_state["_run_id"] = run_id
             set_run_id(run_id)
             topic_naming.reset_os_keyword_metrics(clear_cache=True)
+            topic_naming.reset_llm_request_metrics()
             child_profiles: list[ClusterProfile] = []
             for cluster in clusters:
                 profile = _cluster_profile(
@@ -839,11 +892,22 @@ with tabs[1]:
                     extra={"run_id": run_id, "child_clusters": len(child_profiles)},
                     logger=logger,
                 ):
+                    start_time = time.perf_counter()
                     rows = _build_rows(
                         child_profiles=child_profiles,
                         parent_profiles=parent_profiles,
                         llm_status=llm_status,
                         ignore_cache=ignore_cache_for_run,
+                        fast_mode=fast_mode,
+                        batch_size=int(llm_batch_size),
+                    )
+                    total_runtime = time.perf_counter() - start_time
+                    topic_naming.log_llm_request_summary(
+                        run_id=run_id,
+                        child_count=len(child_profiles),
+                        parent_count=len(parent_profiles),
+                        estimated_calls_before=len(child_profiles) + len(parent_profiles),
+                        total_runtime_s=total_runtime,
                     )
             topic_naming.log_os_keyword_metrics(run_id=run_id)
             if any(row["source"] != "llm" for row in rows):
