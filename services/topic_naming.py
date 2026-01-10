@@ -32,7 +32,6 @@ MIXEDNESS_SAFE_NAME = "Review — Mixed"
 MIXEDNESS_MAX_TOKENS = 160
 MIXEDNESS_COMPONENT_WEIGHTS = {
     "keyword_entropy": 0.45,
-    "extension_entropy": 0.2,
     "embedding_spread": 0.35,
 }
 MIXEDNESS_RANGE_SCALE = 0.85
@@ -255,7 +254,6 @@ def build_cluster_profile(
     )
     mixedness = _combined_mixedness(
         keyword_entropy,
-        extension_entropy,
         embedding_spread,
     )
     centroid = [float(val) for val in cluster.get("centroid", [])]
@@ -319,7 +317,6 @@ def build_parent_profile(
         extension_entropy = _normalized_entropy(extension_counts)
     mixedness = _combined_mixedness(
         keyword_entropy,
-        extension_entropy,
         embedding_spread,
     )
     return ParentProfile(
@@ -1715,9 +1712,10 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
     metadata: dict[str, Any] = {
         "keywords": list(profile.keywords),
         "mixedness": profile.mixedness,
+        "kw_entropy_norm": profile.keyword_entropy,
+        "emb_spread_norm": profile.embedding_spread,
         "mixedness_components": {
             "keyword_entropy": profile.keyword_entropy,
-            "extension_entropy": profile.extension_entropy,
             "embedding_spread": profile.embedding_spread,
         },
     }
@@ -1908,12 +1906,10 @@ def _normalized_entropy(counts: dict[str, float] | dict[str, int]) -> float:
 
 def _combined_mixedness(
     keyword_entropy: float,
-    extension_entropy: float,
     embedding_spread: float,
 ) -> float:
     weighted_sum = (
         keyword_entropy * MIXEDNESS_COMPONENT_WEIGHTS["keyword_entropy"]
-        + extension_entropy * MIXEDNESS_COMPONENT_WEIGHTS["extension_entropy"]
         + embedding_spread * MIXEDNESS_COMPONENT_WEIGHTS["embedding_spread"]
     )
     weight_total = sum(MIXEDNESS_COMPONENT_WEIGHTS.values()) or 1.0

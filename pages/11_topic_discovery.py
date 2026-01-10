@@ -161,13 +161,10 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
     component_labels = []
     keyword_entropy = payload.get("keyword_entropy")
     if keyword_entropy is not None:
-        component_labels.append(f"keyword {keyword_entropy:.3f}")
-    extension_entropy = payload.get("extension_entropy")
-    if extension_entropy is not None:
-        component_labels.append(f"extension {extension_entropy:.3f}")
+        component_labels.append(f"kw_entropy_norm {keyword_entropy:.3f}")
     embedding_spread = payload.get("embedding_spread")
     if embedding_spread is not None:
-        component_labels.append(f"embedding {embedding_spread:.3f}")
+        component_labels.append(f"emb_spread_norm {embedding_spread:.3f}")
     if component_labels:
         lines.append("Mixedness components: " + ", ".join(component_labels))
     if isinstance(profile, ClusterProfile):

@@ -643,9 +643,6 @@ def test_mixedness_component_normalization(monkeypatch: pytest.MonkeyPatch) -> N
     )
     assert keyword_entropy == pytest.approx(1.0)
 
-    extension_entropy = topic_naming._normalized_entropy({".pdf": 4, ".docx": 4})
-    assert extension_entropy == pytest.approx(1.0)
-
     def fake_load_embeddings(_checksums: list[str]) -> dict[str, list[dict[str, object]]]:
         return {
             "checksum-a": [{"vector": [1.0, 0.0]}],
@@ -660,9 +657,9 @@ def test_mixedness_component_normalization(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_combined_mixedness_ranges() -> None:
-    assert topic_naming._combined_mixedness(0.0, 0.0, 0.0) == 0.0
-    assert topic_naming._combined_mixedness(1.0, 1.0, 1.0) == pytest.approx(0.85)
-    assert topic_naming._combined_mixedness(2.0, 2.0, 2.0) == 1.0
+    assert topic_naming._combined_mixedness(0.0, 0.0) == 0.0
+    assert topic_naming._combined_mixedness(1.0, 1.0) == pytest.approx(0.85)
+    assert topic_naming._combined_mixedness(2.0, 2.0) == 1.0
 
 
 def test_filter_hashlike_and_long_numeric_path_tokens(
