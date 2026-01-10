@@ -573,16 +573,29 @@ def _fallback_snippets_from_text(
         text_full = file_entry.get("text_full")
         if not text_full:
             continue
-        chunks_added = 0
+
+        candidate_snippets: list[str] = []
         for chunk in _split_snippets(str(text_full)):
-            sanitized = _scrub_text(chunk)
-            sanitized = sanitized.strip()
+            sanitized = _scrub_text(chunk).strip()
             if not sanitized:
                 continue
-            snippets.append(sanitized[:max_chars])
-            chunks_added += 1
-            if chunks_added >= max_chunks_per_file:
-                break
+            candidate_snippets.append(sanitized[:max_chars])
+
+        if not candidate_snippets:
+            continue
+
+        if len(candidate_snippets) <= max_chunks_per_file:
+            snippets.extend(candidate_snippets)
+            continue
+
+        if max_chunks_per_file <= 1:
+            middle_index = len(candidate_snippets) // 2
+            snippets.append(candidate_snippets[middle_index])
+            continue
+
+        step = (len(candidate_snippets) - 1) / (max_chunks_per_file - 1)
+        indices = [round(step * idx) for idx in range(max_chunks_per_file)]
+        snippets.extend(candidate_snippets[index] for index in indices)
     return snippets
 
 
