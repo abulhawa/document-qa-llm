@@ -675,7 +675,10 @@ def test_filter_hashlike_and_long_numeric_path_tokens(
 
     counts = topic_naming._keyword_counts_from_os(
         ["checksum-a"],
-        snippets=None,
+        snippets=[
+            "Totals for 12345 12345 12345 should be ignored.",
+            "Extra 12345 in snippet tokens.",
+        ],
         max_keywords=10,
         max_path_depth=4,
         root_path=None,
@@ -684,6 +687,7 @@ def test_filter_hashlike_and_long_numeric_path_tokens(
     assert "finance" in counts
     assert "abcdef1234567890abcdef12345" not in counts
     assert "20240101010101" not in counts
+    assert "12345" not in counts
 
 
 def test_high_mixedness_uses_llm_and_returns_review_label(
