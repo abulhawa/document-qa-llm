@@ -28,6 +28,7 @@ DEFAULT_MAX_KEYWORDS = 20
 DEFAULT_MAX_PATH_DEPTH = 4
 DEFAULT_ROOT_PATH = ""
 DEFAULT_TOP_EXTENSION_COUNT = 5
+DEFAULT_LLM_BATCH_SIZE = 10
 MIXEDNESS_WARNING_THRESHOLD = 0.6
 MIXEDNESS_SAFE_NAME = "Review — Mixed"
 MIXEDNESS_MAX_TOKENS = 160
@@ -66,6 +67,91 @@ class _OSKeywordMetrics:
 
 _OS_KEYWORD_METRICS = _OSKeywordMetrics()
 _SIGNIFICANT_TERMS_CACHE: dict[tuple[Any, ...], dict[str, float]] = {}
+
+
+@dataclass
+class _LLMRequestMetrics:
+    request_count: int = 0
+    child_calls: int = 0
+    parent_calls: int = 0
+    retry_calls: int = 0
+    total_time_s: float = 0.0
+    max_time_s: float = 0.0
+
+
+_LLM_REQUEST_METRICS = _LLMRequestMetrics()
+
+
+def reset_llm_request_metrics() -> None:
+    _LLM_REQUEST_METRICS.request_count = 0
+    _LLM_REQUEST_METRICS.child_calls = 0
+    _LLM_REQUEST_METRICS.parent_calls = 0
+    _LLM_REQUEST_METRICS.retry_calls = 0
+    _LLM_REQUEST_METRICS.total_time_s = 0.0
+    _LLM_REQUEST_METRICS.max_time_s = 0.0
+
+
+def get_llm_request_metrics() -> dict[str, float | int]:
+    return {
+        "llm_requests_count": _LLM_REQUEST_METRICS.request_count,
+        "child_llm_calls": _LLM_REQUEST_METRICS.child_calls,
+        "parent_llm_calls": _LLM_REQUEST_METRICS.parent_calls,
+        "retry_calls": _LLM_REQUEST_METRICS.retry_calls,
+        "llm_total_time": _LLM_REQUEST_METRICS.total_time_s,
+        "llm_max_time": _LLM_REQUEST_METRICS.max_time_s,
+    }
+
+
+def log_llm_request_summary(
+    *,
+    run_id: str | None,
+    child_count: int,
+    parent_count: int,
+    estimated_calls_before: int,
+    total_runtime_s: float,
+) -> None:
+    metrics = get_llm_request_metrics()
+    request_count = int(metrics["llm_requests_count"])
+    total_time = float(metrics["llm_total_time"])
+    max_time = float(metrics["llm_max_time"])
+    avg_time = total_time / request_count if request_count else 0.0
+    run_label = f" (run_id={run_id})" if run_id else ""
+    logger.info(
+        "Topic naming LLM summary%s: runtime=%.2fs | parent_count=%s | child_count=%s | "
+        "llm_requests_count=%s | child_llm_calls=%s | parent_llm_calls=%s | "
+        "retries=%s | llm_total_time=%.2fs | avg_llm_time=%.2fs | max_llm_time=%.2fs | "
+        "llm_calls_estimated: %s -> %s",
+        run_label,
+        total_runtime_s,
+        parent_count,
+        child_count,
+        request_count,
+        metrics["child_llm_calls"],
+        metrics["parent_llm_calls"],
+        metrics["retry_calls"],
+        total_time,
+        avg_time,
+        max_time,
+        estimated_calls_before,
+        request_count,
+    )
+
+
+def _record_llm_request(
+    elapsed_s: float,
+    *,
+    kind: str,
+    retry: bool,
+) -> None:
+    _LLM_REQUEST_METRICS.request_count += 1
+    if kind == "child":
+        _LLM_REQUEST_METRICS.child_calls += 1
+    elif kind == "parent":
+        _LLM_REQUEST_METRICS.parent_calls += 1
+    if retry:
+        _LLM_REQUEST_METRICS.retry_calls += 1
+    _LLM_REQUEST_METRICS.total_time_s += elapsed_s
+    _LLM_REQUEST_METRICS.max_time_s = max(_LLM_REQUEST_METRICS.max_time_s, elapsed_s)
 
 
 def reset_os_keyword_metrics(*, clear_cache: bool = False) -> None:
@@ -954,6 +1040,50 @@ def suggest_parent_name_with_llm(
         return _cache_suggestion(cache_key, suggestion)
 
 
+def suggest_child_names_with_llm_batch(
+    profiles: Sequence[ClusterProfile],
+    *,
+    model_id: str,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+    language: str = DEFAULT_LANGUAGE,
+    allow_cache: bool = True,
+    ignore_cache: bool = False,
+    batch_size: int = DEFAULT_LLM_BATCH_SIZE,
+) -> dict[int, NameSuggestion]:
+    return _suggest_names_with_llm_batch(
+        profiles,
+        model_id=model_id,
+        prompt_version=prompt_version,
+        language=language,
+        allow_cache=allow_cache,
+        ignore_cache=ignore_cache,
+        batch_size=batch_size,
+        level="cluster",
+    )
+
+
+def suggest_parent_names_with_llm_batch(
+    profiles: Sequence[ParentProfile],
+    *,
+    model_id: str,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+    language: str = DEFAULT_LANGUAGE,
+    allow_cache: bool = True,
+    ignore_cache: bool = False,
+    batch_size: int = DEFAULT_LLM_BATCH_SIZE,
+) -> dict[int, NameSuggestion]:
+    return _suggest_names_with_llm_batch(
+        profiles,
+        model_id=model_id,
+        prompt_version=prompt_version,
+        language=language,
+        allow_cache=allow_cache,
+        ignore_cache=ignore_cache,
+        batch_size=batch_size,
+        level="parent",
+    )
+
+
 def postprocess_name(name: str) -> str:
     cleaned = re.sub(r"\s+", " ", name).strip()
     if not cleaned:
@@ -976,6 +1106,379 @@ def english_only_check(name: str) -> bool:
         return False
     tokens = [tok for tok in _NON_WORD_RE.split(name.lower()) if tok]
     return not any(token in _GERMAN_STOPWORDS for token in tokens)
+
+
+def _parse_json_array_payload(content: str) -> list[Any] | None:
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\[.*\]", content, re.DOTALL)
+        if not match:
+            return None
+        try:
+            payload = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+    if isinstance(payload, list):
+        return payload
+    return None
+
+
+def _profile_signals_for_batch(profile: ClusterProfile | ParentProfile) -> str:
+    keywords = ", ".join(profile.keywords[:12])
+    top_extensions = ", ".join(
+        f"{entry.get('extension')} ({entry.get('count')})"
+        for entry in profile.top_extensions
+        if entry.get("extension")
+    )
+    if isinstance(profile, ClusterProfile):
+        file_names = ", ".join(
+            _dedupe_keep_order(
+                [
+                    str(entry.get("filename") or entry.get("path") or "")
+                    for entry in profile.representative_files
+                ]
+            )
+        )
+        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
+        snippets = " | ".join(profile.representative_snippets[:4])
+        return (
+            f"size={profile.size}; keywords={keywords}; "
+            f"files={file_names}; paths={representative_paths}; "
+            f"extensions={top_extensions}; snippets={snippets}"
+        )
+    return (
+        f"size={profile.size}; clusters={', '.join(str(cid) for cid in profile.cluster_ids)}; "
+        f"keywords={keywords}; extensions={top_extensions}"
+    )
+
+
+def _build_batch_llm_prompt(
+    profiles: Sequence[ClusterProfile | ParentProfile],
+    *,
+    prompt_version: str,
+    language: str,
+    level: str,
+) -> str:
+    items = [
+        {
+            "id": profile.cluster_id if isinstance(profile, ClusterProfile) else profile.parent_id,
+            "profile_signals": _profile_signals_for_batch(profile),
+        }
+        for profile in profiles
+    ]
+    payload = json.dumps(items, ensure_ascii=False, indent=2)
+    if level == "parent":
+        role_line = "You label parent topic groups with concise English names (2-6 words)."
+    else:
+        role_line = "You label document clusters with concise English names (2-6 words)."
+    return (
+        f"Prompt version: {prompt_version}\n"
+        f"Language: {language}\n"
+        f"{role_line}\n"
+        "Return JSON array only. Each object must include: "
+        '"id", "name", "alt_names", "rationale", "confidence", "warnings".\n'
+        "Rules: English only; keep names 2-6 words.\n"
+        f"Input:\n{payload}"
+    )
+
+
+def _extract_batch_names(
+    payload: list[Any],
+) -> dict[int, dict[str, Any]]:
+    results: dict[int, dict[str, Any]] = {}
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        identifier = item.get("id")
+        if identifier is None:
+            continue
+        try:
+            identifier_value = int(identifier)
+        except (TypeError, ValueError):
+            continue
+        results[identifier_value] = item
+    return results
+
+
+def _suggest_names_with_llm_batch(
+    profiles: Sequence[ClusterProfile | ParentProfile],
+    *,
+    model_id: str,
+    prompt_version: str,
+    language: str,
+    allow_cache: bool,
+    ignore_cache: bool,
+    batch_size: int,
+    level: str,
+) -> dict[int, NameSuggestion]:
+    suggestions: dict[int, NameSuggestion] = {}
+    pending: list[tuple[ClusterProfile | ParentProfile, str]] = []
+    for profile in profiles:
+        identifier = profile.cluster_id if isinstance(profile, ClusterProfile) else profile.parent_id
+        cache_key = hash_profile(profile, prompt_version, model_id, language=language)
+        if allow_cache and not ignore_cache:
+            cached = _load_cached_suggestion(cache_key)
+            if cached:
+                _log_naming_result(
+                    identifier,
+                    level,
+                    cached,
+                    cache_hit=True,
+                    llm_state=None,
+                )
+                suggestions[identifier] = cached
+                continue
+        if profile.mixedness > MIXEDNESS_WARNING_THRESHOLD:
+            suggestion = (
+                suggest_child_name_with_llm(
+                    profile,
+                    model_id=model_id,
+                    prompt_version=prompt_version,
+                    language=language,
+                    allow_cache=allow_cache,
+                    ignore_cache=ignore_cache,
+                )
+                if isinstance(profile, ClusterProfile)
+                else suggest_parent_name_with_llm(
+                    profile,
+                    model_id=model_id,
+                    prompt_version=prompt_version,
+                    language=language,
+                    allow_cache=allow_cache,
+                    ignore_cache=ignore_cache,
+                )
+            )
+            suggestions[identifier] = suggestion
+            continue
+        pending.append((profile, cache_key))
+
+    if not pending:
+        return suggestions
+
+    llm_state = None
+    llm_state, llm_status = _llm_readiness_state()
+    if llm_state == "not_loaded":
+        for profile, cache_key in pending:
+            identifier = (
+                profile.cluster_id if isinstance(profile, ClusterProfile) else profile.parent_id
+            )
+            suggestion = _baseline_suggestion(
+                profile,
+                cache_key=cache_key,
+                fallback_reason="llm_model_not_loaded",
+                error_summary=llm_status.get("status_message"),
+            )
+            if ignore_cache and allow_cache:
+                suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
+            _log_naming_result(
+                identifier,
+                level,
+                suggestion,
+                cache_hit=False,
+                llm_state=llm_state,
+            )
+            suggestions[identifier] = _cache_suggestion(cache_key, suggestion)
+        return suggestions
+
+    for idx in range(0, len(pending), max(1, batch_size)):
+        batch = pending[idx : idx + max(1, batch_size)]
+        batch_profiles = [profile for profile, _ in batch]
+        prompt = _build_batch_llm_prompt(
+            batch_profiles,
+            prompt_version=prompt_version,
+            language=language,
+            level=level,
+        )
+        kind = "child" if level == "cluster" else "parent"
+        response = _ask_llm_with_metrics(
+            prompt,
+            model=model_id,
+            max_tokens=256,
+            temperature=0.2,
+            kind=kind,
+            retry=False,
+        )
+        if response["error"] or not response["content"]:
+            fallback_reason = (
+                _map_llm_error_to_reason(
+                    response["error"]["type"], response["error"]["status_code"]
+                )
+                if response["error"]
+                else "other_exception"
+            )
+            error_summary = (
+                response["error"]["summary"] if response["error"] else "Empty LLM response"
+            )
+            for profile, cache_key in batch:
+                identifier = (
+                    profile.cluster_id
+                    if isinstance(profile, ClusterProfile)
+                    else profile.parent_id
+                )
+                suggestion = _baseline_suggestion(
+                    profile,
+                    cache_key=cache_key,
+                    fallback_reason=fallback_reason,
+                    error_summary=error_summary,
+                    prompt_chars=response["prompt_length"],
+                )
+                if ignore_cache and allow_cache:
+                    suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
+                _log_naming_result(
+                    identifier,
+                    level,
+                    suggestion,
+                    cache_hit=False,
+                    llm_state=llm_state,
+                )
+                suggestions[identifier] = _cache_suggestion(cache_key, suggestion)
+            continue
+
+        payload = _parse_json_array_payload(response["content"])
+        retry_payload = None
+        prompt_chars = response["prompt_length"]
+        needs_retry = payload is None
+        if payload is not None and language == "en":
+            for item in payload:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                if not english_only_check(postprocess_name(name)):
+                    needs_retry = True
+                    break
+        if needs_retry:
+            retry_prompt = (
+                f"{prompt}\nReturn JSON array only. English only; no German words."
+            )
+            retry_response = _ask_llm_with_metrics(
+                retry_prompt,
+                model=model_id,
+                max_tokens=256,
+                temperature=0.2,
+                kind=kind,
+                retry=True,
+            )
+            if retry_response["error"] or not retry_response["content"]:
+                fallback_reason = (
+                    _map_llm_error_to_reason(
+                        retry_response["error"]["type"],
+                        retry_response["error"]["status_code"],
+                    )
+                    if retry_response["error"]
+                    else "other_exception"
+                )
+                error_summary = (
+                    retry_response["error"]["summary"]
+                    if retry_response["error"]
+                    else "Empty LLM response"
+                )
+                for profile, cache_key in batch:
+                    identifier = (
+                        profile.cluster_id
+                        if isinstance(profile, ClusterProfile)
+                        else profile.parent_id
+                    )
+                    suggestion = _baseline_suggestion(
+                        profile,
+                        cache_key=cache_key,
+                        fallback_reason=fallback_reason,
+                        error_summary=error_summary,
+                        prompt_chars=retry_response["prompt_length"],
+                    )
+                    if ignore_cache and allow_cache:
+                        suggestion = _apply_cache_bypass_warning(
+                            suggestion,
+                            llm_state=llm_state,
+                        )
+                    _log_naming_result(
+                        identifier,
+                        level,
+                        suggestion,
+                        cache_hit=False,
+                        llm_state=llm_state,
+                    )
+                    suggestions[identifier] = _cache_suggestion(cache_key, suggestion)
+                continue
+            retry_payload = _parse_json_array_payload(retry_response["content"])
+            payload = retry_payload
+            prompt_chars = retry_response["prompt_length"]
+            if payload is None:
+                for profile, cache_key in batch:
+                    identifier = (
+                        profile.cluster_id
+                        if isinstance(profile, ClusterProfile)
+                        else profile.parent_id
+                    )
+                    suggestion = _baseline_suggestion(
+                        profile,
+                        cache_key=cache_key,
+                        fallback_reason="llm_invalid_json",
+                        error_summary="Invalid batch JSON response",
+                        prompt_chars=prompt_chars,
+                    )
+                    if ignore_cache and allow_cache:
+                        suggestion = _apply_cache_bypass_warning(
+                            suggestion,
+                            llm_state=llm_state,
+                        )
+                    _log_naming_result(
+                        identifier,
+                        level,
+                        suggestion,
+                        cache_hit=False,
+                        llm_state=llm_state,
+                    )
+                    suggestions[identifier] = _cache_suggestion(cache_key, suggestion)
+                continue
+
+        entries = _extract_batch_names(payload or [])
+        for profile, cache_key in batch:
+            identifier = (
+                profile.cluster_id if isinstance(profile, ClusterProfile) else profile.parent_id
+            )
+            entry = entries.get(identifier)
+            name = str(entry.get("name") or "").strip() if entry else ""
+            if not entry or not name:
+                suggestion = _baseline_suggestion(
+                    profile,
+                    cache_key=cache_key,
+                    fallback_reason="llm_invalid_json",
+                    error_summary="Missing id or name in batch response",
+                    prompt_chars=prompt_chars,
+                )
+            else:
+                cleaned = postprocess_name(name)
+                if language == "en" and not english_only_check(cleaned):
+                    suggestion = _baseline_suggestion(
+                        profile,
+                        cache_key=cache_key,
+                        fallback_reason="other_exception",
+                        error_summary="Non-English response",
+                        prompt_chars=prompt_chars,
+                    )
+                else:
+                    suggestion = _suggestion_from_text(
+                        profile,
+                        cleaned,
+                        cache_key=cache_key,
+                        used=True,
+                        prompt_chars=prompt_chars,
+                    )
+            if ignore_cache and allow_cache:
+                suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
+            _log_naming_result(
+                identifier,
+                level,
+                suggestion,
+                cache_hit=False,
+                llm_state=llm_state,
+            )
+            suggestions[identifier] = _cache_suggestion(cache_key, suggestion)
+
+    return suggestions
 
 
 def _format_differentiator(value: str | None) -> str | None:
@@ -1388,6 +1891,32 @@ def _log_naming_result(
     )
 
 
+def _llm_kind(profile: ClusterProfile | ParentProfile) -> str:
+    return "child" if isinstance(profile, ClusterProfile) else "parent"
+
+
+def _ask_llm_with_metrics(
+    prompt: str,
+    *,
+    model: str,
+    max_tokens: int,
+    temperature: float,
+    kind: str,
+    retry: bool,
+) -> dict[str, Any]:
+    start = time.perf_counter()
+    response = ask_llm_with_status(
+        prompt,
+        mode="completion",
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    elapsed = time.perf_counter() - start
+    _record_llm_request(elapsed, kind=kind, retry=retry)
+    return response
+
+
 def _load_cached_profiles(cache_key: str) -> dict[str, Any] | None:
     cache_path = CACHE_DIR / f"{cache_key}.json"
     if not cache_path.exists():
@@ -1431,18 +1960,20 @@ def _suggest_name_with_llm(
                 used=True,
                 prompt_chars=None,
             )
+    kind = _llm_kind(profile)
     prompt = _build_llm_prompt(
         profile,
         prompt_version=prompt_version,
         language=language,
         mixedness_mode=high_mixedness,
     )
-    response = ask_llm_with_status(
+    response = _ask_llm_with_metrics(
         prompt,
-        mode="completion",
         model=model_id,
         max_tokens=MIXEDNESS_MAX_TOKENS if high_mixedness else 24,
         temperature=0.2,
+        kind=kind,
+        retry=False,
     )
     if response["error"]:
         fallback_reason = _map_llm_error_to_reason(
@@ -1483,12 +2014,13 @@ def _suggest_name_with_llm(
         retry_prompt = (
             f"{prompt}\nEnglish only; no German words."
         )
-        retry_response = ask_llm_with_status(
+        retry_response = _ask_llm_with_metrics(
             retry_prompt,
-            mode="completion",
             model=model_id,
             max_tokens=24,
             temperature=0.2,
+            kind=kind,
+            retry=True,
         )
         if retry_response["error"]:
             fallback_reason = _map_llm_error_to_reason(
@@ -2094,7 +2626,12 @@ __all__ = [
     "select_representative_chunks_for_files",
     "get_significant_keywords_from_os",
     "suggest_child_name_with_llm",
+    "suggest_child_names_with_llm_batch",
     "suggest_parent_name_with_llm",
+    "suggest_parent_names_with_llm_batch",
+    "reset_llm_request_metrics",
+    "get_llm_request_metrics",
+    "log_llm_request_summary",
     "postprocess_name",
     "english_only_check",
     "disambiguate_duplicate_names",
