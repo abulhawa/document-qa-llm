@@ -229,6 +229,17 @@ def test_hash_profile_changes_with_model_prompt_and_profile(
     assert base != topic_naming.hash_profile(updated_profile, "v1", "model-a")
 
 
+def test_hash_profile_changes_with_keywords(
+    cluster_profile: topic_naming.ClusterProfile,
+) -> None:
+    base = topic_naming.hash_profile(cluster_profile, "v1", "model-a")
+    updated_profile = replace(
+        cluster_profile,
+        keywords=cluster_profile.keywords + ["forecasting"],
+    )
+    assert base != topic_naming.hash_profile(updated_profile, "v1", "model-a")
+
+
 def test_cache_miss_when_disabled(
     cluster_profile: topic_naming.ClusterProfile,
     tmp_path: Path,
@@ -302,6 +313,48 @@ def test_mock_llm_uses_deterministic_response(
     )
 
     assert suggestion.name == "Finance Review"
+
+
+def test_llm_retry_successes_and_fallbacks(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+
+    responses = iter(["Und der Plan", "Financial Planning"])
+
+    def fake_ask_llm(*_args, **_kwargs) -> str:
+        return next(responses)
+
+    monkeypatch.setattr(topic_naming, "ask_llm", fake_ask_llm)
+
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert suggestion.name == "Financial Planning"
+    assert suggestion.source == "llm"
+    assert suggestion.metadata["llm_cache"]["retry_success"] is True
+
+    retry_responses = iter(["Und der Plan", "Und der Plan"])
+
+    def fake_ask_llm_retry(*_args, **_kwargs) -> str:
+        return next(retry_responses)
+
+    monkeypatch.setattr(topic_naming, "ask_llm", fake_ask_llm_retry)
+
+    fallback = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert fallback.name == "Revenue Expenses Planning"
+    assert fallback.source == "baseline"
+    assert fallback.metadata["llm_cache"]["retry_success"] is False
+    assert fallback.metadata["llm_cache"]["retry_reason"] == "non_english"
 
 
 def test_keyword_mixedness_heuristic() -> None:
