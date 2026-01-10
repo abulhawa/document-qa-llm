@@ -22,13 +22,14 @@ from qdrant_client.http import models
 
 
 CACHE_DIR = Path(".cache") / "topic_naming"
-DEFAULT_PROMPT_VERSION = "v1"
+DEFAULT_PROMPT_VERSION = "v2"
 DEFAULT_LANGUAGE = "en"
 DEFAULT_MAX_KEYWORDS = 20
 DEFAULT_MAX_PATH_DEPTH = 4
 DEFAULT_ROOT_PATH = ""
 DEFAULT_TOP_EXTENSION_COUNT = 5
 DEFAULT_LLM_BATCH_SIZE = 10
+DEFAULT_ALLOW_RAW_PARENT_EVIDENCE = False
 MIXEDNESS_WARNING_THRESHOLD = 0.6
 MIXEDNESS_SAFE_NAME = "Review — Mixed"
 MIXEDNESS_MAX_TOKENS = 160
@@ -329,14 +330,27 @@ class ParentProfile:
     embedding_spread: float = 0.0
     mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
+    representative_files: list[dict[str, Any]] = field(default_factory=list)
+    representative_paths: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     top_extensions: list[dict[str, Any]] = field(default_factory=list)
+    child_summaries: list[dict[str, Any]] = field(default_factory=list)
+    allow_raw_parent_evidence: bool = DEFAULT_ALLOW_RAW_PARENT_EVIDENCE
 
 
 def tokenize_filename(filename: str) -> list[str]:
     base = os.path.splitext(os.path.basename(filename))[0]
     tokens = [tok for tok in _NON_WORD_RE.split(base.lower()) if tok]
     return _filter_tokens(tokens)
+
+
+def _strip_extension(value: str) -> str:
+    if not value:
+        return value
+    path = Path(value)
+    if path.suffix:
+        return str(path.with_suffix(""))
+    return value
 
 
 def extract_path_segments(
@@ -450,10 +464,14 @@ def build_parent_profile(
         [profile.size for profile in child_profiles],
     )
     representative_checksums: list[str] = []
+    representative_files: list[dict[str, Any]] = []
+    representative_paths: list[str] = []
     keywords: list[str] = []
     extension_counts: dict[str, int] = {}
     for profile in child_profiles:
         representative_checksums.extend(profile.representative_checksums)
+        representative_files.extend(profile.representative_files)
+        representative_paths.extend(profile.representative_paths)
         keywords.extend(profile.keywords)
         for entry in profile.top_extensions:
             ext = str(entry.get("extension") or "")
@@ -478,6 +496,8 @@ def build_parent_profile(
         embedding_spread=embedding_spread,
         mixedness=mixedness,
         representative_checksums=_dedupe_keep_order(representative_checksums),
+        representative_files=list(representative_files),
+        representative_paths=_dedupe_keep_order(representative_paths),
         keywords=_dedupe_keep_order(keywords),
         top_extensions=top_extensions,
     )
@@ -1124,33 +1144,128 @@ def _parse_json_array_payload(content: str) -> list[Any] | None:
     return None
 
 
-def _profile_signals_for_batch(profile: ClusterProfile | ParentProfile) -> str:
-    keywords = ", ".join(profile.keywords[:12])
-    top_extensions = ", ".join(
-        f"{entry.get('extension')} ({entry.get('count')})"
-        for entry in profile.top_extensions
-        if entry.get("extension")
+def _sorted_child_summaries(
+    summaries: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in summaries:
+        payload = dict(item or {})
+        payload.setdefault("confidence", 0.0)
+        payload.setdefault("size", 0)
+        normalized.append(payload)
+    normalized.sort(
+        key=lambda entry: (
+            -float(entry.get("confidence") or 0.0),
+            -int(entry.get("size") or 0),
+            str(entry.get("child_name") or ""),
+        )
     )
+    return normalized
+
+
+def _select_child_summaries(
+    summaries: Sequence[Mapping[str, Any]],
+    *,
+    min_children: int = 3,
+    max_children: int = 12,
+) -> list[dict[str, Any]]:
+    sorted_summaries = _sorted_child_summaries(summaries)
+    if not sorted_summaries:
+        return []
+    limited = sorted_summaries[:max_children]
+    if len(limited) < min_children:
+        return sorted_summaries
+    return limited
+
+
+def _format_child_keywords(
+    summaries: Sequence[Mapping[str, Any]],
+) -> str:
+    entries: list[str] = []
+    for summary in summaries:
+        name = str(summary.get("child_name") or "").strip()
+        keywords = summary.get("keywords_top5") or []
+        keywords_list = [str(keyword) for keyword in keywords if keyword]
+        if not name or not keywords_list:
+            continue
+        entries.append(f"{name}: {', '.join(keywords_list)}")
+    if not entries:
+        return "None"
+    return "; ".join(entries)
+
+
+def _count_child_flags(summaries: Sequence[Mapping[str, Any]]) -> tuple[int, int]:
+    low_conf = 0
+    mixed = 0
+    for summary in summaries:
+        flags = summary.get("flags") or {}
+        if flags.get("low_conf"):
+            low_conf += 1
+        if flags.get("mixed"):
+            mixed += 1
+    return low_conf, mixed
+
+
+def _profile_signals_for_batch(profile: ClusterProfile | ParentProfile) -> str:
+    keywords = ", ".join(profile.keywords[:20])
     if isinstance(profile, ClusterProfile):
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
-            )
+            )[:10]
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
-        snippets = " | ".join(profile.representative_snippets[:4])
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:6]
+        )
         return (
-            f"size={profile.size}; keywords={keywords}; "
-            f"files={file_names}; paths={representative_paths}; "
-            f"extensions={top_extensions}; snippets={snippets}"
+            f"keywords={keywords}; files={file_names}; paths={representative_paths}"
         )
-    return (
-        f"size={profile.size}; clusters={', '.join(str(cid) for cid in profile.cluster_ids)}; "
-        f"keywords={keywords}; extensions={top_extensions}"
+    all_summaries = list(profile.child_summaries)
+    selected = _select_child_summaries(all_summaries)
+    child_names = ", ".join(
+        str(summary.get("child_name") or "").strip()
+        for summary in selected
+        if str(summary.get("child_name") or "").strip()
     )
+    child_keywords = _format_child_keywords(selected)
+    low_conf_count, mixed_count = _count_child_flags(all_summaries)
+    payload = (
+        f"child_names={child_names}; child_keywords={child_keywords}; "
+        f"flags=total_children={len(all_summaries)}, low_conf_children={low_conf_count}, "
+        f"mixed_children={mixed_count}"
+    )
+    if profile.allow_raw_parent_evidence:
+        filenames = ", ".join(
+            _dedupe_keep_order(
+                [
+                    _strip_extension(
+                        str(entry.get("filename") or entry.get("path") or "")
+                    ).lower()
+                    for entry in profile.representative_files
+                ]
+            )[:6]
+        )
+        paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path).lower() for path in profile.representative_paths]
+            )[:6]
+        )
+        fallback_keywords = ", ".join([keyword.lower() for keyword in profile.keywords[:10]])
+        payload = (
+            f"{payload}; fallback_keywords={fallback_keywords}; "
+            f"fallback_files={filenames}; fallback_paths={paths}"
+        )
+    return payload
+
+
+def _log_prompt_if_enabled(prompt: str, *, label: str) -> None:
+    if os.getenv("TOPIC_NAMING_LOG_PROMPT") == "1":
+        logger.info("Topic naming prompt (%s):\n%s", label, prompt)
 
 
 def _build_batch_llm_prompt(
@@ -1172,15 +1287,25 @@ def _build_batch_llm_prompt(
         role_line = "You label parent topic groups with concise English names (2-6 words)."
     else:
         role_line = "You label document clusters with concise English names (2-6 words)."
-    return (
-        f"Prompt version: {prompt_version}\n"
-        f"Language: {language}\n"
-        f"{role_line}\n"
+    header_lines = [
+        f"Prompt version: {prompt_version}",
+        f"Language: {language}",
+        role_line,
         "Return JSON array only. Each object must include: "
-        '"id", "name", "alt_names", "rationale", "confidence", "warnings".\n'
-        "Rules: English only; keep names 2-6 words.\n"
-        f"Input:\n{payload}"
-    )
+        '"id", "name", "alt_names", "rationale", "confidence", "warnings".',
+    ]
+    if level == "parent":
+        header_lines.append(
+            "Rules: English only; keep names 2-6 words; summarize child cluster names; "
+            "avoid generic words: Files, Documents, Misc, Other, Stuff, General, Downloads."
+        )
+    else:
+        header_lines.append(
+            "Rules: English only; keep names 1-4 words; use specific nouns; "
+            "avoid generic words: Files, Documents, Misc, Other, Stuff, General, Downloads."
+        )
+    header_lines.append(f"Input:\n{payload}")
+    return "\n".join(header_lines)
 
 
 def _extract_batch_names(
@@ -1290,6 +1415,7 @@ def _suggest_names_with_llm_batch(
             language=language,
             level=level,
         )
+        _log_prompt_if_enabled(prompt, label=f"{level}-batch")
         kind = "child" if level == "cluster" else "parent"
         response = _ask_llm_with_metrics(
             prompt,
@@ -1967,6 +2093,7 @@ def _suggest_name_with_llm(
         language=language,
         mixedness_mode=high_mixedness,
     )
+    _log_prompt_if_enabled(prompt, label=f"{kind}-prompt")
     response = _ask_llm_with_metrics(
         prompt,
         model=model_id,
@@ -2110,49 +2237,99 @@ def _build_llm_prompt(
             prompt_version=prompt_version,
             language=language,
         )
-    keywords = ", ".join(profile.keywords[:12])
+    keywords = ", ".join(profile.keywords[:20])
     if isinstance(profile, ClusterProfile):
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
-            )
+            )[:10]
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:6]
         )
-        snippets = "\n".join(profile.representative_snippets[:6])
-        return (
-            f"Prompt version: {prompt_version}\n"
-            f"Language: {language}\n"
-            "You label document clusters with concise English names (2-6 words).\n"
-            f"Cluster size: {profile.size}\n"
-            f"Keywords: {keywords}\n"
-            f"Representative files: {file_names}\n"
-            f"Representative paths: {representative_paths}\n"
-            f"Top extensions: {top_extensions}\n"
-            f"Snippets:\n{snippets}\n"
-            "Return only the name."
+        return "\n".join(
+            [
+                f"Prompt version: {prompt_version}",
+                f"Language: {language}",
+                "",
+                "You are naming a folder for one cluster of files.",
+                "",
+                "Rules:",
+                "- Output ONLY the folder name (one line).",
+                "- English only.",
+                "- 1–4 words.",
+                "- Use specific nouns.",
+                "- Avoid generic words: Files, Documents, Misc, Other, Stuff, General, Downloads.",
+                "- Do not include IDs/hashes/numbers unless meaningful.",
+                "",
+                f"Keywords: {keywords}",
+                f"Examples (filenames): {file_names}",
+                f"Examples (paths): {representative_paths}",
+                "",
+                "Folder name:",
+            ]
         )
-    top_extensions = ", ".join(
-        f"{entry.get('extension')} ({entry.get('count')})"
-        for entry in profile.top_extensions
-        if entry.get("extension")
+    all_summaries = list(profile.child_summaries)
+    selected = _select_child_summaries(all_summaries)
+    child_names = ", ".join(
+        str(summary.get("child_name") or "").strip()
+        for summary in selected
+        if str(summary.get("child_name") or "").strip()
     )
-    return (
-        f"Prompt version: {prompt_version}\n"
-        f"Language: {language}\n"
-        "You label parent topic groups with concise English names (2-6 words).\n"
-        f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}\n"
-        f"Keywords: {keywords}\n"
-        f"Top extensions: {top_extensions}\n"
-        "Return only the name."
-    )
+    child_keywords = _format_child_keywords(selected)
+    low_conf_count, mixed_count = _count_child_flags(all_summaries)
+    lines = [
+        f"Prompt version: {prompt_version}",
+        f"Language: {language}",
+        "",
+        "You are naming a parent folder for a group of child clusters.",
+        "",
+        "Rules:",
+        "- Output ONLY the parent folder name (one line).",
+        "- English only.",
+        "- 2–6 words.",
+        "- Summarize the child cluster names.",
+        "- Avoid generic words: Files, Documents, Misc, Other, Stuff, General, Downloads.",
+        "- If many children are mixed or low-confidence, start with “Review — …”.",
+        "",
+        f"Child cluster names: {child_names}",
+        f"Optional child keywords (top 5 each): {child_keywords}",
+        (
+            "Flags: total_children="
+            f"{len(all_summaries)}, low_conf_children={low_conf_count}, mixed_children={mixed_count}"
+        ),
+    ]
+    if profile.allow_raw_parent_evidence:
+        fallback_keywords = ", ".join([keyword.lower() for keyword in profile.keywords[:10]])
+        fallback_files = ", ".join(
+            _dedupe_keep_order(
+                [
+                    _strip_extension(
+                        str(entry.get("filename") or entry.get("path") or "")
+                    ).lower()
+                    for entry in profile.representative_files
+                ]
+            )[:6]
+        )
+        fallback_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path).lower() for path in profile.representative_paths]
+            )[:6]
+        )
+        lines.extend(
+            [
+                f"Fallback keywords: {fallback_keywords}",
+                f"Fallback examples (filenames): {fallback_files}",
+                f"Fallback examples (paths): {fallback_paths}",
+            ]
+        )
+    lines.extend(["", "Parent folder name:"])
+    return "\n".join(lines)
 
 
 def _build_mixedness_prompt(
@@ -2161,7 +2338,7 @@ def _build_mixedness_prompt(
     prompt_version: str,
     language: str,
 ) -> str:
-    keywords = ", ".join(profile.keywords[:12])
+    keywords = ", ".join(profile.keywords[:20])
     base = [
         f"Prompt version: {prompt_version}",
         f"Language: {language}",
@@ -2176,16 +2353,15 @@ def _build_mixedness_prompt(
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
             )
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:8]
         )
         snippets = "\n".join(profile.representative_snippets[:6])
         base.extend(
@@ -2193,22 +2369,53 @@ def _build_mixedness_prompt(
                 f"Cluster size: {profile.size}",
                 f"Representative files: {file_names}",
                 f"Representative paths: {representative_paths}",
-                f"Top extensions: {top_extensions}",
                 f"Snippets:\n{snippets}",
             ]
         )
     else:
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
+        all_summaries = list(profile.child_summaries)
+        selected = _select_child_summaries(all_summaries)
+        child_names = ", ".join(
+            str(summary.get("child_name") or "").strip()
+            for summary in selected
+            if str(summary.get("child_name") or "").strip()
         )
+        child_keywords = _format_child_keywords(selected)
+        low_conf_count, mixed_count = _count_child_flags(all_summaries)
         base.extend(
             [
-                f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}",
-                f"Top extensions: {top_extensions}",
+                f"Child cluster names: {child_names}",
+                f"Optional child keywords (top 5 each): {child_keywords}",
+                (
+                    "Flags: total_children="
+                    f"{len(all_summaries)}, low_conf_children={low_conf_count}, mixed_children={mixed_count}"
+                ),
             ]
         )
+        if profile.allow_raw_parent_evidence:
+            fallback_keywords = ", ".join([keyword.lower() for keyword in profile.keywords[:10]])
+            fallback_files = ", ".join(
+                _dedupe_keep_order(
+                    [
+                        _strip_extension(
+                            str(entry.get("filename") or entry.get("path") or "")
+                        ).lower()
+                        for entry in profile.representative_files
+                    ]
+                )[:6]
+            )
+            fallback_paths = ", ".join(
+                _dedupe_keep_order(
+                    [_strip_extension(path).lower() for path in profile.representative_paths]
+                )[:6]
+            )
+            base.extend(
+                [
+                    f"Fallback keywords: {fallback_keywords}",
+                    f"Fallback examples (filenames): {fallback_files}",
+                    f"Fallback examples (paths): {fallback_paths}",
+                ]
+            )
     return "\n".join(base)
 
 
