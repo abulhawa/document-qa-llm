@@ -1,5 +1,5 @@
 import requests
-from typing import List, Union, Dict, Optional, TypedDict, Literal
+from typing import Any, List, Union, Dict, Optional, TypedDict, Literal
 from tracing import get_current_span
 from config import (
     logger,
@@ -98,8 +98,12 @@ def ask_llm_with_status(
 
     span = get_current_span()
     prompt_length = None
-    cache_key = None
-    cache_meta = None
+    cache_key: str | None = None
+    canonical: Dict[str, Any] | None = None
+    prompt_text: str | None = None
+    prompt_hash: str | None = None
+    model_id: str | None = None
+    endpoint_id: str | None = None
     try:
         if mode == "chat":
             endpoint = LLM_CHAT_ENDPOINT
@@ -150,13 +154,6 @@ def ask_llm_with_status(
                 endpoint_id=endpoint_id,
                 decoding_params=decoding_params,
             )
-            cache_meta = {
-                "canonical": canonical,
-                "prompt_text": prompt_text,
-                "prompt_hash": prompt_hash,
-                "model_id": model_id,
-                "endpoint_id": endpoint_id,
-            }
             cached = llm_cache.get_cached_response(cache_key)
             if cached is not None:
                 logger.info("🧠 LLM cache hit")
@@ -214,15 +211,23 @@ def ask_llm_with_status(
                 )
                 break
 
-        if cache_key and cache_meta and llm_cache.is_cache_enabled(use_cache):
+        if (
+            cache_key
+            and canonical is not None
+            and prompt_text is not None
+            and prompt_hash is not None
+            and model_id is not None
+            and endpoint_id is not None
+            and llm_cache.is_cache_enabled(use_cache)
+        ):
             llm_cache.store_cache_entry(
                 cache_key=cache_key,
-                canonical=cache_meta["canonical"],
-                prompt_text=cache_meta["prompt_text"],
-                prompt_hash=cache_meta["prompt_hash"],
+                canonical=canonical,
+                prompt_text=prompt_text,
+                prompt_hash=prompt_hash,
                 response_text=content,
-                model_id=cache_meta["model_id"],
-                endpoint_id=cache_meta["endpoint_id"],
+                model_id=model_id,
+                endpoint_id=endpoint_id,
                 status="ok",
             )
             logger.info("🧠 LLM cache store")
