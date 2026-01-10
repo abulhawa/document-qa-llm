@@ -124,7 +124,14 @@ def _parent_profile(
     )
 
 
-def _cache_hit(profile: ClusterProfile | ParentProfile, model_id: str) -> bool:
+def _cache_hit(
+    profile: ClusterProfile | ParentProfile,
+    model_id: str,
+    *,
+    ignore_cache: bool,
+) -> bool:
+    if ignore_cache:
+        return False
     cache_key = hash_profile(
         profile,
         DEFAULT_PROMPT_VERSION,
@@ -212,6 +219,7 @@ def _build_rows(
     child_profiles: list[ClusterProfile],
     parent_profiles: list[ParentProfile],
     llm_status: Mapping[str, Any],
+    ignore_cache: bool,
 ) -> list[dict[str, Any]]:
     model_id = llm_status.get("current_model") or "default"
     rows: list[dict[str, Any]] = []
@@ -219,11 +227,12 @@ def _build_rows(
     parent_differentiators: list[str | None] = []
 
     for profile in parent_profiles:
-        cache_hit = _cache_hit(profile, model_id)
+        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
         suggestion = suggest_parent_name_with_llm(
             profile,
             model_id=model_id,
             allow_cache=True,
+            ignore_cache=ignore_cache,
         )
         parent_rows.append(
             {
@@ -257,11 +266,12 @@ def _build_rows(
     child_rows: list[dict[str, Any]] = []
     child_differentiators: list[str | None] = []
     for profile in child_profiles:
-        cache_hit = _cache_hit(profile, model_id)
+        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
         suggestion = suggest_child_name_with_llm(
             profile,
             model_id=model_id,
             allow_cache=True,
+            ignore_cache=ignore_cache,
         )
         child_rows.append(
             {
@@ -677,17 +687,24 @@ with tabs[1]:
         max_path_depth_value = None if max_path_depth_value == 0 else max_path_depth_value
         root_path_value = root_path.strip() or None
 
-        controls = st.columns(3)
+        controls = st.columns(4)
         with controls[0]:
             include_snippets = st.toggle("Include content snippets", value=True)
         with controls[1]:
             hide_ids = st.toggle("Hide numeric IDs", value=False)
         with controls[2]:
+            ignore_cache = st.checkbox(
+                "Ignore cache (this run)",
+                value=st.session_state.get("topic_naming_ignore_cache", False),
+                key="topic_naming_ignore_cache",
+            )
+        with controls[3]:
             # Allow baseline naming even when the LLM is inactive.
             generate_clicked = st.button(
                 "Generate names (LLM)",
                 type="primary",
             )
+            regenerate_clicked = st.button("Regenerate now")
 
         if not llm_status.get("active"):
             st.warning(
@@ -710,7 +727,10 @@ with tabs[1]:
             for key, value in cluster_result.get("topic_parent_map", {}).items()
         }
 
-        if generate_clicked:
+        run_naming = generate_clicked or regenerate_clicked
+        ignore_cache_for_run = ignore_cache or regenerate_clicked
+
+        if run_naming:
             child_profiles: list[ClusterProfile] = []
             for cluster in clusters:
                 profile = _cluster_profile(
@@ -747,6 +767,7 @@ with tabs[1]:
                 child_profiles=child_profiles,
                 parent_profiles=parent_profiles,
                 llm_status=llm_status,
+                ignore_cache=ignore_cache_for_run,
             )
             if any(row["source"] != "llm" for row in rows):
                 st.warning(
