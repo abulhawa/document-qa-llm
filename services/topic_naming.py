@@ -329,6 +329,8 @@ class ParentProfile:
     embedding_spread: float = 0.0
     mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
+    representative_files: list[dict[str, Any]] = field(default_factory=list)
+    representative_paths: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     top_extensions: list[dict[str, Any]] = field(default_factory=list)
 
@@ -337,6 +339,15 @@ def tokenize_filename(filename: str) -> list[str]:
     base = os.path.splitext(os.path.basename(filename))[0]
     tokens = [tok for tok in _NON_WORD_RE.split(base.lower()) if tok]
     return _filter_tokens(tokens)
+
+
+def _strip_extension(value: str) -> str:
+    if not value:
+        return value
+    path = Path(value)
+    if path.suffix:
+        return str(path.with_suffix(""))
+    return value
 
 
 def extract_path_segments(
@@ -450,10 +461,14 @@ def build_parent_profile(
         [profile.size for profile in child_profiles],
     )
     representative_checksums: list[str] = []
+    representative_files: list[dict[str, Any]] = []
+    representative_paths: list[str] = []
     keywords: list[str] = []
     extension_counts: dict[str, int] = {}
     for profile in child_profiles:
         representative_checksums.extend(profile.representative_checksums)
+        representative_files.extend(profile.representative_files)
+        representative_paths.extend(profile.representative_paths)
         keywords.extend(profile.keywords)
         for entry in profile.top_extensions:
             ext = str(entry.get("extension") or "")
@@ -478,6 +493,8 @@ def build_parent_profile(
         embedding_spread=embedding_spread,
         mixedness=mixedness,
         representative_checksums=_dedupe_keep_order(representative_checksums),
+        representative_files=list(representative_files),
+        representative_paths=_dedupe_keep_order(representative_paths),
         keywords=_dedupe_keep_order(keywords),
         top_extensions=top_extensions,
     )
@@ -1126,31 +1143,45 @@ def _parse_json_array_payload(content: str) -> list[Any] | None:
 
 def _profile_signals_for_batch(profile: ClusterProfile | ParentProfile) -> str:
     keywords = ", ".join(profile.keywords[:12])
-    top_extensions = ", ".join(
-        f"{entry.get('extension')} ({entry.get('count')})"
-        for entry in profile.top_extensions
-        if entry.get("extension")
-    )
     if isinstance(profile, ClusterProfile):
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
             )
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:8]
+        )
         snippets = " | ".join(profile.representative_snippets[:4])
         return (
             f"size={profile.size}; keywords={keywords}; "
             f"files={file_names}; paths={representative_paths}; "
-            f"extensions={top_extensions}; snippets={snippets}"
+            f"snippets={snippets}"
         )
-    return (
-        f"size={profile.size}; clusters={', '.join(str(cid) for cid in profile.cluster_ids)}; "
-        f"keywords={keywords}; extensions={top_extensions}"
+    file_names = ", ".join(
+        _dedupe_keep_order(
+            [
+                _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
+                for entry in profile.representative_files
+            ]
+        )
     )
+    representative_paths = ", ".join(
+        _dedupe_keep_order([_strip_extension(path) for path in profile.representative_paths])[:8]
+    )
+    return (
+        f"keywords={keywords}; files={file_names}; paths={representative_paths}"
+    )
+
+
+def _log_prompt_if_enabled(prompt: str, *, label: str) -> None:
+    if os.getenv("TOPIC_NAMING_LOG_PROMPT") == "1":
+        logger.info("Topic naming prompt (%s):\n%s", label, prompt)
 
 
 def _build_batch_llm_prompt(
@@ -1172,15 +1203,19 @@ def _build_batch_llm_prompt(
         role_line = "You label parent topic groups with concise English names (2-6 words)."
     else:
         role_line = "You label document clusters with concise English names (2-6 words)."
-    return (
-        f"Prompt version: {prompt_version}\n"
-        f"Language: {language}\n"
-        f"{role_line}\n"
-        "Return JSON array only. Each object must include: "
-        '"id", "name", "alt_names", "rationale", "confidence", "warnings".\n'
-        "Rules: English only; keep names 2-6 words.\n"
-        f"Input:\n{payload}"
+    header_lines = []
+    if level != "parent":
+        header_lines.extend([f"Prompt version: {prompt_version}", f"Language: {language}"])
+    header_lines.extend(
+        [
+            role_line,
+            "Return JSON array only. Each object must include: "
+            '"id", "name", "alt_names", "rationale", "confidence", "warnings".',
+            "Rules: English only; keep names 2-6 words.",
+            f"Input:\n{payload}",
+        ]
     )
+    return "\n".join(header_lines)
 
 
 def _extract_batch_names(
@@ -1290,6 +1325,7 @@ def _suggest_names_with_llm_batch(
             language=language,
             level=level,
         )
+        _log_prompt_if_enabled(prompt, label=f"{level}-batch")
         kind = "child" if level == "cluster" else "parent"
         response = _ask_llm_with_metrics(
             prompt,
@@ -1967,6 +2003,7 @@ def _suggest_name_with_llm(
         language=language,
         mixedness_mode=high_mixedness,
     )
+    _log_prompt_if_enabled(prompt, label=f"{kind}-prompt")
     response = _ask_llm_with_metrics(
         prompt,
         model=model_id,
@@ -2115,16 +2152,15 @@ def _build_llm_prompt(
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
             )
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:8]
         )
         snippets = "\n".join(profile.representative_snippets[:6])
         return (
@@ -2135,24 +2171,34 @@ def _build_llm_prompt(
             f"Keywords: {keywords}\n"
             f"Representative files: {file_names}\n"
             f"Representative paths: {representative_paths}\n"
-            f"Top extensions: {top_extensions}\n"
             f"Snippets:\n{snippets}\n"
             "Return only the name."
         )
-    top_extensions = ", ".join(
-        f"{entry.get('extension')} ({entry.get('count')})"
-        for entry in profile.top_extensions
-        if entry.get("extension")
+    file_names = ", ".join(
+        _dedupe_keep_order(
+            [
+                _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
+                for entry in profile.representative_files
+            ]
+        )
     )
-    return (
-        f"Prompt version: {prompt_version}\n"
-        f"Language: {language}\n"
-        "You label parent topic groups with concise English names (2-6 words).\n"
-        f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}\n"
-        f"Keywords: {keywords}\n"
-        f"Top extensions: {top_extensions}\n"
-        "Return only the name."
+    representative_paths = ", ".join(
+        _dedupe_keep_order([_strip_extension(path) for path in profile.representative_paths])[:8]
     )
+    lines = [
+        "You label parent topic groups with concise English names (2-6 words).",
+        f"Keywords: {keywords}",
+        f"Representative files: {file_names}",
+    ]
+    if representative_paths:
+        lines.append(f"Representative paths: {representative_paths}")
+    lines.extend(
+        [
+            "Rules: English only; keep names 2-6 words.",
+            "Return ONLY the name.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _build_mixedness_prompt(
@@ -2176,16 +2222,15 @@ def _build_mixedness_prompt(
         file_names = ", ".join(
             _dedupe_keep_order(
                 [
-                    str(entry.get("filename") or entry.get("path") or "")
+                    _strip_extension(str(entry.get("filename") or entry.get("path") or ""))
                     for entry in profile.representative_files
                 ]
             )
         )
-        representative_paths = ", ".join(_dedupe_keep_order(profile.representative_paths)[:8])
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
+        representative_paths = ", ".join(
+            _dedupe_keep_order(
+                [_strip_extension(path) for path in profile.representative_paths]
+            )[:8]
         )
         snippets = "\n".join(profile.representative_snippets[:6])
         base.extend(
@@ -2193,20 +2238,13 @@ def _build_mixedness_prompt(
                 f"Cluster size: {profile.size}",
                 f"Representative files: {file_names}",
                 f"Representative paths: {representative_paths}",
-                f"Top extensions: {top_extensions}",
                 f"Snippets:\n{snippets}",
             ]
         )
     else:
-        top_extensions = ", ".join(
-            f"{entry.get('extension')} ({entry.get('count')})"
-            for entry in profile.top_extensions
-            if entry.get("extension")
-        )
         base.extend(
             [
                 f"Child clusters: {', '.join(str(cid) for cid in profile.cluster_ids)}",
-                f"Top extensions: {top_extensions}",
             ]
         )
     return "\n".join(base)

@@ -1,6 +1,7 @@
 from dataclasses import replace
 import json
 from pathlib import Path
+import re
 import sys
 import types
 
@@ -10,13 +11,16 @@ import pytest
 def _install_dependency_stubs() -> None:
     sys.modules.setdefault("requests", types.ModuleType("requests"))
     opensearch_stub = types.ModuleType("opensearchpy")
+    opensearch_exceptions_stub = types.ModuleType("opensearchpy.exceptions")
 
     class OpenSearch:
         def __init__(self, *args, **kwargs):
             return None
 
     setattr(opensearch_stub, "OpenSearch", OpenSearch)
+    setattr(opensearch_stub, "exceptions", opensearch_exceptions_stub)
     sys.modules.setdefault("opensearchpy", opensearch_stub)
+    sys.modules.setdefault("opensearchpy.exceptions", opensearch_exceptions_stub)
 
     qdrant_stub = types.ModuleType("qdrant_client")
     qdrant_http_stub = types.ModuleType("qdrant_client.http")
@@ -69,6 +73,16 @@ def _install_dependency_stubs() -> None:
 _install_dependency_stubs()
 
 from services import topic_naming
+
+
+_PROMPT_EXTENSION_PATTERN = re.compile(r"\.[A-Za-z0-9]{2,5}\b")
+
+
+def _assert_prompt_has_no_extensions(prompt: str) -> None:
+    lowered = prompt.lower()
+    assert "extension" not in lowered
+    assert "file type" not in lowered
+    assert not _PROMPT_EXTENSION_PATTERN.search(prompt)
 
 
 @pytest.fixture()
@@ -134,6 +148,91 @@ def cluster_profile(cluster_cache_payload: dict) -> topic_naming.ClusterProfile:
         keywords=["revenue", "expenses", "planning"],
         top_extensions=[{"extension": ".pdf", "count": 2}],
     )
+
+
+def test_child_prompt_excludes_extensions_and_includes_signals(
+    cluster_profile: topic_naming.ClusterProfile,
+) -> None:
+    prompt = topic_naming._build_llm_prompt(
+        cluster_profile,
+        prompt_version="v1",
+        language="en",
+    )
+    _assert_prompt_has_no_extensions(prompt)
+    assert "revenue" in prompt
+    assert "Q1-report" in prompt
+    assert "Q1-report.pdf" not in prompt
+
+
+def test_parent_prompt_excludes_extensions_and_includes_signals(
+    cluster_profile: topic_naming.ClusterProfile,
+) -> None:
+    parent_profile = topic_naming.build_parent_profile(10, [cluster_profile])
+    prompt = topic_naming._build_llm_prompt(
+        parent_profile,
+        prompt_version="v1",
+        language="en",
+    )
+    _assert_prompt_has_no_extensions(prompt)
+    assert "revenue" in prompt
+    assert "Q1-report" in prompt
+    assert "Q1-report.pdf" not in prompt
+    assert "Return ONLY the name." in prompt
+
+
+def test_batch_prompt_excludes_extensions_and_includes_files(
+    cluster_profile: topic_naming.ClusterProfile,
+) -> None:
+    parent_profile = topic_naming.build_parent_profile(10, [cluster_profile])
+    child_prompt = topic_naming._build_batch_llm_prompt(
+        [cluster_profile],
+        prompt_version="v1",
+        language="en",
+        level="cluster",
+    )
+    parent_prompt = topic_naming._build_batch_llm_prompt(
+        [parent_profile],
+        prompt_version="v1",
+        language="en",
+        level="parent",
+    )
+    _assert_prompt_has_no_extensions(child_prompt)
+    _assert_prompt_has_no_extensions(parent_prompt)
+    assert "Q1-report" in child_prompt
+    assert "revenue" in child_prompt
+    assert "Q1-report" in parent_prompt
+
+
+def test_prompt_logging_shows_sample_without_extensions(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("TOPIC_NAMING_LOG_PROMPT", "1")
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+    monkeypatch.setattr(
+        topic_naming,
+        "ask_llm_with_status",
+        lambda *_args, **_kwargs: {
+            "content": "Finance Overview",
+            "error": None,
+            "prompt_length": 42,
+        },
+    )
+    with caplog.at_level("INFO"):
+        topic_naming.suggest_child_name_with_llm(
+            cluster_profile,
+            model_id="test-model",
+            allow_cache=False,
+        )
+    prompt_record = next(
+        record
+        for record in caplog.records
+        if "Topic naming prompt (child-prompt):" in record.getMessage()
+    )
+    prompt_text = prompt_record.getMessage().split(":\n", 1)[1]
+    _assert_prompt_has_no_extensions(prompt_text)
+    assert "Q1-report" in prompt_text
 
 
 def test_tokenize_filename() -> None:
