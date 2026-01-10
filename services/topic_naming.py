@@ -300,8 +300,13 @@ def select_representative_files(
     ]
     if not checksums:
         checksums = list(checksum_payloads.keys())
+    selected_checksums = _select_representative_checksums(
+        checksums,
+        cluster=cluster,
+        max_files=max_files,
+    )
     representative_files: list[dict[str, Any]] = []
-    for checksum in checksums[:max_files]:
+    for checksum in selected_checksums:
         payload = dict(checksum_payloads.get(checksum, {}))
         payload.setdefault("checksum", checksum)
         fulltext = _safe_fetch_fulltext(checksum)
@@ -312,6 +317,93 @@ def select_representative_files(
             payload.setdefault("text_full", fulltext.get("text_full"))
         representative_files.append(payload)
     return representative_files
+
+
+def _select_representative_checksums(
+    checksums: Sequence[str],
+    *,
+    cluster: dict[str, Any],
+    max_files: int,
+) -> list[str]:
+    if not checksums:
+        return []
+    embedding_payloads = _load_chunk_embeddings(checksums)
+    file_vectors = _compute_file_vectors(embedding_payloads)
+    if not file_vectors:
+        return list(checksums)[:max_files]
+    centroid = [float(val) for val in cluster.get("centroid", [])]
+    if not centroid:
+        centroid = compute_centroid(list(file_vectors.values()))
+    if not centroid:
+        return list(checksums)[:max_files]
+    centroid = _l2_normalize(centroid)
+    return _select_diversified_near_centroid(
+        file_vectors,
+        centroid,
+        max_files=max_files,
+    )
+
+
+def _compute_file_vectors(
+    embedding_payloads: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[float]]:
+    file_vectors: dict[str, list[float]] = {}
+    for checksum, payloads in embedding_payloads.items():
+        vectors = [payload["vector"] for payload in payloads if payload.get("vector")]
+        if not vectors:
+            continue
+        length = len(vectors[0])
+        summed = [0.0] * length
+        count = 0
+        for vec in vectors:
+            if len(vec) != length:
+                continue
+            for idx, val in enumerate(vec):
+                summed[idx] += float(val)
+            count += 1
+        if count == 0:
+            continue
+        mean_vec = [val / count for val in summed]
+        file_vectors[checksum] = _l2_normalize(mean_vec)
+    return file_vectors
+
+
+def _select_diversified_near_centroid(
+    file_vectors: dict[str, list[float]],
+    centroid: Sequence[float],
+    *,
+    max_files: int,
+    diversity_threshold: float = 0.95,
+) -> list[str]:
+    if not file_vectors:
+        return []
+    scored = [
+        (checksum, _cosine_similarity(centroid, vector))
+        for checksum, vector in file_vectors.items()
+    ]
+    scored.sort(key=lambda item: item[1], reverse=True)
+    medoid = scored[0][0]
+    selected = [medoid]
+    remaining = [checksum for checksum, _score in scored[1:]]
+    for checksum in remaining:
+        if len(selected) >= max_files:
+            break
+        candidate_vec = file_vectors[checksum]
+        max_similarity = max(
+            _cosine_similarity(candidate_vec, file_vectors[chosen])
+            for chosen in selected
+        )
+        if max_similarity < diversity_threshold:
+            selected.append(checksum)
+    if len(selected) >= max_files:
+        return selected[:max_files]
+    for checksum in remaining:
+        if checksum in selected:
+            continue
+        selected.append(checksum)
+        if len(selected) >= max_files:
+            break
+    return selected
 
 
 def select_representative_chunks_for_files(
