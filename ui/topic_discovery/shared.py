@@ -1,7 +1,8 @@
+from collections.abc import Mapping
 from typing import Any
 
 
-def format_file_label(payload: dict[str, Any], checksum: str) -> str:
+def format_file_label(payload: Mapping[str, Any], checksum: str) -> str:
     path = payload.get("path") or payload.get("file_path")
     filename = payload.get("filename") or payload.get("file_name")
     ext = payload.get("ext")

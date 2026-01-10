@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +8,8 @@ from typing import Any
 import altair as alt
 import pandas as pd
 import streamlit as st
+
+alt: Any = alt
 
 GENERIC_NAME_RE = re.compile(
     r"^(Misc|Other|Documents|Files|Review)(?:\b|\s|\u2014|-)",
@@ -132,6 +135,14 @@ def _status_category(row: dict[str, Any]) -> str:
 
 def _warnings_text(warnings: list[str]) -> str:
     return "; ".join([entry for entry in warnings if entry])
+
+
+def _is_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, float) and math.isnan(value):
+        return False
+    return True
 
 
 def _needs_review(
@@ -269,7 +280,7 @@ def _apply_range_filters(
 ) -> pd.DataFrame:
     def _range_filter(series: pd.Series, min_value: float, max_value: float) -> pd.Series:
         if min_value == 0.0 and max_value == 1.0:
-            return pd.Series([True] * len(series), index=series.index)
+            return pd.Series([True] * series.size, index=series.index)
         return series.between(min_value, max_value, inclusive="both")
 
     if "mixedness" in df:
@@ -433,17 +444,15 @@ def _render_details(selected_row: pd.Series) -> None:
         st.markdown("**Status:** " + " ".join(f"`{badge}`" for badge in badges))
 
     metric_cols = st.columns(2)
+    mixedness_value = selected_row.get("mixedness")
+    confidence_value = selected_row.get("confidence")
     metric_cols[0].metric(
         "Mixedness",
-        f"{selected_row['mixedness']:.3f}"
-        if pd.notna(selected_row["mixedness"])
-        else "n/a",
+        f"{mixedness_value:.3f}" if _is_present(mixedness_value) else "n/a",
     )
     metric_cols[1].metric(
         "Confidence",
-        f"{selected_row['confidence']:.3f}"
-        if pd.notna(selected_row["confidence"])
-        else "n/a",
+        f"{confidence_value:.3f}" if _is_present(confidence_value) else "n/a",
     )
 
     with st.expander("Warnings & rationale", expanded=False):

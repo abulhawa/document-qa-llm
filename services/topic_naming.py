@@ -9,10 +9,10 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from config import CHUNKS_INDEX, FULLTEXT_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
-from core.llm import LLMStatus, ask_llm_with_status, check_llm_status
+from core.llm import LLMCallResult, LLMStatus, ask_llm_with_status, check_llm_status
 from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
@@ -364,8 +364,8 @@ def extract_path_segments(
 
 
 def build_cluster_profile(
-    cluster: dict[str, Any],
-    checksum_payloads: dict[str, dict[str, Any]],
+    cluster: Mapping[str, Any],
+    checksum_payloads: Mapping[str, Mapping[str, Any]],
     *,
     max_keywords: int = DEFAULT_MAX_KEYWORDS,
     max_path_depth: int | None = DEFAULT_MAX_PATH_DEPTH,
@@ -505,8 +505,8 @@ def compute_centroid(vectors: Sequence[Sequence[float]]) -> list[float]:
 
 
 def select_representative_files(
-    cluster: dict[str, Any],
-    checksum_payloads: dict[str, dict[str, Any]],
+    cluster: Mapping[str, Any],
+    checksum_payloads: Mapping[str, Mapping[str, Any]],
     *,
     max_files: int = 10,
 ) -> list[dict[str, Any]]:
@@ -537,7 +537,7 @@ def select_representative_files(
 def _select_representative_checksums(
     checksums: Sequence[str],
     *,
-    cluster: dict[str, Any],
+    cluster: Mapping[str, Any],
     max_files: int,
 ) -> list[str]:
     if not checksums:
@@ -1903,7 +1903,7 @@ def _ask_llm_with_metrics(
     temperature: float,
     kind: str,
     retry: bool,
-) -> dict[str, Any]:
+) -> LLMCallResult:
     start = time.perf_counter()
     response = ask_llm_with_status(
         prompt,

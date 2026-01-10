@@ -1,6 +1,7 @@
 import json
 import uuid
-from typing import Any, Mapping
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import streamlit as st
 
@@ -235,17 +236,17 @@ def _render_parent_summary(
 
 
 def _build_payload_lookup(
-    checksums: list[str], payloads: list[Mapping[str, Any]]
+    checksums: list[str], payloads: Sequence[Mapping[str, Any]]
 ) -> dict[str, dict[str, Any]]:
     return {
-        checksum: payloads[idx] if idx < len(payloads) else {}
+        checksum: dict(payloads[idx]) if idx < len(payloads) else {}
         for idx, checksum in enumerate(checksums)
     }
 
 
 def _render_parent_topics(
-    parent_rows: list[Mapping[str, Any]],
-    clusters: list[Mapping[str, Any]],
+    parent_rows: Sequence[Mapping[str, Any]],
+    clusters: Sequence[Mapping[str, Any]],
     topic_parent_map: Mapping[int, int],
 ) -> None:
     parent_ids = [row["parent_id"] for row in parent_rows]
@@ -264,7 +265,7 @@ def _render_parent_topics(
             }
             for cluster in selected_topics
         ],
-        key=lambda item: item["size"],
+        key=lambda item: int(item.get("size") or 0),
         reverse=True,
     )
     if topic_rows:
@@ -305,7 +306,7 @@ def _render_diagnostics(
                 }
                 for cluster in clusters
             ],
-            key=lambda item: item["size"],
+            key=lambda item: int(item.get("size") or 0),
             reverse=True,
         )
         if cluster_rows:
@@ -361,7 +362,7 @@ def _render_diagnostics(
                 for idx, label in enumerate(labels)
                 if label == -1
             ],
-            key=lambda item: item["prob"],
+            key=lambda item: float(item.get("prob") or 0.0),
         )
         if outlier_rows:
             st.table(outlier_rows[:15])

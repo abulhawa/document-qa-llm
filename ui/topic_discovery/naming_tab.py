@@ -427,8 +427,8 @@ def _render_naming_table(
 
 
 def _cluster_profile(
-    cluster: dict[str, Any],
-    payload_lookup: Mapping[str, dict[str, Any]],
+    cluster: Mapping[str, Any],
+    payload_lookup: Mapping[str, Mapping[str, Any]],
     include_snippets: bool,
     *,
     max_keywords: int,
