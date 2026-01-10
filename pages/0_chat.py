@@ -1,8 +1,10 @@
 import streamlit as st
+import uuid
 from typing import List, Optional
 from config import logger
 from core.llm import get_available_models, load_model, check_llm_status
 from qa_pipeline import RetrievalConfig, answer_question
+from utils.timing import set_run_id, timed_block
 
 st.set_page_config(page_title="Ask Your Documents", layout="wide")
 st.title("Ask Your Documents")
@@ -117,6 +119,9 @@ with st.container():
             "Ask a question...", disabled=not llm_status["active"]
         )
         if user_input:
+            run_id = uuid.uuid4().hex[:8]
+            st.session_state["_run_id"] = run_id
+            set_run_id(run_id)
             st.session_state.chat_history.append(
                 {"role": "user", "content": user_input}
             )
@@ -124,14 +129,23 @@ with st.container():
             with st.chat_message("user"):
                 st.markdown(user_input)
 
-            result = answer_question(
-                question=user_input,
-                mode="chat",
-                temperature=temperature,
-                model=loaded_llm_model,
-                chat_history=st.session_state.chat_history,
-                retrieval_cfg=retrieval_cfg,
-            )
+            with timed_block(
+                "action.chat.chat_input",
+                extra={
+                    "run_id": run_id,
+                    "mode": "chat",
+                    "model": loaded_llm_model,
+                },
+                logger=logger,
+            ):
+                result = answer_question(
+                    question=user_input,
+                    mode="chat",
+                    temperature=temperature,
+                    model=loaded_llm_model,
+                    chat_history=st.session_state.chat_history,
+                    retrieval_cfg=retrieval_cfg,
+                )
 
             st.session_state.chat_history.append(
                 {"role": "assistant", "content": result.answer or ""}
@@ -161,14 +175,26 @@ with st.container():
             )
 
         if submitted and query:
+            run_id = uuid.uuid4().hex[:8]
+            st.session_state["_run_id"] = run_id
+            set_run_id(run_id)
             with st.spinner("🧠 Thinking..."):
-                result = answer_question(
-                    question=query,
-                    mode="completion",
-                    temperature=temperature,
-                    model=loaded_llm_model,
-                    retrieval_cfg=retrieval_cfg,
-                )
+                with timed_block(
+                    "action.chat.get_answer",
+                    extra={
+                        "run_id": run_id,
+                        "mode": "completion",
+                        "model": loaded_llm_model,
+                    },
+                    logger=logger,
+                ):
+                    result = answer_question(
+                        question=query,
+                        mode="completion",
+                        temperature=temperature,
+                        model=loaded_llm_model,
+                        retrieval_cfg=retrieval_cfg,
+                    )
 
             st.subheader("📝 Answer")
             st.markdown(result.answer or "")

@@ -9,6 +9,7 @@ from config import logger
 from ingestion import io_loader, preprocess, storage
 from utils.ingest_logging import IngestLogEmitter
 from utils.file_utils import choose_canonical_path
+from utils.timing import timed_block
 
 
 class InventoryWriter(Protocol):
@@ -209,23 +210,67 @@ def ingest_one(
             logger.info("Duplicate file detected: %s", normalized_path)
             is_dup = True
 
-        logger.info("📄 Loading: %s (fs: %s)", normalized_path, io_path)
-        try:
-            docs = io_loader.load_file_documents(io_path)
-        except Exception as e:  # noqa: BLE001
-            logger.error("❌ Failed to load document: %s", e)
-            log.fail(stage="load", error_type=e.__class__.__name__, reason=str(e))
-            raise RuntimeError(f"Failed to load document {normalized_path}: {e}") from e
+        with timed_block(
+            "step.content.parse",
+            extra={"path": normalized_path, "extension": ext},
+            logger=logger,
+        ):
+            logger.info("📄 Loading: %s (fs: %s)", normalized_path, io_path)
+            try:
+                docs = io_loader.load_file_documents(io_path)
+            except Exception as e:  # noqa: BLE001
+                logger.error("❌ Failed to load document: %s", e)
+                log.fail(stage="load", error_type=e.__class__.__name__, reason=str(e))
+                raise RuntimeError(f"Failed to load document {normalized_path}: {e}") from e
 
-        logger.info("🧼 Preprocessing %s documents", len(docs))
-        docs_list = list(preprocess.preprocess_documents(docs, normalized_path, ext))
+            logger.info("🧼 Preprocessing %s documents", len(docs))
+            docs_list = list(preprocess.preprocess_documents(docs, normalized_path, ext))
 
-        logger.info("📝 Indexing full document text")
-        full_text = preprocess.build_full_text(docs_list)
-        if not full_text:
+            logger.info("📝 Indexing full document text")
+            full_text = preprocess.build_full_text(docs_list)
+            if not full_text:
+                full_doc_id = checksum
+                if existing_fulltext and existing_fulltext.get("id"):
+                    full_doc_id = existing_fulltext["id"]
+                full_doc = existing_fulltext or {}
+                full_doc.update(
+                    {
+                        "id": full_doc_id,
+                        "path": canonical_path,
+                        "aliases": aliases,
+                        "filename": os.path.basename(canonical_path),
+                        "filetype": ext,
+                        "modified_at": modified,
+                        "created_at": created,
+                        "indexed_at": indexed_at,
+                        "size_bytes": size_bytes,
+                        "checksum": checksum,
+                        "text_full": "",
+                    }
+                )
+                try:
+                    storage.index_fulltext(full_doc)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("OpenSearch full-text indexing failed: %s", e)
+                    log.fail(stage="index_fulltext", error_type=e.__class__.__name__, reason=str(e))
+                    raise RuntimeError(
+                        f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
+                    ) from e
+                inventory_writer.set_number_of_chunks(canonical_path, 0)
+                inventory_writer.set_last_indexed(canonical_path, indexed_at)
+                logger.warning("No valid content found in: %s", normalized_path)
+                log.done(status="No valid content found")
+                return {
+                    "success": True,
+                    "status": "No valid content found",
+                    "path": normalized_path,
+                    "num_chunks": 0,
+                }
+
             full_doc_id = checksum
             if existing_fulltext and existing_fulltext.get("id"):
                 full_doc_id = existing_fulltext["id"]
+
             full_doc = existing_fulltext or {}
             full_doc.update(
                 {
@@ -239,70 +284,31 @@ def ingest_one(
                     "indexed_at": indexed_at,
                     "size_bytes": size_bytes,
                     "checksum": checksum,
-                    "text_full": "",
+                    "text_full": full_text,
                 }
             )
+
+            logger.info("✂️ Splitting document into chunks")
             try:
-                storage.index_fulltext(full_doc)
+                chunks = preprocess.chunk_documents(docs_list)
             except Exception as e:  # noqa: BLE001
-                logger.warning("OpenSearch full-text indexing failed: %s", e)
-                log.fail(stage="index_fulltext", error_type=e.__class__.__name__, reason=str(e))
+                logger.error("❌ Failed to split document: %s", e)
+                log.fail(stage="extract", error_type=e.__class__.__name__, reason=str(e))
                 raise RuntimeError(
-                    f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
+                    f"Failed to split document {normalized_path}: {e}"
                 ) from e
-            inventory_writer.set_number_of_chunks(canonical_path, 0)
-            inventory_writer.set_last_indexed(canonical_path, indexed_at)
-            logger.warning("No valid content found in: %s", normalized_path)
-            log.done(status="No valid content found")
-            return {
-                "success": True,
-                "status": "No valid content found",
-                "path": normalized_path,
-                "num_chunks": 0,
-            }
 
-        full_doc_id = checksum
-        if existing_fulltext and existing_fulltext.get("id"):
-            full_doc_id = existing_fulltext["id"]
+            if not chunks:
+                logger.warning("⚠️ No chunks generated from: %s", normalized_path)
+                log.done(status="No valid content found")
+                return {
+                    "success": True,
+                    "status": "No valid content found",
+                    "path": normalized_path,
+                    "num_chunks": 0,
+                }
 
-        full_doc = existing_fulltext or {}
-        full_doc.update(
-            {
-                "id": full_doc_id,
-                "path": canonical_path,
-                "aliases": aliases,
-                "filename": os.path.basename(canonical_path),
-                "filetype": ext,
-                "modified_at": modified,
-                "created_at": created,
-                "indexed_at": indexed_at,
-                "size_bytes": size_bytes,
-                "checksum": checksum,
-                "text_full": full_text,
-            }
-        )
-
-        logger.info("✂️ Splitting document into chunks")
-        try:
-            chunks = preprocess.chunk_documents(docs_list)
-        except Exception as e:  # noqa: BLE001
-            logger.error("❌ Failed to split document: %s", e)
-            log.fail(stage="extract", error_type=e.__class__.__name__, reason=str(e))
-            raise RuntimeError(
-                f"Failed to split document {normalized_path}: {e}"
-            ) from e
-
-        if not chunks:
-            logger.warning("⚠️ No chunks generated from: %s", normalized_path)
-            log.done(status="No valid content found")
-            return {
-                "success": True,
-                "status": "No valid content found",
-                "path": normalized_path,
-                "num_chunks": 0,
-            }
-
-        logger.info("🧩 Split into %s chunks", len(chunks))
+            logger.info("🧩 Split into %s chunks", len(chunks))
 
     def _chunk_id(checksum_val: str, index: int) -> str:
         return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{checksum_val}:{index}"))

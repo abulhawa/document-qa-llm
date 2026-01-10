@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field, is_dataclass
 import hashlib
 import json
@@ -14,6 +15,7 @@ from core.llm import ask_llm_with_status, check_llm_status
 from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
+from utils.timing import timed_block
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
@@ -119,6 +121,10 @@ _GERMAN_STOPWORDS = {
     "zum",
     "zur",
 }
+
+
+def _timing_verbose() -> bool:
+    return os.getenv("TIMING_VERBOSE") == "1"
 
 _NAME_MAX_WORDS = 6
 _NAME_MAX_CHARS = 60
@@ -660,72 +666,82 @@ def suggest_child_name_with_llm(
     allow_cache: bool = True,
     ignore_cache: bool = False,
 ) -> NameSuggestion:
-    cache_key = hash_profile(profile, prompt_version, model_id, language=language)
-    if allow_cache and not ignore_cache:
-        cached = _load_cached_suggestion(cache_key)
-        if cached:
-            logger.debug(
-                "Topic naming cache hit for cluster %s (llm_used=%s)",
-                profile.cluster_id,
-                (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+    timing_context = (
+        timed_block(
+            "step.topic_naming.cluster",
+            extra={"cluster_id": profile.cluster_id, "model_id": model_id},
+            logger=logger,
+        )
+        if _timing_verbose()
+        else nullcontext()
+    )
+    with timing_context:
+        cache_key = hash_profile(profile, prompt_version, model_id, language=language)
+        if allow_cache and not ignore_cache:
+            cached = _load_cached_suggestion(cache_key)
+            if cached:
+                logger.debug(
+                    "Topic naming cache hit for cluster %s (llm_used=%s)",
+                    profile.cluster_id,
+                    (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+                )
+                _log_naming_result(
+                    profile.cluster_id,
+                    "cluster",
+                    cached,
+                    cache_hit=True,
+                    llm_state=None,
+                )
+                return cached
+        llm_state = None
+        if not llm_callable:
+            llm_state, llm_status = _llm_readiness_state()
+            if llm_state == "not_loaded":
+                suggestion = _baseline_suggestion(
+                    profile,
+                    cache_key=cache_key,
+                    fallback_reason="llm_model_not_loaded",
+                    error_summary=llm_status.get("status_message"),
+                )
+                if ignore_cache and allow_cache:
+                    suggestion = _apply_cache_bypass_warning(
+                        suggestion,
+                        llm_state=llm_state,
+                    )
+                _log_naming_result(
+                    profile.cluster_id,
+                    "cluster",
+                    suggestion,
+                    cache_hit=False,
+                    llm_state=llm_state,
+                )
+                return _cache_suggestion(cache_key, suggestion)
+        try:
+            suggestion = _suggest_name_with_llm(
+                profile,
+                model_id=model_id,
+                prompt_version=prompt_version,
+                language=language,
+                llm_callable=llm_callable,
             )
-            _log_naming_result(
-                profile.cluster_id,
-                "cluster",
-                cached,
-                cache_hit=True,
-                llm_state=None,
-            )
-            return cached
-    llm_state = None
-    if not llm_callable:
-        llm_state, llm_status = _llm_readiness_state()
-        if llm_state == "not_loaded":
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("LLM naming failed for cluster %s: %s", profile.cluster_id, exc)
             suggestion = _baseline_suggestion(
                 profile,
                 cache_key=cache_key,
-                fallback_reason="llm_model_not_loaded",
-                error_summary=llm_status.get("status_message"),
+                fallback_reason="other_exception",
+                error_summary=str(exc),
             )
-            if ignore_cache and allow_cache:
-                suggestion = _apply_cache_bypass_warning(
-                    suggestion,
-                    llm_state=llm_state,
-                )
-            _log_naming_result(
-                profile.cluster_id,
-                "cluster",
-                suggestion,
-                cache_hit=False,
-                llm_state=llm_state,
-            )
-            return _cache_suggestion(cache_key, suggestion)
-    try:
-        suggestion = _suggest_name_with_llm(
-            profile,
-            model_id=model_id,
-            prompt_version=prompt_version,
-            language=language,
-            llm_callable=llm_callable,
+        if ignore_cache and allow_cache:
+            suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
+        _log_naming_result(
+            profile.cluster_id,
+            "cluster",
+            suggestion,
+            cache_hit=False,
+            llm_state=llm_state,
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("LLM naming failed for cluster %s: %s", profile.cluster_id, exc)
-        suggestion = _baseline_suggestion(
-            profile,
-            cache_key=cache_key,
-            fallback_reason="other_exception",
-            error_summary=str(exc),
-        )
-    if ignore_cache and allow_cache:
-        suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
-    _log_naming_result(
-        profile.cluster_id,
-        "cluster",
-        suggestion,
-        cache_hit=False,
-        llm_state=llm_state,
-    )
-    return _cache_suggestion(cache_key, suggestion)
+        return _cache_suggestion(cache_key, suggestion)
 
 
 def suggest_parent_name_with_llm(
@@ -738,72 +754,82 @@ def suggest_parent_name_with_llm(
     allow_cache: bool = True,
     ignore_cache: bool = False,
 ) -> NameSuggestion:
-    cache_key = hash_profile(profile, prompt_version, model_id, language=language)
-    if allow_cache and not ignore_cache:
-        cached = _load_cached_suggestion(cache_key)
-        if cached:
-            logger.debug(
-                "Topic naming cache hit for parent %s (llm_used=%s)",
-                profile.parent_id,
-                (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+    timing_context = (
+        timed_block(
+            "step.topic_naming.parent",
+            extra={"parent_id": profile.parent_id, "model_id": model_id},
+            logger=logger,
+        )
+        if _timing_verbose()
+        else nullcontext()
+    )
+    with timing_context:
+        cache_key = hash_profile(profile, prompt_version, model_id, language=language)
+        if allow_cache and not ignore_cache:
+            cached = _load_cached_suggestion(cache_key)
+            if cached:
+                logger.debug(
+                    "Topic naming cache hit for parent %s (llm_used=%s)",
+                    profile.parent_id,
+                    (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+                )
+                _log_naming_result(
+                    profile.parent_id,
+                    "parent",
+                    cached,
+                    cache_hit=True,
+                    llm_state=None,
+                )
+                return cached
+        llm_state = None
+        if not llm_callable:
+            llm_state, llm_status = _llm_readiness_state()
+            if llm_state == "not_loaded":
+                suggestion = _baseline_suggestion(
+                    profile,
+                    cache_key=cache_key,
+                    fallback_reason="llm_model_not_loaded",
+                    error_summary=llm_status.get("status_message"),
+                )
+                if ignore_cache and allow_cache:
+                    suggestion = _apply_cache_bypass_warning(
+                        suggestion,
+                        llm_state=llm_state,
+                    )
+                _log_naming_result(
+                    profile.parent_id,
+                    "parent",
+                    suggestion,
+                    cache_hit=False,
+                    llm_state=llm_state,
+                )
+                return _cache_suggestion(cache_key, suggestion)
+        try:
+            suggestion = _suggest_name_with_llm(
+                profile,
+                model_id=model_id,
+                prompt_version=prompt_version,
+                language=language,
+                llm_callable=llm_callable,
             )
-            _log_naming_result(
-                profile.parent_id,
-                "parent",
-                cached,
-                cache_hit=True,
-                llm_state=None,
-            )
-            return cached
-    llm_state = None
-    if not llm_callable:
-        llm_state, llm_status = _llm_readiness_state()
-        if llm_state == "not_loaded":
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("LLM naming failed for parent %s: %s", profile.parent_id, exc)
             suggestion = _baseline_suggestion(
                 profile,
                 cache_key=cache_key,
-                fallback_reason="llm_model_not_loaded",
-                error_summary=llm_status.get("status_message"),
+                fallback_reason="other_exception",
+                error_summary=str(exc),
             )
-            if ignore_cache and allow_cache:
-                suggestion = _apply_cache_bypass_warning(
-                    suggestion,
-                    llm_state=llm_state,
-                )
-            _log_naming_result(
-                profile.parent_id,
-                "parent",
-                suggestion,
-                cache_hit=False,
-                llm_state=llm_state,
-            )
-            return _cache_suggestion(cache_key, suggestion)
-    try:
-        suggestion = _suggest_name_with_llm(
-            profile,
-            model_id=model_id,
-            prompt_version=prompt_version,
-            language=language,
-            llm_callable=llm_callable,
+        if ignore_cache and allow_cache:
+            suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
+        _log_naming_result(
+            profile.parent_id,
+            "parent",
+            suggestion,
+            cache_hit=False,
+            llm_state=llm_state,
         )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("LLM naming failed for parent %s: %s", profile.parent_id, exc)
-        suggestion = _baseline_suggestion(
-            profile,
-            cache_key=cache_key,
-            fallback_reason="other_exception",
-            error_summary=str(exc),
-        )
-    if ignore_cache and allow_cache:
-        suggestion = _apply_cache_bypass_warning(suggestion, llm_state=llm_state)
-    _log_naming_result(
-        profile.parent_id,
-        "parent",
-        suggestion,
-        cache_hit=False,
-        llm_state=llm_state,
-    )
-    return _cache_suggestion(cache_key, suggestion)
+        return _cache_suggestion(cache_key, suggestion)
 
 
 def postprocess_name(name: str) -> str:
@@ -1489,7 +1515,12 @@ def _significant_terms_from_os(
     }
     try:
         client = get_client()
-        response = client.search(index=FULLTEXT_INDEX, body=body)
+        with timed_block(
+            "step.opensearch.significant_terms",
+            extra={"index": FULLTEXT_INDEX, "operation": "significant_terms"},
+            logger=logger,
+        ):
+            response = client.search(index=FULLTEXT_INDEX, body=body)
     except Exception:  # noqa: BLE001
         return {}
     buckets = (

@@ -20,6 +20,7 @@ from utils.file_utils import (
     get_file_size,
 )
 from utils.file_utils import normalize_path
+from utils.timing import timed_block
 
 # Analyzer/mapping config
 CHUNKS_INDEX_SETTINGS = {
@@ -202,11 +203,20 @@ def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
     transport_exc = getattr(exceptions, "TransportError", Exception)
 
     try:
-        success_count, errors = helpers.bulk(
-            client,
-            actions,
-            raise_on_error=False,
-        )
+        with timed_block(
+            "step.opensearch.query",
+            extra={
+                "index": CHUNKS_INDEX,
+                "operation": "bulk_index",
+                "chunk_count": len(actions),
+            },
+            logger=logger,
+        ):
+            success_count, errors = helpers.bulk(
+                client,
+                actions,
+                raise_on_error=False,
+            )
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch bulk index timeout.",
@@ -254,14 +264,19 @@ def index_fulltext_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     transport_exc = getattr(exceptions, "TransportError", Exception)
 
     try:
-        resp = client.index(
-            index=FULLTEXT_INDEX,
-            id=doc_id,
-            body=payload,
-            op_type="index",  # pyright: ignore[reportCallIssue]
-            refresh=False,  # pyright: ignore[reportCallIssue]
-            request_timeout=30,  # pyright: ignore[reportCallIssue]
-        )
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": FULLTEXT_INDEX, "operation": "index", "doc_id": doc_id},
+            logger=logger,
+        ):
+            resp = client.index(
+                index=FULLTEXT_INDEX,
+                id=doc_id,
+                body=payload,
+                op_type="index",  # pyright: ignore[reportCallIssue]
+                refresh=False,  # pyright: ignore[reportCallIssue]
+                request_timeout=30,  # pyright: ignore[reportCallIssue]
+            )
     except conn_timeout_exc as e:  # type: ignore[misc]
         logger.error(
             "OpenSearch index timeout.",
@@ -339,34 +354,39 @@ def list_files_from_opensearch(
         List of file metadata dicts
     """
     client = get_client()
-    response = client.search(
-        index=CHUNKS_INDEX,
-        body={
-            "size": 0,
-            "aggs": {
-                "files": {
-                    "terms": {"field": "path.keyword", "size": size},
-                    "aggs": {
-                        "top_chunk": {
-                            "top_hits": {
-                                "size": 1,
-                                "_source": [
-                                    "checksum",
-                                    "created_at",
-                                    "modified_at",
-                                    "indexed_at",
-                                    "filetype",
-                                    "bytes",
-                                    "size",
-                                ],
-                                "sort": [{"indexed_at": "desc"}],
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "list_files", "size": size},
+        logger=logger,
+    ):
+        response = client.search(
+            index=CHUNKS_INDEX,
+            body={
+                "size": 0,
+                "aggs": {
+                    "files": {
+                        "terms": {"field": "path.keyword", "size": size},
+                        "aggs": {
+                            "top_chunk": {
+                                "top_hits": {
+                                    "size": 1,
+                                    "_source": [
+                                        "checksum",
+                                        "created_at",
+                                        "modified_at",
+                                        "indexed_at",
+                                        "filetype",
+                                        "bytes",
+                                        "size",
+                                    ],
+                                    "sort": [{"indexed_at": "desc"}],
+                                }
                             }
-                        }
-                    },
-                }
+                        },
+                    }
+                },
             },
-        },
-    )
+        )
 
     results = []
     for bucket in response["aggregations"]["files"]["buckets"]:
@@ -396,59 +416,79 @@ def list_files_from_opensearch(
 def get_chunk_ids_by_path(path: str, size: int = 10000) -> list[str]:
     """Fetch chunk IDs for a file path from the documents index."""
     client = get_client()
-    resp = client.search(
-        index=CHUNKS_INDEX,
-        body={
-            "size": size,
-            "_source": False,
-            "query": {"term": {"path.keyword": path}},
-        },
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "get_chunk_ids_by_path"},
+        logger=logger,
+    ):
+        resp = client.search(
+            index=CHUNKS_INDEX,
+            body={
+                "size": size,
+                "_source": False,
+                "query": {"term": {"path.keyword": path}},
+            },
+        )
     return [h.get("_id") for h in resp.get("hits", {}).get("hits", []) if h.get("_id")]
 
 
 def delete_chunks_by_path(path: str) -> int:
     """Delete all chunk docs for a file from the documents index."""
     client = get_client()
-    resp = client.delete_by_query(
-        index=CHUNKS_INDEX,
-        body={"query": {"term": {"path.keyword": path}}},
-        params={
-            "refresh": "true",
-            "conflicts": "proceed",
-            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-        },
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "delete_by_path"},
+        logger=logger,
+    ):
+        resp = client.delete_by_query(
+            index=CHUNKS_INDEX,
+            body={"query": {"term": {"path.keyword": path}}},
+            params={
+                "refresh": "true",
+                "conflicts": "proceed",
+                "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+            },
+        )
     return int(resp.get("deleted", 0))
 
 
 def delete_chunks_by_checksum(checksum: str) -> int:
     """Delete chunk documents by checksum across all paths."""
     client = get_client()
-    resp = client.delete_by_query(
-        index=CHUNKS_INDEX,
-        body={"query": {"term": {"checksum": {"value": checksum}}}},
-        params={
-            "refresh": "true",
-            "conflicts": "proceed",
-            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-        },
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "delete_by_checksum"},
+        logger=logger,
+    ):
+        resp = client.delete_by_query(
+            index=CHUNKS_INDEX,
+            body={"query": {"term": {"checksum": {"value": checksum}}}},
+            params={
+                "refresh": "true",
+                "conflicts": "proceed",
+                "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+            },
+        )
     return int(resp.get("deleted", 0))
 
 
 def delete_fulltext_by_path(path: str) -> int:
     """Delete full-text doc(s) for a file from the full_text index."""
     client = get_client()
-    resp = client.delete_by_query(
-        index=FULLTEXT_INDEX,
-        body={"query": {"term": {"path": {"value": path}}}},
-        params={
-            "refresh": "true",
-            "conflicts": "proceed",
-            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-        },
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": FULLTEXT_INDEX, "operation": "delete_fulltext_by_path"},
+        logger=logger,
+    ):
+        resp = client.delete_by_query(
+            index=FULLTEXT_INDEX,
+            body={"query": {"term": {"path": {"value": path}}}},
+            params={
+                "refresh": "true",
+                "conflicts": "proceed",
+                "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+            },
+        )
     return int(resp.get("deleted", 0))
 
 
@@ -464,15 +504,20 @@ def delete_fulltext_by_checksum(checksum: str) -> int:
         pass
     except Exception:
         logger.warning("Full-text direct delete failed for checksum=%s", checksum, exc_info=True)
-    resp = client.delete_by_query(
-        index=FULLTEXT_INDEX,
-        body={"query": {"term": {"checksum": {"value": checksum}}}},
-        params={
-            "refresh": "true",
-            "conflicts": "proceed",
-            "timeout": OPENSEARCH_REQUEST_TIMEOUT,
-        },
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": FULLTEXT_INDEX, "operation": "delete_fulltext_by_checksum"},
+        logger=logger,
+    ):
+        resp = client.delete_by_query(
+            index=FULLTEXT_INDEX,
+            body={"query": {"term": {"checksum": {"value": checksum}}}},
+            params={
+                "refresh": "true",
+                "conflicts": "proceed",
+                "timeout": OPENSEARCH_REQUEST_TIMEOUT,
+            },
+        )
     deleted += int(resp.get("deleted", 0))
     return deleted
 
@@ -481,10 +526,15 @@ def list_fulltext_paths(size: int = 1000) -> List[str]:
     """Return a list of file paths present in the full-text index."""
 
     client = get_client()
-    resp = client.search(
-        index=FULLTEXT_INDEX,
-        body={"size": size, "query": {"match_all": {}}, "_source": ["path"]},
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": FULLTEXT_INDEX, "operation": "list_fulltext_paths", "size": size},
+        logger=logger,
+    ):
+        resp = client.search(
+            index=FULLTEXT_INDEX,
+            body={"size": size, "query": {"match_all": {}}, "_source": ["path"]},
+        )
     hits = resp.get("hits", {}).get("hits", [])
     return [h.get("_source", {}).get("path") for h in hits if h.get("_source")]
 
@@ -505,7 +555,12 @@ def get_fulltext_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
     """Return full-text document for the checksum, if present."""
     client = get_client()
     try:
-        resp = client.get(index=FULLTEXT_INDEX, id=checksum)
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": FULLTEXT_INDEX, "operation": "get_fulltext"},
+            logger=logger,
+        ):
+            resp = client.get(index=FULLTEXT_INDEX, id=checksum)
         source = resp.get("_source") or {}
         source["id"] = resp.get("_id") or checksum
         return source
@@ -518,13 +573,18 @@ def get_fulltext_by_checksum(checksum: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        search = client.search(
-            index=FULLTEXT_INDEX,
-            body={
-                "size": 1,
-                "query": {"term": {"checksum": {"value": checksum}}},
-            },
-        )
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": FULLTEXT_INDEX, "operation": "search_fulltext_by_checksum"},
+            logger=logger,
+        ):
+            search = client.search(
+                index=FULLTEXT_INDEX,
+                body={
+                    "size": 1,
+                    "query": {"term": {"checksum": {"value": checksum}}},
+                },
+            )
         hits = search.get("hits", {}).get("hits", [])
         if not hits:
             return None
@@ -543,21 +603,26 @@ def get_fulltext_by_path_or_alias(path: str) -> Optional[Dict[str, Any]]:
     """Return full-text document whose canonical path or aliases contain path."""
     client = get_client()
     try:
-        search = client.search(
-            index=FULLTEXT_INDEX,
-            body={
-                "size": 1,
-                "query": {
-                    "bool": {
-                        "should": [
-                            {"term": {"path": path}},
-                            {"term": {"aliases": path}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": FULLTEXT_INDEX, "operation": "search_by_path_or_alias"},
+            logger=logger,
+        ):
+            search = client.search(
+                index=FULLTEXT_INDEX,
+                body={
+                    "size": 1,
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {"term": {"path": path}},
+                                {"term": {"aliases": path}},
+                            ],
+                            "minimum_should_match": 1,
+                        }
+                    },
                 },
-            },
-        )
+            )
         hits = search.get("hits", {}).get("hits", [])
         if not hits:
             return None
@@ -587,25 +652,30 @@ def get_chunks_by_paths(
     client = get_client()
     results: List[Dict[str, Any]] = []
     unique_paths = [p for p in {p for p in paths if p}]
-    for path in unique_paths:
-        after: Optional[List[Any]] = None
-        while True:
-            body: Dict[str, Any] = {
-                "size": batch_size,
-                "query": {"term": {"path.keyword": path}},
-                "sort": [{"chunk_index": "asc"}, {"_id": "asc"}],
-            }
-            if after:
-                body["search_after"] = after
-            resp = client.search(index=CHUNKS_INDEX, body=body)
-            hits = resp.get("hits", {}).get("hits", [])
-            if not hits:
-                break
-            for h in hits:
-                src = h.get("_source", {})
-                src["id"] = h.get("_id") or src.get("id")
-                results.append(src)
-            after = hits[-1].get("sort")
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "get_chunks_by_paths", "path_count": len(unique_paths)},
+        logger=logger,
+    ):
+        for path in unique_paths:
+            after: Optional[List[Any]] = None
+            while True:
+                body: Dict[str, Any] = {
+                    "size": batch_size,
+                    "query": {"term": {"path.keyword": path}},
+                    "sort": [{"chunk_index": "asc"}, {"_id": "asc"}],
+                }
+                if after:
+                    body["search_after"] = after
+                resp = client.search(index=CHUNKS_INDEX, body=body)
+                hits = resp.get("hits", {}).get("hits", [])
+                if not hits:
+                    break
+                for h in hits:
+                    src = h.get("_source", {})
+                    src["id"] = h.get("_id") or src.get("id")
+                    results.append(src)
+                after = hits[-1].get("sort")
     return results
 
 
@@ -633,7 +703,12 @@ def get_duplicate_checksums(
         if after:
             body["search_after"] = after
 
-        resp = client.search(index=FULLTEXT_INDEX, body=body)
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": FULLTEXT_INDEX, "operation": "get_duplicate_checksums"},
+            logger=logger,
+        ):
+            resp = client.search(index=FULLTEXT_INDEX, body=body)
         hits = resp.get("hits", {}).get("hits", [])
         if not hits:
             break
@@ -666,21 +741,26 @@ def get_files_by_checksum(checksum: str) -> List[Dict[str, Any]]:
     client = get_client()
 
     # Aggregate chunk metadata by path for this checksum (canonical path should exist).
-    resp = client.search(
-        index=CHUNKS_INDEX,
-        body={
-            "size": 0,
-            "query": {"term": {"checksum": checksum}},
-            "aggs": {
-                "by_path": {
-                    "terms": {"field": "path.keyword", "size": 2000},
-                    "aggs": {
-                        "sample": {"top_hits": {"size": 1}},
-                    },
-                }
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "get_files_by_checksum"},
+        logger=logger,
+    ):
+        resp = client.search(
+            index=CHUNKS_INDEX,
+            body={
+                "size": 0,
+                "query": {"term": {"checksum": checksum}},
+                "aggs": {
+                    "by_path": {
+                        "terms": {"field": "path.keyword", "size": 2000},
+                        "aggs": {
+                            "sample": {"top_hits": {"size": 1}},
+                        },
+                    }
+                },
             },
-        },
-    )
+        )
     buckets = resp.get("aggregations", {}).get("by_path", {}).get("buckets", []) or []
     chunk_meta: Dict[str, Dict[str, Any]] = {}
     for bucket in buckets:
@@ -754,19 +834,24 @@ def is_file_up_to_date(checksum: str, path: str) -> bool:
     """Check if a file with the given checksum and path is already indexed."""
     try:
         client = get_client()
-        response = client.count(
-            index=CHUNKS_INDEX,
-            body={
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"term": {"checksum": checksum}},
-                            {"term": {"path.keyword": path}},
-                        ]
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": CHUNKS_INDEX, "operation": "count"},
+            logger=logger,
+        ):
+            response = client.count(
+                index=CHUNKS_INDEX,
+                body={
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"checksum": checksum}},
+                                {"term": {"path.keyword": path}},
+                            ]
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
         return response.get("count", 0) > 0
     except exceptions.OpenSearchException as e:
         logger.warning(f"OpenSearch checksum/path check failed: {e}")
@@ -777,17 +862,22 @@ def is_duplicate_checksum(checksum: str, path: str) -> bool:
     """Check if checksum exists for a different path."""
     try:
         client = get_client()
-        response = client.count(
-            index=CHUNKS_INDEX,
-            body={
-                "query": {
-                    "bool": {
-                        "must": [{"term": {"checksum": checksum}}],
-                        "must_not": [{"term": {"path.keyword": path}}],
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": CHUNKS_INDEX, "operation": "count"},
+            logger=logger,
+        ):
+            response = client.count(
+                index=CHUNKS_INDEX,
+                body={
+                    "query": {
+                        "bool": {
+                            "must": [{"term": {"checksum": checksum}}],
+                            "must_not": [{"term": {"path.keyword": path}}],
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
         return response.get("count", 0) > 0
     except exceptions.OpenSearchException as e:
         logger.warning(f"OpenSearch duplicate check failed: {e}")
@@ -822,7 +912,12 @@ def search_ingest_logs(
                 {"range": {"attempt_at": rng}}
             )
         body = {"size": size, "sort": [{"attempt_at": "desc"}], "query": query}
-        resp = client.search(index=INGEST_LOG_INDEX, body=body)
+        with timed_block(
+            "step.opensearch.query",
+            extra={"index": INGEST_LOG_INDEX, "operation": "search_ingest_logs"},
+            logger=logger,
+        ):
+            resp = client.search(index=INGEST_LOG_INDEX, body=body)
         hits = resp.get("hits", {}).get("hits", [])
         return [{"log_id": h.get("_id"), **h.get("_source", {})} for h in hits]
     except exceptions.OpenSearchException as e:

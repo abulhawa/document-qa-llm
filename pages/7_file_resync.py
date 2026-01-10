@@ -1,9 +1,11 @@
 import os
+import uuid
 from typing import List, cast
 
 import pandas as pd
 import streamlit as st
 
+from config import logger
 from core.sync.file_resync import (
     DEFAULT_ALLOWED_EXTENSIONS,
     ApplyOptions,
@@ -13,6 +15,7 @@ from core.sync.file_resync import (
     scan_files,
 )
 from ui.ingestion_ui import run_root_picker
+from utils.timing import set_run_id, timed_block
 
 if st.session_state.get("_nav_context") != "hub":
     st.set_page_config(page_title="File Path Re-Sync", layout="wide")
@@ -248,11 +251,19 @@ if scan_clicked:
         st.error("Please provide at least one root to scan.")
     else:
         try:
+            run_id = uuid.uuid4().hex[:8]
+            st.session_state["_run_id"] = run_id
+            set_run_id(run_id)
             with st.spinner("Scanning disk and building plan…"):
-                scan_result = scan_files(roots, exts)
-                plan = build_reconciliation_plan(
-                    scan_result, roots, retire_replaced_content=retire_replaced
-                )
+                with timed_block(
+                    "action.file_resync.scan_plan",
+                    extra={"run_id": run_id, "roots": len(roots), "extensions": sorted(exts)},
+                    logger=logger,
+                ):
+                    scan_result = scan_files(roots, exts)
+                    plan = build_reconciliation_plan(
+                        scan_result, roots, retire_replaced_content=retire_replaced
+                    )
         except Exception as e:  # noqa: BLE001
             st.session_state.pop("file_resync_plan", None)
             st.session_state.pop("file_resync_scan_meta", None)
@@ -286,16 +297,24 @@ if plan:
 if apply_safe_clicked and plan:
     result: ApplyResult | None = None
     try:
+        run_id = uuid.uuid4().hex[:8]
+        st.session_state["_run_id"] = run_id
+        set_run_id(run_id)
         with st.spinner("Applying SAFE actions…"):
-            result = apply_plan(
-                plan,
-                ApplyOptions(
-                    ingest_missing=ingest_missing_safe,
-                    apply_safe_only=True,
-                    delete_orphaned=False,
-                    retire_replaced_content=False,
-                ),
-            )
+            with timed_block(
+                "action.file_resync.apply_safe_actions",
+                extra={"run_id": run_id, "ingest_missing": ingest_missing_safe},
+                logger=logger,
+            ):
+                result = apply_plan(
+                    plan,
+                    ApplyOptions(
+                        ingest_missing=ingest_missing_safe,
+                        apply_safe_only=True,
+                        delete_orphaned=False,
+                        retire_replaced_content=False,
+                    ),
+                )
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "SAFE apply")
         st.stop()
@@ -317,16 +336,29 @@ if apply_safe_clicked and plan:
 if apply_destructive_clicked and plan:
     result: ApplyResult | None = None
     try:
+        run_id = uuid.uuid4().hex[:8]
+        st.session_state["_run_id"] = run_id
+        set_run_id(run_id)
         with st.spinner("Applying destructive actions…"):
-            result = apply_plan(
-                plan,
-                ApplyOptions(
-                    ingest_missing=ingest_missing_destructive,
-                    apply_safe_only=False,
-                    delete_orphaned=delete_orphaned,
-                    retire_replaced_content=retire_replaced,
-                ),
-            )
+            with timed_block(
+                "action.file_resync.apply_destructive_actions",
+                extra={
+                    "run_id": run_id,
+                    "ingest_missing": ingest_missing_destructive,
+                    "delete_orphaned": delete_orphaned,
+                    "retire_replaced": retire_replaced,
+                },
+                logger=logger,
+            ):
+                result = apply_plan(
+                    plan,
+                    ApplyOptions(
+                        ingest_missing=ingest_missing_destructive,
+                        apply_safe_only=False,
+                        delete_orphaned=delete_orphaned,
+                        retire_replaced_content=retire_replaced,
+                    ),
+                )
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "Destructive apply")
         st.stop()
