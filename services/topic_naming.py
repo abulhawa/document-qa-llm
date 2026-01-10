@@ -10,7 +10,7 @@ import re
 from typing import Any, Iterable, Sequence
 
 from config import CHUNKS_INDEX, FULLTEXT_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
-from core.llm import ask_llm, check_llm_status
+from core.llm import ask_llm_with_status, check_llm_status
 from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
@@ -28,6 +28,16 @@ DEFAULT_TOP_EXTENSION_COUNT = 5
 LLM_UNAVAILABLE_WARNING = (
     "LLM inactive (model not loaded). Using baseline names instead of LLM suggestions."
 )
+FALLBACK_REASON_MESSAGES = {
+    "cache_hit_baseline": "Loaded cached baseline (LLM not called)",
+    "llm_model_not_loaded": LLM_UNAVAILABLE_WARNING,
+    "llm_timeout": "LLM request timed out (used baseline)",
+    "llm_unreachable": "LLM server unreachable (used baseline)",
+    "llm_invalid_json": "LLM returned invalid JSON (used baseline)",
+    "skipped_due_to_mixedness": "Skipped LLM due to high mixedness (used baseline)",
+    "skipped_due_to_prompt_too_long": "Skipped LLM because prompt was too long (used baseline)",
+    "other_exception": "LLM request failed (used baseline)",
+}
 
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 _LONG_NUMBER_RE = re.compile(r"\b\d{6,}\b")
@@ -649,15 +659,37 @@ def suggest_child_name_with_llm(
     if allow_cache:
         cached = _load_cached_suggestion(cache_key)
         if cached:
+            logger.debug(
+                "Topic naming cache hit for cluster %s (llm_used=%s)",
+                profile.cluster_id,
+                (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+            )
+            _log_naming_result(
+                profile.cluster_id,
+                "cluster",
+                cached,
+                cache_hit=True,
+                llm_state=None,
+            )
             return cached
-    if not llm_callable and not _is_llm_ready():
-        suggestion = _baseline_suggestion(
-            profile,
-            cache_key=cache_key,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_unavailable",
-        )
-        return _cache_suggestion(cache_key, suggestion)
+    llm_state = None
+    if not llm_callable:
+        llm_state, llm_status = _llm_readiness_state()
+        if llm_state == "not_loaded":
+            suggestion = _baseline_suggestion(
+                profile,
+                cache_key=cache_key,
+                fallback_reason="llm_model_not_loaded",
+                error_summary=llm_status.get("status_message"),
+            )
+            _log_naming_result(
+                profile.cluster_id,
+                "cluster",
+                suggestion,
+                cache_hit=False,
+                llm_state=llm_state,
+            )
+            return _cache_suggestion(cache_key, suggestion)
     try:
         suggestion = _suggest_name_with_llm(
             profile,
@@ -671,9 +703,16 @@ def suggest_child_name_with_llm(
         suggestion = _baseline_suggestion(
             profile,
             cache_key=cache_key,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_exception",
+            fallback_reason="other_exception",
+            error_summary=str(exc),
         )
+    _log_naming_result(
+        profile.cluster_id,
+        "cluster",
+        suggestion,
+        cache_hit=False,
+        llm_state=llm_state,
+    )
     return _cache_suggestion(cache_key, suggestion)
 
 
@@ -690,15 +729,37 @@ def suggest_parent_name_with_llm(
     if allow_cache:
         cached = _load_cached_suggestion(cache_key)
         if cached:
+            logger.debug(
+                "Topic naming cache hit for parent %s (llm_used=%s)",
+                profile.parent_id,
+                (cached.metadata or {}).get("llm_cache", {}).get("llm_used"),
+            )
+            _log_naming_result(
+                profile.parent_id,
+                "parent",
+                cached,
+                cache_hit=True,
+                llm_state=None,
+            )
             return cached
-    if not llm_callable and not _is_llm_ready():
-        suggestion = _baseline_suggestion(
-            profile,
-            cache_key=cache_key,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_unavailable",
-        )
-        return _cache_suggestion(cache_key, suggestion)
+    llm_state = None
+    if not llm_callable:
+        llm_state, llm_status = _llm_readiness_state()
+        if llm_state == "not_loaded":
+            suggestion = _baseline_suggestion(
+                profile,
+                cache_key=cache_key,
+                fallback_reason="llm_model_not_loaded",
+                error_summary=llm_status.get("status_message"),
+            )
+            _log_naming_result(
+                profile.parent_id,
+                "parent",
+                suggestion,
+                cache_hit=False,
+                llm_state=llm_state,
+            )
+            return _cache_suggestion(cache_key, suggestion)
     try:
         suggestion = _suggest_name_with_llm(
             profile,
@@ -712,9 +773,16 @@ def suggest_parent_name_with_llm(
         suggestion = _baseline_suggestion(
             profile,
             cache_key=cache_key,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_exception",
+            fallback_reason="other_exception",
+            error_summary=str(exc),
         )
+    _log_naming_result(
+        profile.parent_id,
+        "parent",
+        suggestion,
+        cache_hit=False,
+        llm_state=llm_state,
+    )
     return _cache_suggestion(cache_key, suggestion)
 
 
@@ -945,6 +1013,40 @@ def _dedupe_keep_order(items: Iterable[str]) -> list[str]:
     return result
 
 
+def _format_fallback_warning(fallback_reason: str | None) -> str:
+    if not fallback_reason:
+        return ""
+    if fallback_reason.startswith("llm_error_http_"):
+        code = fallback_reason.split("_")[-1]
+        return f"LLM request failed (HTTP {code}) (used baseline)"
+    return FALLBACK_REASON_MESSAGES.get(
+        fallback_reason, FALLBACK_REASON_MESSAGES["other_exception"]
+    )
+
+
+def _map_llm_error_to_reason(error_type: str, status_code: int | None) -> str:
+    if error_type == "timeout":
+        return "llm_timeout"
+    if error_type == "http_error":
+        return f"llm_error_http_{status_code or 'unknown'}"
+    if error_type == "invalid_json":
+        return "llm_invalid_json"
+    if error_type == "request_exception":
+        return "llm_unreachable"
+    if error_type == "empty_response":
+        return "other_exception"
+    return "other_exception"
+
+
+def _llm_readiness_state() -> tuple[str, dict[str, Any]]:
+    status = check_llm_status()
+    if status.get("server_online") and not status.get("model_loaded"):
+        return "not_loaded", status
+    if status.get("active"):
+        return "ready", status
+    return "unknown", status
+
+
 def _load_cached_suggestion(cache_key: str) -> NameSuggestion | None:
     cache_path = CACHE_DIR / f"{cache_key}.json"
     if not cache_path.exists():
@@ -952,7 +1054,8 @@ def _load_cached_suggestion(cache_key: str) -> NameSuggestion | None:
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
-        return NameSuggestion(**payload)
+        suggestion = NameSuggestion(**payload)
+        return _mark_cache_hit(suggestion)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to load topic naming cache %s: %s", cache_path, exc)
         return None
@@ -969,6 +1072,49 @@ def _cache_suggestion(cache_key: str, suggestion: NameSuggestion) -> NameSuggest
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to write topic naming cache %s: %s", cache_path, exc)
     return NameSuggestion(**payload)
+
+
+def _mark_cache_hit(suggestion: NameSuggestion) -> NameSuggestion:
+    metadata = dict(suggestion.metadata or {})
+    llm_cache = dict(metadata.get("llm_cache", {}))
+    llm_used = bool(llm_cache.get("llm_used", suggestion.source == "llm"))
+    llm_cache["llm_used"] = llm_used
+    llm_cache["cache_hit"] = True
+    if not llm_used:
+        llm_cache["fallback_reason"] = "cache_hit_baseline"
+        metadata["warning"] = _format_fallback_warning("cache_hit_baseline")
+    else:
+        llm_cache["fallback_reason"] = None
+        metadata.pop("warning", None)
+    metadata["llm_cache"] = llm_cache
+    return NameSuggestion(
+        name=suggestion.name,
+        confidence=suggestion.confidence,
+        source=suggestion.source,
+        cache_key=suggestion.cache_key,
+        metadata=metadata,
+    )
+
+
+def _log_naming_result(
+    identifier: int,
+    level: str,
+    suggestion: NameSuggestion,
+    *,
+    cache_hit: bool,
+    llm_state: str | None,
+) -> None:
+    llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
+    logger.debug(
+        "Topic naming result for %s %s: cache_hit=%s llm_state=%s llm_used=%s fallback_reason=%s error=%s",
+        level,
+        identifier,
+        cache_hit,
+        llm_state,
+        llm_cache.get("llm_used"),
+        llm_cache.get("fallback_reason"),
+        llm_cache.get("error_summary"),
+    )
 
 
 def _load_cached_profiles(cache_key: str) -> dict[str, Any] | None:
@@ -993,14 +1139,6 @@ def _cache_profiles(cache_key: str, payload: dict[str, Any]) -> None:
         logger.warning("Failed to write topic naming cache %s: %s", cache_path, exc)
 
 
-def _is_llm_ready() -> bool:
-    status = check_llm_status()
-    if not status.get("active"):
-        logger.warning(LLM_UNAVAILABLE_WARNING)
-        return False
-    return True
-
-
 def _suggest_name_with_llm(
     profile: ClusterProfile | ParentProfile,
     *,
@@ -1014,40 +1152,62 @@ def _suggest_name_with_llm(
         if isinstance(result, NameSuggestion):
             return _ensure_llm_cache(result, profile=profile, used=True)
         if isinstance(result, str) and result.strip():
-            return _suggestion_from_text(profile, result, cache_key=None, used=True)
+            return _suggestion_from_text(
+                profile,
+                result,
+                cache_key=None,
+                used=True,
+                prompt_chars=None,
+            )
     prompt = _build_llm_prompt(profile, prompt_version=prompt_version, language=language)
-    response = ask_llm(
+    response = ask_llm_with_status(
         prompt,
         mode="completion",
         model=model_id,
         max_tokens=24,
         temperature=0.2,
     )
-    if not response or response.strip() == "[LLM Error]":
+    if response["error"]:
+        fallback_reason = _map_llm_error_to_reason(
+            response["error"]["type"], response["error"]["status_code"]
+        )
         return _baseline_suggestion(
             profile,
             cache_key=None,
-            warning=LLM_UNAVAILABLE_WARNING,
-            reason="llm_error",
+            fallback_reason=fallback_reason,
+            error_summary=response["error"]["summary"],
+            prompt_chars=response["prompt_length"],
         )
-    cleaned = postprocess_name(response)
+    if not response["content"]:
+        return _baseline_suggestion(
+            profile,
+            cache_key=None,
+            fallback_reason="other_exception",
+            error_summary="Empty LLM response",
+            prompt_chars=response["prompt_length"],
+        )
+    cleaned = postprocess_name(response["content"])
     if language == "en" and not english_only_check(cleaned):
         retry_prompt = (
             f"{prompt}\nEnglish only; no German words."
         )
-        retry_response = ask_llm(
+        retry_response = ask_llm_with_status(
             retry_prompt,
             mode="completion",
             model=model_id,
             max_tokens=24,
             temperature=0.2,
         )
-        if not retry_response or retry_response.strip() == "[LLM Error]":
+        if retry_response["error"]:
+            fallback_reason = _map_llm_error_to_reason(
+                retry_response["error"]["type"], retry_response["error"]["status_code"]
+            )
             fallback = _baseline_suggestion(
                 profile,
                 cache_key=None,
-                warning=LLM_UNAVAILABLE_WARNING,
-                reason="llm_error",
+                fallback_reason=fallback_reason,
+                error_summary=retry_response["error"]["summary"],
+                prompt_chars=retry_response["prompt_length"],
             )
             return _with_llm_cache(
                 fallback,
@@ -1057,13 +1217,30 @@ def _suggest_name_with_llm(
                     "retry_reason": "llm_error",
                 },
             )
-        cleaned_retry = postprocess_name(retry_response)
+        if not retry_response["content"]:
+            fallback = _baseline_suggestion(
+                profile,
+                cache_key=None,
+                fallback_reason="other_exception",
+                error_summary="Empty LLM response",
+                prompt_chars=retry_response["prompt_length"],
+            )
+            return _with_llm_cache(
+                fallback,
+                {
+                    "retry_attempted": True,
+                    "retry_success": False,
+                    "retry_reason": "empty_response",
+                },
+            )
+        cleaned_retry = postprocess_name(retry_response["content"])
         if not english_only_check(cleaned_retry):
             fallback = _baseline_suggestion(
                 profile,
                 cache_key=None,
-                warning=LLM_UNAVAILABLE_WARNING,
-                reason="llm_non_english",
+                fallback_reason="other_exception",
+                error_summary="Non-English response",
+                prompt_chars=retry_response["prompt_length"],
             )
             return _with_llm_cache(
                 fallback,
@@ -1073,7 +1250,13 @@ def _suggest_name_with_llm(
                     "retry_reason": "non_english",
                 },
             )
-        suggestion = _suggestion_from_text(profile, cleaned_retry, cache_key=None, used=True)
+        suggestion = _suggestion_from_text(
+            profile,
+            cleaned_retry,
+            cache_key=None,
+            used=True,
+            prompt_chars=retry_response["prompt_length"],
+        )
         return _with_llm_cache(
             suggestion,
             {
@@ -1081,7 +1264,13 @@ def _suggest_name_with_llm(
                 "retry_success": True,
             },
         )
-    return _suggestion_from_text(profile, cleaned, cache_key=None, used=True)
+    return _suggestion_from_text(
+        profile,
+        cleaned,
+        cache_key=None,
+        used=True,
+        prompt_chars=response["prompt_length"],
+    )
 
 
 def _build_llm_prompt(
@@ -1141,9 +1330,16 @@ def _suggestion_from_text(
     *,
     cache_key: str | None,
     used: bool,
+    prompt_chars: int | None,
 ) -> NameSuggestion:
     metadata = _profile_metadata(profile)
-    metadata["llm_cache"] = {"llm_used": used}
+    metadata["llm_cache"] = {
+        "llm_used": used,
+        "fallback_reason": None,
+        "error_summary": None,
+        "cache_hit": False,
+        "prompt_chars": prompt_chars,
+    }
     return NameSuggestion(
         name=postprocess_name(name),
         confidence=None,
@@ -1171,12 +1367,19 @@ def _baseline_suggestion(
     profile: ClusterProfile | ParentProfile,
     *,
     cache_key: str | None,
-    warning: str,
-    reason: str,
+    fallback_reason: str,
+    error_summary: str | None,
+    prompt_chars: int | None = None,
 ) -> NameSuggestion:
     metadata = _profile_metadata(profile)
-    metadata["warning"] = warning
-    metadata["llm_cache"] = {"llm_used": False, "reason": reason}
+    metadata["warning"] = _format_fallback_warning(fallback_reason)
+    metadata["llm_cache"] = {
+        "llm_used": False,
+        "fallback_reason": fallback_reason,
+        "error_summary": error_summary,
+        "cache_hit": False,
+        "prompt_chars": prompt_chars,
+    }
     name = _baseline_name(profile)
     return NameSuggestion(
         name=postprocess_name(name),
@@ -1342,9 +1545,16 @@ def _ensure_llm_cache(
 ) -> NameSuggestion:
     metadata = dict(suggestion.metadata or {})
     metadata = {**_profile_metadata(profile), **metadata}
-    metadata.setdefault("llm_cache", {"llm_used": used})
+    llm_cache = dict(metadata.get("llm_cache", {}))
+    llm_cache.setdefault("llm_used", used)
+    llm_cache.setdefault("fallback_reason", None)
+    llm_cache.setdefault("error_summary", None)
+    llm_cache.setdefault("cache_hit", False)
+    llm_cache.setdefault("prompt_chars", None)
     if used:
-        metadata["llm_cache"]["llm_used"] = True
+        llm_cache["llm_used"] = True
+        metadata.pop("warning", None)
+    metadata["llm_cache"] = llm_cache
     return NameSuggestion(
         name=suggestion.name,
         confidence=suggestion.confidence,
