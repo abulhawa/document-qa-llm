@@ -51,6 +51,7 @@ DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
 DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
 DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
 MIXEDNESS_WARNING_THRESHOLD = 0.6
+CONFIDENCE_MIXEDNESS_FACTOR = 0.5
 TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
 )
@@ -104,6 +105,9 @@ def _cluster_profile(
         size=base.size,
         avg_prob=base.avg_prob,
         centroid=list(base.centroid),
+        keyword_entropy=base.keyword_entropy,
+        extension_entropy=base.extension_entropy,
+        embedding_spread=base.embedding_spread,
         mixedness=base.mixedness,
         representative_checksums=list(base.representative_checksums),
         representative_files=list(base.representative_files),
@@ -154,6 +158,18 @@ def _profile_rationale(profile: ClusterProfile | ParentProfile) -> str:
     mixedness = payload.get("mixedness")
     if mixedness is not None:
         lines.append(f"Mixedness: {mixedness:.3f}")
+    component_labels = []
+    keyword_entropy = payload.get("keyword_entropy")
+    if keyword_entropy is not None:
+        component_labels.append(f"keyword {keyword_entropy:.3f}")
+    extension_entropy = payload.get("extension_entropy")
+    if extension_entropy is not None:
+        component_labels.append(f"extension {extension_entropy:.3f}")
+    embedding_spread = payload.get("embedding_spread")
+    if embedding_spread is not None:
+        component_labels.append(f"embedding {embedding_spread:.3f}")
+    if component_labels:
+        lines.append("Mixedness components: " + ", ".join(component_labels))
     if isinstance(profile, ClusterProfile):
         files = payload.get("representative_files", [])
         if files:
@@ -202,6 +218,11 @@ def _mixedness_warning(profile: ClusterProfile | ParentProfile) -> str:
     return ""
 
 
+def _cap_confidence(confidence: float, mixedness: float) -> float:
+    cap = 1.0 - mixedness * CONFIDENCE_MIXEDNESS_FACTOR
+    return max(0.0, min(float(confidence), cap))
+
+
 def _merge_warnings(*messages: str) -> str:
     return "; ".join([message for message in messages if message])
 
@@ -237,16 +258,15 @@ def _build_rows(
             allow_cache=True,
             ignore_cache=ignore_cache,
         )
+        base_confidence = (
+            suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
+        )
         parent_rows.append(
             {
                 "id": profile.parent_id,
                 "level": "parent",
                 "proposed_name": suggestion.name,
-                "confidence": (
-                    suggestion.confidence
-                    if suggestion.confidence is not None
-                    else profile.avg_prob
-                ),
+                "confidence": _cap_confidence(base_confidence, profile.mixedness),
                 "warnings": _merge_warnings(
                     (suggestion.metadata or {}).get("warning", ""),
                     _mixedness_warning(profile),
@@ -276,16 +296,15 @@ def _build_rows(
             allow_cache=True,
             ignore_cache=ignore_cache,
         )
+        base_confidence = (
+            suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
+        )
         child_rows.append(
             {
                 "id": profile.cluster_id,
                 "level": "child",
                 "proposed_name": suggestion.name,
-                "confidence": (
-                    suggestion.confidence
-                    if suggestion.confidence is not None
-                    else profile.avg_prob
-                ),
+                "confidence": _cap_confidence(base_confidence, profile.mixedness),
                 "warnings": _merge_warnings(
                     (suggestion.metadata or {}).get("warning", ""),
                     _mixedness_warning(profile),
