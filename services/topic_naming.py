@@ -26,7 +26,7 @@ DEFAULT_MAX_PATH_DEPTH = 4
 DEFAULT_ROOT_PATH = ""
 DEFAULT_TOP_EXTENSION_COUNT = 5
 LLM_UNAVAILABLE_WARNING = (
-    "LLM unavailable (model not loaded). Naming skipped or using baseline names."
+    "LLM inactive (model not loaded). Using baseline names instead of LLM suggestions."
 )
 
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
