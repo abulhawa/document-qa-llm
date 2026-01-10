@@ -1,5 +1,5 @@
 import requests
-from typing import List, Union, Dict, Optional, TypedDict
+from typing import List, Union, Dict, Optional, TypedDict, Literal
 from tracing import get_current_span
 from config import (
     logger,
@@ -14,6 +14,18 @@ from config import (
 TIMEOUT = 30  # seconds
 STOP_TOKENS = ["</s>", "###", "---"]
 PROMPT_LENGTH_WARN_THRESHOLD = 600
+
+
+class LLMCallError(TypedDict):
+    type: Literal["timeout", "http_error", "invalid_json", "request_exception", "empty_response"]
+    status_code: int | None
+    summary: str
+
+
+class LLMCallResult(TypedDict):
+    content: str
+    error: LLMCallError | None
+    prompt_length: int | None
 
 
 def get_available_models() -> List[str]:
@@ -72,16 +84,17 @@ def load_model(model_name: str) -> bool:
         return False
 
 
-def ask_llm(
+def ask_llm_with_status(
     prompt: Union[str, List[Dict[str, str]]],
     mode: str = "completion",
     model: Optional[str] = None,
     max_tokens: int = 512,
     temperature: float = 0.7,
-) -> str:
+) -> LLMCallResult:
     """Unified LLM query function for chat and completion modes."""
 
     span = get_current_span()
+    prompt_length = None
     try:
         if mode == "chat":
             endpoint = LLM_CHAT_ENDPOINT
@@ -94,7 +107,7 @@ def ask_llm(
             if model:
                 payload["model"] = model
             logger.info("🧠 Sending chat prompt (%d messages)", len(prompt))  # type: ignore
-
+            prompt_length = len(str(prompt))
         else:  # mode == "completion"
             endpoint = LLM_COMPLETION_ENDPOINT
             prompt_words = len(prompt.split())  # type: ignore
@@ -103,7 +116,7 @@ def ask_llm(
                     "🚨 Prompt is long (%d words). Consider trimming.", prompt_words
                 )
             logger.info("🧠 Sending completion prompt (%d words)", prompt_words)
-
+            prompt_length = len(prompt)  # type: ignore[arg-type]
             payload = {
                 "prompt": prompt,
                 "max_tokens": max_tokens,
@@ -115,8 +128,20 @@ def ask_llm(
 
         response = requests.post(endpoint, json=payload, timeout=TIMEOUT)
         response.raise_for_status()
-        data = response.json()
-        span.set_attribute("llm.prompt_length", len(prompt))
+        try:
+            data = response.json()
+        except ValueError as exc:
+            logger.error("LLM response JSON parse failed: %s", exc)
+            return {
+                "content": "",
+                "error": {
+                    "type": "invalid_json",
+                    "status_code": response.status_code,
+                    "summary": str(exc),
+                },
+                "prompt_length": prompt_length,
+            }
+        span.set_attribute("llm.prompt_length", prompt_length or 0)
         span.set_attribute("llm.model", model or "default")
         span.set_attribute("llm.mode", mode)
         span.set_attribute("llm.temperature", temperature)
@@ -135,6 +160,15 @@ def ask_llm(
 
         if not content:
             logger.warning("⚠️ LLM response was empty or malformed: %s", response.text)
+            return {
+                "content": "",
+                "error": {
+                    "type": "empty_response",
+                    "status_code": response.status_code,
+                    "summary": "Empty LLM response",
+                },
+                "prompt_length": prompt_length,
+            }
 
         for stop_token in STOP_TOKENS:
             if stop_token in content:
@@ -143,11 +177,58 @@ def ask_llm(
                 )
                 break
 
-        return content
+        return {"content": content, "error": None, "prompt_length": prompt_length}
 
+    except requests.Timeout as e:
+        logger.error("LLM request timed out: %s", e)
+        return {
+            "content": "",
+            "error": {"type": "timeout", "status_code": None, "summary": str(e)},
+            "prompt_length": prompt_length,
+        }
+    except requests.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        logger.error("LLM request failed (HTTP %s): %s", status_code, e)
+        return {
+            "content": "",
+            "error": {
+                "type": "http_error",
+                "status_code": status_code,
+                "summary": str(e),
+            },
+            "prompt_length": prompt_length,
+        }
     except requests.RequestException as e:
         logger.error("LLM request failed: %s", e)
+        return {
+            "content": "",
+            "error": {
+                "type": "request_exception",
+                "status_code": None,
+                "summary": str(e),
+            },
+            "prompt_length": prompt_length,
+        }
+
+
+def ask_llm(
+    prompt: Union[str, List[Dict[str, str]]],
+    mode: str = "completion",
+    model: Optional[str] = None,
+    max_tokens: int = 512,
+    temperature: float = 0.7,
+) -> str:
+    """Unified LLM query function for chat and completion modes."""
+    result = ask_llm_with_status(
+        prompt,
+        mode=mode,
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    if result["error"]:
         return "[LLM Error]"
+    return result["content"]
 
 
 class LLMStatus(TypedDict):

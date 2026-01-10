@@ -304,7 +304,15 @@ def test_mock_llm_uses_deterministic_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
-    monkeypatch.setattr(topic_naming, "ask_llm", lambda *_args, **_kwargs: "finance review")
+    monkeypatch.setattr(
+        topic_naming,
+        "ask_llm_with_status",
+        lambda *_args, **_kwargs: {
+            "content": "finance review",
+            "error": None,
+            "prompt_length": 42,
+        },
+    )
 
     suggestion = topic_naming.suggest_child_name_with_llm(
         cluster_profile,
@@ -323,10 +331,10 @@ def test_llm_retry_successes_and_fallbacks(
 
     responses = iter(["Und der Plan", "Financial Planning"])
 
-    def fake_ask_llm(*_args, **_kwargs) -> str:
-        return next(responses)
+    def fake_ask_llm(*_args, **_kwargs) -> dict:
+        return {"content": next(responses), "error": None, "prompt_length": 42}
 
-    monkeypatch.setattr(topic_naming, "ask_llm", fake_ask_llm)
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm)
 
     suggestion = topic_naming.suggest_child_name_with_llm(
         cluster_profile,
@@ -340,10 +348,10 @@ def test_llm_retry_successes_and_fallbacks(
 
     retry_responses = iter(["Und der Plan", "Und der Plan"])
 
-    def fake_ask_llm_retry(*_args, **_kwargs) -> str:
-        return next(retry_responses)
+    def fake_ask_llm_retry(*_args, **_kwargs) -> dict:
+        return {"content": next(retry_responses), "error": None, "prompt_length": 42}
 
-    monkeypatch.setattr(topic_naming, "ask_llm", fake_ask_llm_retry)
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm_retry)
 
     fallback = topic_naming.suggest_child_name_with_llm(
         cluster_profile,
@@ -355,6 +363,135 @@ def test_llm_retry_successes_and_fallbacks(
     assert fallback.source == "baseline"
     assert fallback.metadata["llm_cache"]["retry_success"] is False
     assert fallback.metadata["llm_cache"]["retry_reason"] == "non_english"
+
+
+def test_llm_timeout_sets_fallback_reason(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+
+    def fake_ask_llm(*_args, **_kwargs) -> dict:
+        return {
+            "content": "",
+            "error": {"type": "timeout", "status_code": None, "summary": "timeout"},
+            "prompt_length": 42,
+        }
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm)
+
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert suggestion.source == "baseline"
+    assert suggestion.metadata["llm_cache"]["fallback_reason"] == "llm_timeout"
+    assert "timed out" in suggestion.metadata["warning"].lower()
+
+
+def test_llm_invalid_json_sets_fallback_reason(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+
+    def fake_ask_llm(*_args, **_kwargs) -> dict:
+        return {
+            "content": "",
+            "error": {
+                "type": "invalid_json",
+                "status_code": 200,
+                "summary": "invalid json",
+            },
+            "prompt_length": 42,
+        }
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm)
+
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert suggestion.source == "baseline"
+    assert suggestion.metadata["llm_cache"]["fallback_reason"] == "llm_invalid_json"
+    assert "invalid json" in suggestion.metadata["warning"].lower()
+
+
+def test_model_not_loaded_sets_warning(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        topic_naming,
+        "check_llm_status",
+        lambda: {
+            "server_online": True,
+            "model_loaded": False,
+            "active": False,
+            "status_message": "No LLM model is loaded!",
+        },
+    )
+
+    def fail_if_called(*_args, **_kwargs) -> dict:
+        raise AssertionError("LLM should not be called when model is not loaded.")
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fail_if_called)
+
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert suggestion.source == "baseline"
+    assert suggestion.metadata["llm_cache"]["fallback_reason"] == "llm_model_not_loaded"
+    assert "model not loaded" in suggestion.metadata["warning"].lower()
+
+
+def test_cache_baseline_warns_on_cache_hit(
+    cluster_profile: topic_naming.ClusterProfile,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(
+        topic_naming,
+        "check_llm_status",
+        lambda: {
+            "server_online": True,
+            "model_loaded": False,
+            "active": False,
+            "status_message": "No LLM model is loaded!",
+        },
+    )
+
+    first = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=True,
+    )
+    assert first.metadata["llm_cache"]["fallback_reason"] == "llm_model_not_loaded"
+
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+
+    def fail_if_called(*_args, **_kwargs) -> dict:
+        raise AssertionError("LLM should not be called on cache hit.")
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fail_if_called)
+
+    cached = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=True,
+    )
+
+    assert cached.metadata["llm_cache"]["cache_hit"] is True
+    assert cached.metadata["llm_cache"]["fallback_reason"] == "cache_hit_baseline"
+    assert "cached baseline" in cached.metadata["warning"].lower()
 
 
 def test_keyword_mixedness_heuristic() -> None:
