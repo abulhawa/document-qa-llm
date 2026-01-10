@@ -1,4 +1,5 @@
 import json
+from typing import Any, Dict
 
 import requests
 
@@ -22,7 +23,7 @@ class DummyResponse:
 
 
 class FakeIndices:
-    def __init__(self, store):
+    def __init__(self, store: Dict[str, Any]):
         self._store = store
 
     def exists(self, index):
@@ -35,7 +36,7 @@ class FakeIndices:
 
 class FakeOpenSearch:
     def __init__(self):
-        self._store = {"indices": set(), "docs": {}}
+        self._store: Dict[str, Any] = {"indices": set(), "docs": {}}
         self.indices = FakeIndices(self._store)
 
     def get(self, index, id):
