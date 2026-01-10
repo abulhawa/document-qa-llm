@@ -1155,6 +1155,7 @@ def _apply_cache_bypass_warning(
     *,
     llm_state: str | None,
 ) -> NameSuggestion:
+    suggestion = _with_llm_cache(suggestion, {"cache_bypassed": True})
     if llm_state == "not_loaded" and suggestion.source == "baseline":
         return _with_warning(
             suggestion,
@@ -1273,6 +1274,9 @@ def _mark_cache_hit(suggestion: NameSuggestion) -> NameSuggestion:
     llm_used = bool(llm_cache.get("llm_used", suggestion.source == "llm"))
     llm_cache["llm_used"] = llm_used
     llm_cache["cache_hit"] = True
+    llm_cache.setdefault("fallback_reason", None)
+    llm_cache.setdefault("error_summary", None)
+    llm_cache.setdefault("cache_bypassed", False)
     if not llm_used:
         llm_cache["fallback_reason"] = "cache_hit_baseline"
         metadata["warning"] = _format_fallback_warning("cache_hit_baseline")
@@ -1617,6 +1621,7 @@ def _suggestion_from_text(
         "error_summary": None,
         "cache_hit": False,
         "prompt_chars": prompt_chars,
+        "cache_bypassed": False,
     }
     return NameSuggestion(
         name=postprocess_name(name),
@@ -1647,6 +1652,7 @@ def _mixedness_suggestion_from_text(
         "error_summary": None,
         "cache_hit": False,
         "prompt_chars": prompt_chars,
+        "cache_bypassed": False,
     }
     return NameSuggestion(
         name=MIXEDNESS_SAFE_NAME,
@@ -1661,6 +1667,12 @@ def _with_llm_cache(suggestion: NameSuggestion, updates: dict[str, Any]) -> Name
     metadata = dict(suggestion.metadata or {})
     llm_cache = dict(metadata.get("llm_cache", {}))
     llm_cache.update(updates)
+    llm_cache.setdefault("llm_used", suggestion.source == "llm")
+    llm_cache.setdefault("fallback_reason", None)
+    llm_cache.setdefault("error_summary", None)
+    llm_cache.setdefault("cache_hit", False)
+    llm_cache.setdefault("prompt_chars", None)
+    llm_cache.setdefault("cache_bypassed", False)
     metadata["llm_cache"] = llm_cache
     return NameSuggestion(
         name=suggestion.name,
@@ -1687,6 +1699,7 @@ def _baseline_suggestion(
         "error_summary": error_summary,
         "cache_hit": False,
         "prompt_chars": prompt_chars,
+        "cache_bypassed": False,
     }
     name = _baseline_name(profile)
     return NameSuggestion(
@@ -1956,6 +1969,7 @@ def _ensure_llm_cache(
     llm_cache.setdefault("error_summary", None)
     llm_cache.setdefault("cache_hit", False)
     llm_cache.setdefault("prompt_chars", None)
+    llm_cache.setdefault("cache_bypassed", False)
     if used:
         llm_cache["llm_used"] = True
         metadata.pop("warning", None)

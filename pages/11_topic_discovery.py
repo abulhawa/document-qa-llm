@@ -273,6 +273,7 @@ def _build_rows(
             allow_cache=True,
             ignore_cache=ignore_cache,
         )
+        llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
         base_confidence = (
             suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
         )
@@ -292,6 +293,10 @@ def _build_rows(
                 ),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
+                "llm_used": llm_cache.get("llm_used"),
+                "fallback_reason": llm_cache.get("fallback_reason"),
+                "error_summary": llm_cache.get("error_summary"),
+                "cache_bypassed": llm_cache.get("cache_bypassed"),
             }
         )
         parent_differentiators.append(_profile_differentiator(profile))
@@ -314,6 +319,7 @@ def _build_rows(
             allow_cache=True,
             ignore_cache=ignore_cache,
         )
+        llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
         base_confidence = (
             suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
         )
@@ -333,6 +339,10 @@ def _build_rows(
                 ),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
+                "llm_used": llm_cache.get("llm_used"),
+                "fallback_reason": llm_cache.get("fallback_reason"),
+                "error_summary": llm_cache.get("error_summary"),
+                "cache_bypassed": llm_cache.get("cache_bypassed"),
             }
         )
         child_differentiators.append(_profile_differentiator(profile))
@@ -868,8 +878,32 @@ with tabs[1]:
                     "warnings": st.column_config.TextColumn("warnings", disabled=True),
                     "rationale": st.column_config.TextColumn("rationale", disabled=True),
                     "cache_hit": st.column_config.CheckboxColumn("cache_hit", disabled=True),
+                    "llm_used": st.column_config.CheckboxColumn("llm_used", disabled=True),
+                    "fallback_reason": st.column_config.TextColumn(
+                        "fallback_reason",
+                        disabled=True,
+                    ),
+                    "error_summary": st.column_config.TextColumn(
+                        "error_summary",
+                        disabled=True,
+                    ),
+                    "cache_bypassed": st.column_config.CheckboxColumn(
+                        "cache_bypassed",
+                        disabled=True,
+                    ),
                 },
-                disabled=["id", "level", "confidence", "warnings", "rationale", "cache_hit"],
+                disabled=[
+                    "id",
+                    "level",
+                    "confidence",
+                    "warnings",
+                    "rationale",
+                    "cache_hit",
+                    "llm_used",
+                    "fallback_reason",
+                    "error_summary",
+                    "cache_bypassed",
+                ],
             )
 
             _update_session_rows(
