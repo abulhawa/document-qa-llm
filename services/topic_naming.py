@@ -1046,6 +1046,8 @@ def _filter_tokens(tokens: Iterable[str]) -> list[str]:
     for token in tokens:
         if not token or token in _STOPWORDS:
             continue
+        if token.isdigit():
+            continue
         if _is_hash_like(token):
             continue
         filtered.append(token)
@@ -1790,6 +1792,8 @@ def _significant_terms_from_os(
         token = str(key).lower().strip()
         if not token or token in _STOPWORDS or len(token) < 3:
             continue
+        if token.isdigit():
+            continue
         if _is_hash_like(token):
             continue
         score = bucket.get("score")
@@ -1854,6 +1858,8 @@ def _keyword_counts_from_os(
     counts: dict[str, int] = {}
     for token in tokens:
         if token in _STOPWORDS or len(token) < 3:
+            continue
+        if token.isdigit():
             continue
         if _is_hash_like(token):
             continue
