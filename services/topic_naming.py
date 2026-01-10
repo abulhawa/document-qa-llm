@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 from typing import Any, Iterable, Sequence
 
-from config import CHUNKS_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
+from config import CHUNKS_INDEX, FULLTEXT_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
 from core.llm import ask_llm, check_llm_status
 from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
@@ -1113,6 +1113,52 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
     return metadata
 
 
+def _significant_terms_from_os(
+    checksums: Sequence[str],
+    *,
+    max_keywords: int,
+) -> dict[str, float]:
+    if not checksums:
+        return {}
+    size = max(15, min(max_keywords, 30))
+    body = {
+        "size": 0,
+        "query": {"bool": {"filter": [{"terms": {"checksum": list(checksums)}}]}},
+        "aggs": {
+            "significant_terms": {
+                "significant_terms": {
+                    "field": "text_full",
+                    "size": size,
+                    "min_doc_count": 1,
+                }
+            }
+        },
+    }
+    try:
+        client = get_client()
+        response = client.search(index=FULLTEXT_INDEX, body=body)
+    except Exception:  # noqa: BLE001
+        return {}
+    buckets = (
+        response.get("aggregations", {})
+        .get("significant_terms", {})
+        .get("buckets", [])
+    )
+    results: dict[str, float] = {}
+    for bucket in buckets:
+        key = bucket.get("key")
+        if not key:
+            continue
+        token = str(key).lower().strip()
+        if not token or token in _STOPWORDS or len(token) < 3:
+            continue
+        score = bucket.get("score")
+        if score is None:
+            score = bucket.get("doc_count", 0)
+        results[token] = float(score or 0)
+    return results
+
+
 def _keyword_counts_from_os(
     checksums: Sequence[str],
     snippets: Sequence[str] | None,
@@ -1120,7 +1166,13 @@ def _keyword_counts_from_os(
     max_keywords: int,
     max_path_depth: int | None,
     root_path: str | None,
-) -> dict[str, int]:
+) -> dict[str, float]:
+    significant_terms = _significant_terms_from_os(
+        checksums,
+        max_keywords=max_keywords,
+    )
+    if significant_terms:
+        return significant_terms
     tokens: list[str] = []
     for checksum in checksums:
         fulltext = _safe_fetch_fulltext(checksum)
@@ -1150,17 +1202,17 @@ def _keyword_counts_from_os(
         return {}
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     limited = ranked[:max_keywords]
-    return {token: count for token, count in limited}
+    return {token: float(count) for token, count in limited}
 
 
-def _top_keywords_from_counts(counts: dict[str, int], *, max_keywords: int) -> list[str]:
+def _top_keywords_from_counts(counts: dict[str, float], *, max_keywords: int) -> list[str]:
     if not counts:
         return []
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [token for token, _ in ranked[:max_keywords]]
 
 
-def _keyword_mixedness(counts: dict[str, int], *, max_keywords: int) -> float:
+def _keyword_mixedness(counts: dict[str, float], *, max_keywords: int) -> float:
     if not counts:
         return 0.0
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
