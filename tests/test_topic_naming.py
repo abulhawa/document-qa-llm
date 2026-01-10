@@ -421,6 +421,41 @@ def test_llm_invalid_json_sets_fallback_reason(
     assert "invalid json" in suggestion.metadata["warning"].lower()
 
 
+def test_llm_cache_fields_and_warning_mapping(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+
+    def fake_ask_llm(*_args, **_kwargs) -> dict:
+        return {
+            "content": "",
+            "error": {
+                "type": "http_error",
+                "status_code": 503,
+                "summary": "service unavailable",
+            },
+            "prompt_length": 128,
+        }
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm)
+
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        cluster_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    llm_cache = suggestion.metadata["llm_cache"]
+    assert suggestion.source == "baseline"
+    assert llm_cache["llm_used"] is False
+    assert llm_cache["cache_hit"] is False
+    assert llm_cache["cache_bypassed"] is False
+    assert llm_cache["fallback_reason"] == "llm_error_http_503"
+    assert llm_cache["error_summary"] == "service unavailable"
+    assert suggestion.metadata["warning"] == "LLM request failed (HTTP 503) (used baseline)"
+
+
 def test_model_not_loaded_sets_warning(
     cluster_profile: topic_naming.ClusterProfile,
     monkeypatch: pytest.MonkeyPatch,
@@ -599,6 +634,87 @@ def test_keyword_mixedness_heuristic() -> None:
     assert balanced == pytest.approx(1.0)
     skewed = topic_naming._keyword_mixedness({"alpha": 9, "beta": 1}, max_keywords=5)
     assert 0.0 < skewed < 1.0
+
+
+def test_mixedness_component_normalization(monkeypatch: pytest.MonkeyPatch) -> None:
+    keyword_entropy = topic_naming._keyword_mixedness(
+        {"alpha": 3, "beta": 3, "gamma": 3},
+        max_keywords=5,
+    )
+    assert keyword_entropy == pytest.approx(1.0)
+
+    extension_entropy = topic_naming._normalized_entropy({".pdf": 4, ".docx": 4})
+    assert extension_entropy == pytest.approx(1.0)
+
+    def fake_load_embeddings(_checksums: list[str]) -> dict[str, list[dict[str, object]]]:
+        return {
+            "checksum-a": [{"vector": [1.0, 0.0]}],
+            "checksum-b": [{"vector": [1.0, 0.0]}],
+        }
+
+    monkeypatch.setattr(topic_naming, "_load_chunk_embeddings", fake_load_embeddings)
+    spread = topic_naming._embedding_spread(["checksum-a", "checksum-b"], avg_prob=0.9)
+
+    assert spread == pytest.approx(0.0)
+    assert 0.0 <= spread <= 1.0
+
+
+def test_combined_mixedness_ranges() -> None:
+    assert topic_naming._combined_mixedness(0.0, 0.0, 0.0) == 0.0
+    assert topic_naming._combined_mixedness(1.0, 1.0, 1.0) == pytest.approx(0.85)
+    assert topic_naming._combined_mixedness(2.0, 2.0, 2.0) == 1.0
+
+
+def test_filter_hashlike_and_long_numeric_path_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_fetch_fulltext(_checksum: str) -> dict | None:
+        return {
+            "path": "/data/finance/abcdef1234567890abcdef12345/20240101010101",
+            "filename": "report-20240101010101.txt",
+        }
+
+    monkeypatch.setattr(topic_naming, "_safe_fetch_fulltext", fake_fetch_fulltext)
+
+    counts = topic_naming._keyword_counts_from_os(
+        ["checksum-a"],
+        snippets=None,
+        max_keywords=10,
+        max_path_depth=4,
+        root_path=None,
+    )
+
+    assert "finance" in counts
+    assert "abcdef1234567890abcdef12345" not in counts
+    assert "20240101010101" not in counts
+
+
+def test_high_mixedness_uses_llm_and_returns_review_label(
+    cluster_profile: topic_naming.ClusterProfile,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(topic_naming, "check_llm_status", lambda: {"active": True})
+    calls = {"count": 0}
+
+    def fake_ask_llm(*_args, **_kwargs) -> dict:
+        calls["count"] += 1
+        payload = json.dumps({"subthemes": ["Revenue", "Compliance"], "note": "Mixed"})
+        return {"content": payload, "error": None, "prompt_length": 72}
+
+    monkeypatch.setattr(topic_naming, "ask_llm_with_status", fake_ask_llm)
+
+    high_mixedness_profile = replace(cluster_profile, mixedness=0.95)
+    suggestion = topic_naming.suggest_child_name_with_llm(
+        high_mixedness_profile,
+        model_id="test-model",
+        allow_cache=False,
+    )
+
+    assert calls["count"] == 1
+    assert suggestion.name == topic_naming.MIXEDNESS_SAFE_NAME
+    assert suggestion.metadata["llm_cache"]["llm_used"] is True
+    assert suggestion.metadata["mixedness_subthemes"] == ["Revenue", "Compliance"]
+
 
 
 def test_significant_terms_short_circuits_local_counts(
