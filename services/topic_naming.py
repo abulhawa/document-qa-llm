@@ -27,6 +27,12 @@ DEFAULT_MAX_KEYWORDS = 20
 DEFAULT_MAX_PATH_DEPTH = 4
 DEFAULT_ROOT_PATH = ""
 DEFAULT_TOP_EXTENSION_COUNT = 5
+MIXEDNESS_COMPONENT_WEIGHTS = {
+    "keyword_entropy": 0.45,
+    "extension_entropy": 0.2,
+    "embedding_spread": 0.35,
+}
+MIXEDNESS_RANGE_SCALE = 0.85
 LLM_UNAVAILABLE_WARNING = (
     "LLM inactive (model not loaded). Using baseline names instead of LLM suggestions."
 )
@@ -145,6 +151,9 @@ class ClusterProfile:
     size: int
     avg_prob: float
     centroid: list[float]
+    keyword_entropy: float = 0.0
+    extension_entropy: float = 0.0
+    embedding_spread: float = 0.0
     mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
     representative_files: list[dict[str, Any]] = field(default_factory=list)
@@ -162,6 +171,9 @@ class ParentProfile:
     size: int
     avg_prob: float
     centroid: list[float]
+    keyword_entropy: float = 0.0
+    extension_entropy: float = 0.0
+    embedding_spread: float = 0.0
     mixedness: float = 0.0
     representative_checksums: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
@@ -224,10 +236,21 @@ def build_cluster_profile(
         root_path=root_path,
     )
     keywords = _top_keywords_from_counts(keyword_counts, max_keywords=max_keywords)
-    mixedness = _keyword_mixedness(keyword_counts, max_keywords=max_keywords)
-    top_extensions = _top_file_extensions(
-        representative_files,
+    keyword_entropy = _keyword_mixedness(keyword_counts, max_keywords=max_keywords)
+    extension_counts = _extension_counts(representative_files)
+    extension_entropy = _normalized_entropy(extension_counts)
+    top_extensions = _format_top_extensions(
+        extension_counts,
         limit=top_extension_count,
+    )
+    embedding_spread = _embedding_spread(
+        representative_checksums,
+        avg_prob=float(cluster.get("avg_prob", 0.0)),
+    )
+    mixedness = _combined_mixedness(
+        keyword_entropy,
+        extension_entropy,
+        embedding_spread,
     )
     centroid = [float(val) for val in cluster.get("centroid", [])]
     return ClusterProfile(
@@ -235,6 +258,9 @@ def build_cluster_profile(
         size=int(cluster.get("size", 0)),
         avg_prob=float(cluster.get("avg_prob", 0.0)),
         centroid=centroid,
+        keyword_entropy=keyword_entropy,
+        extension_entropy=extension_entropy,
+        embedding_spread=embedding_spread,
         mixedness=mixedness,
         representative_checksums=representative_checksums,
         representative_files=representative_files,
@@ -259,8 +285,16 @@ def build_parent_profile(
         [profile.size for profile in child_profiles],
     )
     centroid = compute_centroid([profile.centroid for profile in child_profiles])
-    mixedness = _weighted_avg(
-        [profile.mixedness for profile in child_profiles],
+    keyword_entropy = _weighted_avg(
+        [profile.keyword_entropy for profile in child_profiles],
+        [profile.size for profile in child_profiles],
+    )
+    extension_entropy = _weighted_avg(
+        [profile.extension_entropy for profile in child_profiles],
+        [profile.size for profile in child_profiles],
+    )
+    embedding_spread = _weighted_avg(
+        [profile.embedding_spread for profile in child_profiles],
         [profile.size for profile in child_profiles],
     )
     representative_checksums: list[str] = []
@@ -275,12 +309,22 @@ def build_parent_profile(
                 continue
             extension_counts[ext] = extension_counts.get(ext, 0) + int(entry.get("count", 0))
     top_extensions = _format_top_extensions(extension_counts, limit=top_extension_count)
+    if extension_counts:
+        extension_entropy = _normalized_entropy(extension_counts)
+    mixedness = _combined_mixedness(
+        keyword_entropy,
+        extension_entropy,
+        embedding_spread,
+    )
     return ParentProfile(
         parent_id=parent_id,
         cluster_ids=cluster_ids,
         size=size,
         avg_prob=avg_prob,
         centroid=centroid,
+        keyword_entropy=keyword_entropy,
+        extension_entropy=extension_entropy,
+        embedding_spread=embedding_spread,
         mixedness=mixedness,
         representative_checksums=_dedupe_keep_order(representative_checksums),
         keywords=_dedupe_keep_order(keywords),
@@ -1019,18 +1063,16 @@ def _format_top_extensions(
     ]
 
 
-def _top_file_extensions(
+def _extension_counts(
     files: Sequence[dict[str, Any]],
-    *,
-    limit: int,
-) -> list[dict[str, Any]]:
+) -> dict[str, int]:
     counts: dict[str, int] = {}
     for entry in files:
         ext = _extract_extension(entry)
         if not ext:
             continue
         counts[ext] = counts.get(ext, 0) + 1
-    return _format_top_extensions(counts, limit=limit)
+    return counts
 
 
 def _safe_fetch_fulltext(checksum: str) -> dict[str, Any] | None:
@@ -1477,6 +1519,11 @@ def _profile_metadata(profile: ClusterProfile | ParentProfile) -> dict[str, Any]
     metadata: dict[str, Any] = {
         "keywords": list(profile.keywords),
         "mixedness": profile.mixedness,
+        "mixedness_components": {
+            "keyword_entropy": profile.keyword_entropy,
+            "extension_entropy": profile.extension_entropy,
+            "embedding_spread": profile.embedding_spread,
+        },
     }
     if isinstance(profile, ClusterProfile):
         metadata["cluster_id"] = profile.cluster_id
@@ -1614,6 +1661,68 @@ def _keyword_mixedness(counts: dict[str, float], *, max_keywords: int) -> float:
     if normalizer <= 0:
         return 0.0
     return float(entropy / normalizer)
+
+
+def _clamp_unit(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _normalized_entropy(counts: dict[str, float] | dict[str, int]) -> float:
+    if not counts:
+        return 0.0
+    total = sum(float(value) for value in counts.values())
+    if total <= 0 or len(counts) <= 1:
+        return 0.0
+    entropy = 0.0
+    for value in counts.values():
+        prob = float(value) / total
+        if prob <= 0:
+            continue
+        entropy -= prob * math.log(prob)
+    normalizer = math.log(len(counts))
+    if normalizer <= 0:
+        return 0.0
+    return _clamp_unit(entropy / normalizer)
+
+
+def _combined_mixedness(
+    keyword_entropy: float,
+    extension_entropy: float,
+    embedding_spread: float,
+) -> float:
+    weighted_sum = (
+        keyword_entropy * MIXEDNESS_COMPONENT_WEIGHTS["keyword_entropy"]
+        + extension_entropy * MIXEDNESS_COMPONENT_WEIGHTS["extension_entropy"]
+        + embedding_spread * MIXEDNESS_COMPONENT_WEIGHTS["embedding_spread"]
+    )
+    weight_total = sum(MIXEDNESS_COMPONENT_WEIGHTS.values()) or 1.0
+    combined = weighted_sum / weight_total
+    return _clamp_unit(combined * MIXEDNESS_RANGE_SCALE)
+
+
+def _embedding_spread(
+    representative_checksums: Sequence[str],
+    *,
+    avg_prob: float,
+) -> float:
+    embedding_payloads = _load_chunk_embeddings(representative_checksums)
+    if not embedding_payloads:
+        return _clamp_unit(1.0 - avg_prob)
+    file_vectors = _compute_file_vectors(embedding_payloads)
+    if not file_vectors:
+        return _clamp_unit(1.0 - avg_prob)
+    centroid = compute_centroid(list(file_vectors.values()))
+    if not centroid:
+        return _clamp_unit(1.0 - avg_prob)
+    centroid = _l2_normalize(centroid)
+    similarities = [
+        _cosine_similarity(centroid, vector) for vector in file_vectors.values()
+    ]
+    if not similarities:
+        return _clamp_unit(1.0 - avg_prob)
+    avg_similarity = sum(similarities) / len(similarities)
+    spread = (1.0 - avg_similarity) / 2.0
+    return _clamp_unit(spread)
 
 
 def _baseline_name(profile: ClusterProfile | ParentProfile) -> str:
