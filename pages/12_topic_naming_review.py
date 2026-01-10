@@ -14,7 +14,10 @@ st.set_page_config(page_title="Topic Naming Review", layout="wide")
 
 st.title("Topic Naming Review Dashboard")
 
-GENERIC_NAME_RE = re.compile(r"^(Misc|Other|Documents|Files|Review)(\\b|\\s|—|-)\b?", re.I)
+GENERIC_NAME_RE = re.compile(
+    r"^(Misc|Other|Documents|Files|Review)(?:\b|\s|\u2014|-)",
+    re.I,
+)
 FALLBACK_REASONS = {
     "llm_timeout",
     "llm_invalid_json",
