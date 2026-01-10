@@ -11,7 +11,7 @@ import re
 from typing import Any, Iterable, Sequence
 
 from config import CHUNKS_INDEX, FULLTEXT_INDEX, QDRANT_COLLECTION, QDRANT_URL, logger
-from core.llm import ask_llm_with_status, check_llm_status
+from core.llm import LLMStatus, ask_llm_with_status, check_llm_status
 from core.opensearch_client import get_client
 from services.topic_discovery_clusters import load_last_cluster_cache
 from utils.opensearch.fulltext import get_fulltext_by_checksum
@@ -148,7 +148,7 @@ class NameSuggestion:
     confidence: float | None = None
     source: str = "heuristic"
     cache_key: str | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1232,7 +1232,7 @@ def _map_llm_error_to_reason(error_type: str, status_code: int | None) -> str:
     return "other_exception"
 
 
-def _llm_readiness_state() -> tuple[str, dict[str, Any]]:
+def _llm_readiness_state() -> tuple[str, LLMStatus]:
     status = check_llm_status()
     if status.get("server_online") and not status.get("model_loaded"):
         return "not_loaded", status

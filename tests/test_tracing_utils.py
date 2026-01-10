@@ -19,4 +19,5 @@ def test_record_span_error():
     record_span_error(span, err)
     assert span.exc is err
     assert isinstance(span.status, Status)
+    assert span.status is not None
     assert span.status.status_code == StatusCode.ERROR
