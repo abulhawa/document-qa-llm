@@ -210,7 +210,7 @@ def test_retrieval_limit_matches_top_k(monkeypatch):
         ]
         return RetrievalResult(query=query, documents=documents)
 
-    def mock_rewrite(question, temperature=0.15):
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
         return QueryRewrite(rewritten=question)
 
     def mock_generate(*args, **kwargs):
