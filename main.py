@@ -11,7 +11,6 @@ pages = [
     st.Page("pages/10_tools.py", title="Tools"),
     st.Page("pages/9_admin.py", title="Admin"),
     st.Page("pages/11_topic_discovery.py", title="Topic Discovery"),
-    st.Page("pages/12_topic_naming_review.py", title="Topic Naming Review"),
 ]
 
 pg = st.navigation(pages, position="top")
