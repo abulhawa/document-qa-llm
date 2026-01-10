@@ -58,6 +58,7 @@ _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 _LONG_NUMBER_RE = re.compile(r"\b\d{6,}\b")
 _TOKEN_RE = re.compile(r"\b[A-Za-z0-9_-]{24,}\b")
 _NON_WORD_RE = re.compile(r"[^A-Za-z0-9]+")
+_HASHLIKE_RE = re.compile(r"^[A-Za-z0-9]{21,}$")
 
 _STOPWORDS = {
     "a",
@@ -137,6 +138,8 @@ def _timing_verbose() -> bool:
 
 _NAME_MAX_WORDS = 6
 _NAME_MAX_CHARS = 60
+_NUMERIC_KEEP_MIN_COUNT = 3
+_NUMERIC_WEIGHT = 0.4
 
 
 @dataclass(frozen=True)
@@ -186,7 +189,7 @@ class ParentProfile:
 def tokenize_filename(filename: str) -> list[str]:
     base = os.path.splitext(os.path.basename(filename))[0]
     tokens = [tok for tok in _NON_WORD_RE.split(base.lower()) if tok]
-    return [tok for tok in tokens if tok not in _STOPWORDS]
+    return _filter_tokens(tokens)
 
 
 def extract_path_segments(
@@ -1024,9 +1027,41 @@ def _split_snippets(text: str) -> list[str]:
     return [sentence.strip() for sentence in sentences if sentence.strip()]
 
 
+def _is_hash_like(token: str) -> bool:
+    return bool(_HASHLIKE_RE.match(token))
+
+
+def _filter_tokens(tokens: Iterable[str]) -> list[str]:
+    filtered: list[str] = []
+    for token in tokens:
+        if not token or token in _STOPWORDS:
+            continue
+        if _is_hash_like(token):
+            continue
+        filtered.append(token)
+    return filtered
+
+
+def _add_bigrams(tokens: Sequence[str]) -> list[str]:
+    if len(tokens) < 2:
+        return []
+    return [f"{tokens[idx]} {tokens[idx + 1]}" for idx in range(len(tokens) - 1)]
+
+
+def _apply_numeric_weighting(counts: dict[str, float]) -> dict[str, float]:
+    adjusted: dict[str, float] = {}
+    for token, count in counts.items():
+        if token.isdigit():
+            if count < _NUMERIC_KEEP_MIN_COUNT:
+                continue
+            count = count * _NUMERIC_WEIGHT
+        adjusted[token] = count
+    return adjusted
+
+
 def _tokenize_text(text: str) -> list[str]:
     tokens = [tok for tok in _NON_WORD_RE.split(text.lower()) if tok]
-    return [tok for tok in tokens if tok not in _STOPWORDS]
+    return _filter_tokens(tokens)
 
 
 def _extract_representative_paths(files: Sequence[dict[str, Any]]) -> list[str]:
@@ -1731,6 +1766,8 @@ def _significant_terms_from_os(
         token = str(key).lower().strip()
         if not token or token in _STOPWORDS or len(token) < 3:
             continue
+        if _is_hash_like(token):
+            continue
         score = bucket.get("score")
         if score is None:
             score = bucket.get("doc_count", 0)
@@ -1751,7 +1788,21 @@ def _keyword_counts_from_os(
         max_keywords=max_keywords,
     )
     if significant_terms:
-        return significant_terms
+        weighted = _apply_numeric_weighting(significant_terms)
+        if not weighted:
+            return {}
+        phrases = {token: score for token, score in weighted.items() if " " in token}
+        ranked = sorted(weighted.items(), key=lambda item: (-item[1], item[0]))
+        if phrases:
+            combined: dict[str, float] = dict(phrases)
+            for token, score in ranked:
+                if token in combined:
+                    continue
+                combined[token] = score
+                if len(combined) >= max_keywords:
+                    break
+            return combined
+        return dict(ranked[:max_keywords])
     tokens: list[str] = []
     for checksum in checksums:
         fulltext = _safe_fetch_fulltext(checksum)
@@ -1759,27 +1810,36 @@ def _keyword_counts_from_os(
             continue
         path = fulltext.get("path") or ""
         filename = fulltext.get("filename") or ""
-        tokens.extend(
-            extract_path_segments(
-                path,
-                max_depth=max_path_depth,
-                root_path=root_path,
-            )
+        path_tokens = extract_path_segments(
+            path,
+            max_depth=max_path_depth,
+            root_path=root_path,
         )
-        tokens.extend(tokenize_filename(filename))
+        tokens.extend(path_tokens)
+        tokens.extend(_add_bigrams(path_tokens))
+        filename_tokens = tokenize_filename(filename)
+        tokens.extend(filename_tokens)
+        tokens.extend(_add_bigrams(filename_tokens))
     if snippets:
         for snippet in snippets:
-            tokens.extend(_tokenize_text(snippet))
+            snippet_tokens = _tokenize_text(snippet)
+            tokens.extend(snippet_tokens)
+            tokens.extend(_add_bigrams(snippet_tokens))
     if not tokens:
         return {}
     counts: dict[str, int] = {}
     for token in tokens:
         if token in _STOPWORDS or len(token) < 3:
             continue
+        if _is_hash_like(token):
+            continue
         counts[token] = counts.get(token, 0) + 1
-    if not counts:
+    weighted_counts = _apply_numeric_weighting(
+        {token: float(count) for token, count in counts.items()}
+    )
+    if not weighted_counts:
         return {}
-    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ranked = sorted(weighted_counts.items(), key=lambda item: (-item[1], item[0]))
     limited = ranked[:max_keywords]
     return {token: float(count) for token, count in limited}
 
