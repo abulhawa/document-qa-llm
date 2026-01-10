@@ -683,14 +683,16 @@ with tabs[1]:
         with controls[1]:
             hide_ids = st.toggle("Hide numeric IDs", value=False)
         with controls[2]:
+            # Allow baseline naming even when the LLM is inactive.
             generate_clicked = st.button(
                 "Generate names (LLM)",
                 type="primary",
-                disabled=not llm_status.get("active"),
             )
 
         if not llm_status.get("active"):
-            st.warning("LLM is inactive. Load a model to enable LLM naming.")
+            st.warning(
+                "LLM is inactive. Baseline naming will be used until a model is loaded."
+            )
 
         payloads = cluster_result.get("payloads", [])
         checksums = cluster_result.get("checksums", [])
@@ -747,7 +749,9 @@ with tabs[1]:
                 llm_status=llm_status,
             )
             if any(row["source"] != "llm" for row in rows):
-                st.warning("LLM naming unavailable for some rows; baseline names were used.")
+                st.warning(
+                    "LLM naming unavailable for some rows; using baseline names instead."
+                )
             _update_session_rows(cast(Sequence[Mapping[Hashable, Any]], rows))
 
         rows_state = st.session_state.get("topic_naming_rows", [])
