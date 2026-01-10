@@ -4,7 +4,11 @@ from core.llm import ask_llm
 import json
 
 
-def rewrite_query(original_query: str, temperature: float = 0.2) -> dict[str, Any]:
+def rewrite_query(
+    original_query: str,
+    temperature: float = 0.2,
+    use_cache: bool = True,
+) -> dict[str, Any]:
     system_prompt = """
     You are an assistant that processes user queries into structured JSON output.
     
@@ -61,6 +65,7 @@ def rewrite_query(original_query: str, temperature: float = 0.2) -> dict[str, An
             temperature=temperature,
             mode="chat",
             max_tokens=256,
+            use_cache=use_cache,
         ).strip()
 
         rewritten = json.loads(rewritten)

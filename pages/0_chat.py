@@ -92,6 +92,12 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
         disabled=not llm_status["active"],
         help=None if llm_status["active"] else llm_status["status_message"],
     )
+    use_cache = st.checkbox(
+        "Use LLM cache",
+        value=True,
+        disabled=not llm_status["active"],
+        help=None if llm_status["active"] else llm_status["status_message"],
+    )
 
 with st.container():
     # ───────────────────────────────────────
@@ -145,6 +151,7 @@ with st.container():
                     model=loaded_llm_model,
                     chat_history=st.session_state.chat_history,
                     retrieval_cfg=retrieval_cfg,
+                    use_cache=use_cache,
                 )
 
             st.session_state.chat_history.append(
@@ -194,6 +201,7 @@ with st.container():
                         temperature=temperature,
                         model=loaded_llm_model,
                         retrieval_cfg=retrieval_cfg,
+                        use_cache=use_cache,
                     )
 
             st.subheader("📝 Answer")

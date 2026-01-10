@@ -47,6 +47,7 @@ def answer_question(
     model: Optional[str] = None,
     chat_history: Optional[List[dict]] = None,
     retrieval_cfg: RetrievalConfig | None = None,
+    use_cache: bool = True,
 ) -> AnswerContext:
     """Orchestrate the QA pipeline to answer a question."""
 
@@ -69,7 +70,11 @@ def answer_question(
         try:
             with start_span("Rewrite Query", TOOL) as rewrite_span:
                 rewrite_span.set_attribute(INPUT_VALUE, question)
-                rewrite_result = rewrite_question(question, temperature=0.15)
+                rewrite_result = rewrite_question(
+                    question,
+                    temperature=0.15,
+                    use_cache=use_cache,
+                )
                 context.rewritten_question = rewrite_result.rewritten
                 context.clarification = rewrite_result.clarify
                 rewrite_span.set_attribute(
@@ -140,6 +145,7 @@ def answer_question(
                     prompt_request=context.prompt_request,
                     temperature=temperature,
                     model=model,
+                    use_cache=use_cache,
                 )
 
                 llm_span.set_attribute(OUTPUT_VALUE, (context.answer or "")[:1000])
