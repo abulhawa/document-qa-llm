@@ -147,7 +147,7 @@ def test_extract_path_segments_with_root_and_depth() -> None:
         max_depth=2,
         root_path="/data/projects",
     )
-    assert segments == ["2024", "report", "final"]
+    assert segments == ["report", "final"]
 
 
 def test_english_only_check_rejects_non_latin_and_german_stopwords() -> None:
