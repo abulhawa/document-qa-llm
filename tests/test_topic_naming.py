@@ -754,6 +754,76 @@ def test_significant_terms_short_circuits_local_counts(
     assert calls["count"] == 0
 
 
+def test_significant_terms_cache_avoids_duplicate_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_count = {"count": 0}
+
+    class StubClient:
+        def search(self, *, index: str, body: dict) -> dict:
+            request_count["count"] += 1
+            assert index == topic_naming.FULLTEXT_INDEX
+            assert "aggs" in body
+            return {
+                "aggregations": {
+                    "significant_terms": {"buckets": [{"key": "alpha", "score": 1.0}]}
+                }
+            }
+
+    monkeypatch.setattr(topic_naming, "get_client", lambda: StubClient())
+    topic_naming.reset_os_keyword_metrics(clear_cache=True)
+
+    first = topic_naming.get_significant_keywords_from_os(
+        ["checksum-a", "checksum-b"],
+        snippets=None,
+        max_keywords=5,
+    )
+    second = topic_naming.get_significant_keywords_from_os(
+        ["checksum-b", "checksum-a"],
+        snippets=None,
+        max_keywords=5,
+    )
+
+    assert first == second
+    assert request_count["count"] == 1
+    metrics = topic_naming.get_os_keyword_metrics()
+    assert metrics["request_count"] == 1
+    assert metrics["cache_hits"] == 1
+
+
+def test_significant_terms_requests_scale_with_clusters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request_count = {"count": 0}
+
+    class StubClient:
+        def search(self, *, index: str, body: dict) -> dict:
+            request_count["count"] += 1
+            return {
+                "aggregations": {
+                    "significant_terms": {"buckets": [{"key": "alpha", "score": 1.0}]}
+                }
+            }
+
+    monkeypatch.setattr(topic_naming, "get_client", lambda: StubClient())
+    topic_naming.reset_os_keyword_metrics(clear_cache=True)
+
+    topic_naming.get_significant_keywords_from_os(
+        ["checksum-a"],
+        snippets=None,
+        max_keywords=5,
+    )
+    topic_naming.get_significant_keywords_from_os(
+        ["checksum-b"],
+        snippets=None,
+        max_keywords=5,
+    )
+
+    metrics = topic_naming.get_os_keyword_metrics()
+    assert metrics["request_count"] == 2
+    assert request_count["count"] == 2
+
+
 def test_select_representative_files_prefers_medoid_and_diversity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

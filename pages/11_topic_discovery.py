@@ -796,6 +796,7 @@ with tabs[1]:
             run_id = uuid.uuid4().hex[:8]
             st.session_state["_run_id"] = run_id
             set_run_id(run_id)
+            topic_naming.reset_os_keyword_metrics(clear_cache=True)
             child_profiles: list[ClusterProfile] = []
             for cluster in clusters:
                 profile = _cluster_profile(
@@ -844,6 +845,7 @@ with tabs[1]:
                         llm_status=llm_status,
                         ignore_cache=ignore_cache_for_run,
                     )
+            topic_naming.log_os_keyword_metrics(run_id=run_id)
             if any(row["source"] != "llm" for row in rows):
                 st.warning(
                     "LLM naming unavailable for some rows; using baseline names instead."
