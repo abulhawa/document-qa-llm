@@ -784,3 +784,16 @@ def test_select_representative_files_prefers_medoid_and_diversity(
         "checksum-a",
         "checksum-c",
     ]
+
+
+def test_fallback_snippets_evenly_spaced_selection() -> None:
+    text_full = "\n".join([f"Chunk {idx}" for idx in range(1, 6)])
+    files = [{"text_full": text_full}]
+
+    snippets = topic_naming._fallback_snippets_from_text(
+        files,
+        max_chunks_per_file=2,
+        max_chars=200,
+    )
+
+    assert snippets == ["Chunk 1", "Chunk 5"]
