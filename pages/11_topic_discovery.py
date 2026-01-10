@@ -767,7 +767,6 @@ with tabs[1]:
                 "Generate names (LLM)",
                 type="primary",
             )
-            regenerate_clicked = st.button("Regenerate now")
 
         if not llm_status.get("active"):
             st.warning(
@@ -790,8 +789,8 @@ with tabs[1]:
             for key, value in cluster_result.get("topic_parent_map", {}).items()
         }
 
-        run_naming = generate_clicked or regenerate_clicked
-        ignore_cache_for_run = ignore_cache or regenerate_clicked
+        run_naming = generate_clicked
+        ignore_cache_for_run = ignore_cache
 
         if run_naming:
             run_id = uuid.uuid4().hex[:8]
