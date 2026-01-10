@@ -9,6 +9,28 @@ import pytest
 
 def _install_dependency_stubs() -> None:
     sys.modules.setdefault("requests", types.ModuleType("requests"))
+    opensearch_stub = types.ModuleType("opensearchpy")
+
+    class OpenSearch:
+        def __init__(self, *args, **kwargs):
+            return None
+
+    setattr(opensearch_stub, "OpenSearch", OpenSearch)
+    sys.modules.setdefault("opensearchpy", opensearch_stub)
+
+    qdrant_stub = types.ModuleType("qdrant_client")
+    qdrant_http_stub = types.ModuleType("qdrant_client.http")
+    qdrant_models_stub = types.ModuleType("qdrant_client.http.models")
+
+    class QdrantClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+    setattr(qdrant_stub, "QdrantClient", QdrantClient)
+    setattr(qdrant_http_stub, "models", qdrant_models_stub)
+    sys.modules.setdefault("qdrant_client", qdrant_stub)
+    sys.modules.setdefault("qdrant_client.http", qdrant_http_stub)
+    sys.modules.setdefault("qdrant_client.http.models", qdrant_models_stub)
 
     tracing_stub = types.ModuleType("tracing")
 
@@ -289,3 +311,39 @@ def test_keyword_mixedness_heuristic() -> None:
     assert balanced == pytest.approx(1.0)
     skewed = topic_naming._keyword_mixedness({"alpha": 9, "beta": 1}, max_keywords=5)
     assert 0.0 < skewed < 1.0
+
+
+def test_significant_terms_short_circuits_local_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def search(self, *, index: str, body: dict) -> dict:
+            assert index == topic_naming.FULLTEXT_INDEX
+            assert "aggs" in body
+            return {
+                "aggregations": {
+                    "significant_terms": {
+                        "buckets": [
+                            {"key": "alpha", "score": 3.2},
+                            {"key": "the", "score": 5.0},
+                            {"key": "beta", "doc_count": 2},
+                        ]
+                    }
+                }
+            }
+
+    monkeypatch.setattr(topic_naming, "get_client", lambda: StubClient())
+    calls = {"count": 0}
+
+    def fake_fetch_fulltext(_checksum: str) -> dict | None:
+        calls["count"] += 1
+        return {"path": "/data/file.txt", "filename": "file.txt"}
+
+    monkeypatch.setattr(topic_naming, "_safe_fetch_fulltext", fake_fetch_fulltext)
+    keywords = topic_naming.get_significant_keywords_from_os(
+        ["checksum-a"],
+        snippets=["fallback snippet"],
+        max_keywords=5,
+    )
+    assert keywords[:2] == ["alpha", "beta"]
+    assert calls["count"] == 0
