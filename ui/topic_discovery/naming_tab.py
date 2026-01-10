@@ -2,7 +2,7 @@ import math
 import time
 import uuid
 from collections.abc import Hashable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -36,6 +36,9 @@ DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
 DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
 DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
 DEFAULT_LLM_BATCH_SIZE = getattr(topic_naming, "DEFAULT_LLM_BATCH_SIZE", 10)
+DEFAULT_ALLOW_RAW_PARENT_EVIDENCE = getattr(
+    topic_naming, "DEFAULT_ALLOW_RAW_PARENT_EVIDENCE", False
+)
 MIXEDNESS_WARNING_THRESHOLD = getattr(topic_naming, "MIXEDNESS_WARNING_THRESHOLD", 0.6)
 CONFIDENCE_MIXEDNESS_FACTOR = 0.5
 TOPIC_NAMING_CACHE_DIR = getattr(
@@ -90,6 +93,7 @@ def render_naming_tab() -> None:
             ignore_cache=controls["ignore_cache"],
             fast_mode=controls["fast_mode"],
             llm_batch_size=settings["llm_batch_size"],
+            allow_raw_parent_evidence=settings["allow_raw_parent_evidence"],
         )
 
     rows_state = st.session_state.get("topic_naming_rows", [])
@@ -150,6 +154,10 @@ def _render_naming_settings() -> dict[str, Any]:
                 value=DEFAULT_LLM_BATCH_SIZE,
                 help="Used in fast mode for batch LLM naming.",
             )
+            allow_raw_parent_evidence = st.checkbox(
+                "Allow raw evidence for parent naming (fallback)",
+                value=DEFAULT_ALLOW_RAW_PARENT_EVIDENCE,
+            )
 
     max_path_depth_value = int(max_path_depth)
     max_path_depth_value = None if max_path_depth_value == 0 else max_path_depth_value
@@ -161,6 +169,7 @@ def _render_naming_settings() -> dict[str, Any]:
         "root_path": root_path_value,
         "top_extension_count": int(top_extension_count),
         "llm_batch_size": int(llm_batch_size),
+        "allow_raw_parent_evidence": allow_raw_parent_evidence,
     }
 
 
@@ -249,6 +258,7 @@ def _run_naming(
     ignore_cache: bool,
     fast_mode: bool,
     llm_batch_size: int,
+    allow_raw_parent_evidence: bool,
 ) -> None:
     run_id = uuid.uuid4().hex[:8]
     st.session_state["_run_id"] = run_id
@@ -293,6 +303,7 @@ def _run_naming(
                 ignore_cache=ignore_cache,
                 fast_mode=fast_mode,
                 batch_size=llm_batch_size,
+                allow_raw_parent_evidence=allow_raw_parent_evidence,
             )
             total_runtime = time.perf_counter() - start_time
             topic_naming.log_llm_request_summary(
@@ -611,23 +622,113 @@ def _build_rows(
     ignore_cache: bool,
     fast_mode: bool,
     batch_size: int,
+    allow_raw_parent_evidence: bool,
 ) -> list[dict[str, Any]]:
     model_id = llm_status.get("current_model") or "default"
     rows: list[dict[str, Any]] = []
     parent_rows: list[dict[str, Any]] = []
     parent_differentiators: list[str | None] = []
 
+    child_rows: list[dict[str, Any]] = []
+    child_differentiators: list[str | None] = []
+    child_suggestions: dict[int, Any] = {}
+    child_confidence_map: dict[int, float] = {}
+    if fast_mode and child_profiles:
+        child_suggestions = suggest_child_names_with_llm_batch(
+            child_profiles,
+            model_id=model_id,
+            allow_cache=True,
+            ignore_cache=ignore_cache,
+            batch_size=batch_size,
+        )
+    for profile in child_profiles:
+        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
+        suggestion = child_suggestions.get(profile.cluster_id)
+        if suggestion is None:
+            suggestion = suggest_child_name_with_llm(
+                profile,
+                model_id=model_id,
+                allow_cache=True,
+                ignore_cache=ignore_cache,
+            )
+        llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
+        base_confidence = (
+            suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
+        )
+        child_confidence_map[profile.cluster_id] = float(base_confidence)
+        child_rows.append(
+            {
+                "id": profile.cluster_id,
+                "level": "child",
+                "proposed_name": suggestion.name,
+                "confidence": _cap_confidence(base_confidence, profile.mixedness),
+                "warnings": _merge_warnings(
+                    (suggestion.metadata or {}).get("warning", ""),
+                    _mixedness_warning(profile),
+                ),
+                "rationale": _merge_rationale(
+                    _profile_rationale(profile),
+                    _mixedness_rationale(suggestion.metadata or {}),
+                ),
+                "cache_hit": cache_hit,
+                "source": suggestion.source,
+                "llm_used": llm_cache.get("llm_used"),
+                "fallback_reason": llm_cache.get("fallback_reason"),
+                "error_summary": llm_cache.get("error_summary"),
+                "cache_bypassed": llm_cache.get("cache_bypassed"),
+            }
+        )
+        child_differentiators.append(_profile_differentiator(profile))
+
+    if child_rows:
+        unique_names = topic_naming.disambiguate_duplicate_names(
+            [row["proposed_name"] for row in child_rows],
+            differentiators=child_differentiators,
+        )
+        for row, name in zip(child_rows, unique_names, strict=False):
+            row["proposed_name"] = name
+
+    child_summary_map: dict[int, dict[str, Any]] = {}
+    for profile, row in zip(child_profiles, child_rows, strict=False):
+        base_confidence = child_confidence_map.get(profile.cluster_id, profile.avg_prob)
+        child_summary_map[profile.cluster_id] = {
+            "child_id": profile.cluster_id,
+            "child_name": row.get("proposed_name", ""),
+            "confidence": float(base_confidence),
+            "keywords_top5": profile.keywords[:5],
+            "flags": {
+                "mixed": profile.mixedness >= 0.85,
+                "low_conf": float(base_confidence) < 0.55,
+            },
+            "size": profile.size,
+        }
+
+    enriched_parent_profiles: list[ParentProfile] = []
+    for profile in parent_profiles:
+        child_summaries = [
+            child_summary_map[child_id]
+            for child_id in profile.cluster_ids
+            if child_id in child_summary_map
+        ]
+        enriched_parent_profiles.append(
+            replace(
+                profile,
+                child_summaries=child_summaries,
+                allow_raw_parent_evidence=allow_raw_parent_evidence,
+            )
+        )
+
     parent_suggestions: dict[int, Any] = {}
-    if fast_mode and parent_profiles:
+    if fast_mode and enriched_parent_profiles:
         parent_suggestions = suggest_parent_names_with_llm_batch(
-            parent_profiles,
+            enriched_parent_profiles,
             model_id=model_id,
             allow_cache=True,
             ignore_cache=ignore_cache,
             batch_size=batch_size,
         )
 
-    for profile in parent_profiles:
+    for profile in enriched_parent_profiles:
         cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
         suggestion = parent_suggestions.get(profile.parent_id)
         if suggestion is None:
@@ -671,63 +772,6 @@ def _build_rows(
             differentiators=parent_differentiators,
         )
         for row, name in zip(parent_rows, unique_names, strict=False):
-            row["proposed_name"] = name
-
-    child_rows: list[dict[str, Any]] = []
-    child_differentiators: list[str | None] = []
-    child_suggestions: dict[int, Any] = {}
-    if fast_mode and child_profiles:
-        child_suggestions = suggest_child_names_with_llm_batch(
-            child_profiles,
-            model_id=model_id,
-            allow_cache=True,
-            ignore_cache=ignore_cache,
-            batch_size=batch_size,
-        )
-    for profile in child_profiles:
-        cache_hit = _cache_hit(profile, model_id, ignore_cache=ignore_cache)
-        suggestion = child_suggestions.get(profile.cluster_id)
-        if suggestion is None:
-            suggestion = suggest_child_name_with_llm(
-                profile,
-                model_id=model_id,
-                allow_cache=True,
-                ignore_cache=ignore_cache,
-            )
-        llm_cache = (suggestion.metadata or {}).get("llm_cache", {})
-        base_confidence = (
-            suggestion.confidence if suggestion.confidence is not None else profile.avg_prob
-        )
-        child_rows.append(
-            {
-                "id": profile.cluster_id,
-                "level": "child",
-                "proposed_name": suggestion.name,
-                "confidence": _cap_confidence(base_confidence, profile.mixedness),
-                "warnings": _merge_warnings(
-                    (suggestion.metadata or {}).get("warning", ""),
-                    _mixedness_warning(profile),
-                ),
-                "rationale": _merge_rationale(
-                    _profile_rationale(profile),
-                    _mixedness_rationale(suggestion.metadata or {}),
-                ),
-                "cache_hit": cache_hit,
-                "source": suggestion.source,
-                "llm_used": llm_cache.get("llm_used"),
-                "fallback_reason": llm_cache.get("fallback_reason"),
-                "error_summary": llm_cache.get("error_summary"),
-                "cache_bypassed": llm_cache.get("cache_bypassed"),
-            }
-        )
-        child_differentiators.append(_profile_differentiator(profile))
-
-    if child_rows:
-        unique_names = topic_naming.disambiguate_duplicate_names(
-            [row["proposed_name"] for row in child_rows],
-            differentiators=child_differentiators,
-        )
-        for row, name in zip(child_rows, unique_names, strict=False):
             row["proposed_name"] = name
 
     rows.extend(parent_rows)
