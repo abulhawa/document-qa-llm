@@ -16,6 +16,7 @@ from config import (
     EMBEDDING_SIZE,
     logger,
 )
+from utils.timing import timed_block
 
 
 SCROLL_BATCH_SIZE = 256
@@ -46,7 +47,12 @@ class BuildStats:
 
 
 def _collection_exists(collection_name: str) -> bool:
-    collections = client.get_collections().collections
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "get_collections", "collection": collection_name},
+        logger=logger,
+    ):
+        collections = client.get_collections().collections
     return collection_name in [c.name for c in collections]
 
 
@@ -59,7 +65,12 @@ def ensure_file_vectors_collection(
     if _collection_exists(QDRANT_FILE_VECTORS_COLLECTION):
         if recreate:
             logger.info("Recreating Qdrant collection '%s'", QDRANT_FILE_VECTORS_COLLECTION)
-            client.delete_collection(collection_name=QDRANT_FILE_VECTORS_COLLECTION)
+            with timed_block(
+                "step.qdrant.call",
+                extra={"operation": "delete_collection", "collection": QDRANT_FILE_VECTORS_COLLECTION},
+                logger=logger,
+            ):
+                client.delete_collection(collection_name=QDRANT_FILE_VECTORS_COLLECTION)
         else:
             logger.info("Qdrant collection '%s' exists.", QDRANT_FILE_VECTORS_COLLECTION)
             return
@@ -70,10 +81,15 @@ def ensure_file_vectors_collection(
         distance_value = models.Distance.DOT
     elif distance.lower() == "euclid":
         distance_value = models.Distance.EUCLID
-    client.create_collection(
-        collection_name=QDRANT_FILE_VECTORS_COLLECTION,
-        vectors_config=models.VectorParams(size=dim, distance=distance_value),
-    )
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "create_collection", "collection": QDRANT_FILE_VECTORS_COLLECTION},
+        logger=logger,
+    ):
+        client.create_collection(
+            collection_name=QDRANT_FILE_VECTORS_COLLECTION,
+            vectors_config=models.VectorParams(size=dim, distance=distance_value),
+        )
 
 
 def _scroll_collection(
@@ -102,21 +118,31 @@ def _scroll_collection(
 
 def get_unique_checksums_in_chunks() -> set[str]:
     checksums: set[str] = set()
-    for point in _scroll_collection(collection_name=QDRANT_COLLECTION, with_vectors=False, with_payload=True):
-        payload = _extract_payload(point)
-        checksum = payload.get("checksum")
-        if checksum:
-            checksums.add(str(checksum))
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "scroll_unique_checksums", "collection": QDRANT_COLLECTION},
+        logger=logger,
+    ):
+        for point in _scroll_collection(collection_name=QDRANT_COLLECTION, with_vectors=False, with_payload=True):
+            payload = _extract_payload(point)
+            checksum = payload.get("checksum")
+            if checksum:
+                checksums.add(str(checksum))
     return checksums
 
 
 def get_file_vectors_count() -> int:
     if not _collection_exists(QDRANT_FILE_VECTORS_COLLECTION):
         return 0
-    result = client.count(
-        collection_name=QDRANT_FILE_VECTORS_COLLECTION,
-        exact=True,
-    )
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "count", "collection": QDRANT_FILE_VECTORS_COLLECTION},
+        logger=logger,
+    ):
+        result = client.count(
+            collection_name=QDRANT_FILE_VECTORS_COLLECTION,
+            exact=True,
+        )
     return int(result.count)
 
 
@@ -124,17 +150,25 @@ def get_existing_file_vector_checksums() -> set[str]:
     if not _collection_exists(QDRANT_FILE_VECTORS_COLLECTION):
         return set()
     checksums: set[str] = set()
-    for point in _scroll_collection(
-        collection_name=QDRANT_FILE_VECTORS_COLLECTION,
-        with_vectors=False,
-        with_payload=True,
+    with timed_block(
+        "step.qdrant.call",
+        extra={
+            "operation": "scroll_existing_vectors",
+            "collection": QDRANT_FILE_VECTORS_COLLECTION,
+        },
+        logger=logger,
     ):
-        payload = _extract_payload(point)
-        checksum = payload.get("checksum")
-        if not checksum:
-            checksum = _extract_id(point)
-        if checksum:
-            checksums.add(str(checksum))
+        for point in _scroll_collection(
+            collection_name=QDRANT_FILE_VECTORS_COLLECTION,
+            with_vectors=False,
+            with_payload=True,
+        ):
+            payload = _extract_payload(point)
+            checksum = payload.get("checksum")
+            if not checksum:
+                checksum = _extract_id(point)
+            if checksum:
+                checksums.add(str(checksum))
     return checksums
 
 
@@ -333,11 +367,20 @@ def _l2_normalize(vec: list[float]) -> list[float]:
 
 def _upsert_points(points: list[models.PointStruct], stats: BuildStats) -> None:
     try:
-        client.upsert(
-            collection_name=QDRANT_FILE_VECTORS_COLLECTION,
-            points=points,
-            wait=True,
-        )
+        with timed_block(
+            "step.qdrant.call",
+            extra={
+                "operation": "upsert",
+                "collection": QDRANT_FILE_VECTORS_COLLECTION,
+                "points": len(points),
+            },
+            logger=logger,
+        ):
+            client.upsert(
+                collection_name=QDRANT_FILE_VECTORS_COLLECTION,
+                points=points,
+                wait=True,
+            )
     except Exception as exc:  # noqa: BLE001
         stats.errors += len(points)
         _append_error(stats, f"batch upsert failed: {exc}")

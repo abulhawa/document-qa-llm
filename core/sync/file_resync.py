@@ -23,6 +23,7 @@ from utils.opensearch_utils import (
     get_fulltext_by_checksum,
 )
 from utils.qdrant_utils import delete_vectors_by_checksum
+from utils.timing import timed_block
 
 DEFAULT_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 MIN_INGEST_BYTES = 1024  # guardrail against tiny/temp files
@@ -200,46 +201,51 @@ def scan_files(roots: Sequence[str], allowed_exts: Iterable[str]) -> ScanResult:
     scanned_success: list[str] = []
     scanned_failed: list[str] = []
 
-    for root in normalized_roots:
-        if not root:
-            continue
-        if not os.path.isdir(root):
-            scanned_failed.append(root)
-            logger.warning("Root not accessible: %s", root)
-            continue
-        scanned_success.append(root)
-        for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-            dirnames[:] = [d for d in dirnames if d not in IGNORE_DIR_NAMES]
-            for name in filenames:
-                ext = os.path.splitext(name)[1].lower()
-                if allowed and ext not in allowed:
-                    continue
-                if _should_ignore_file(name, dirpath):
-                    ignored_files += 1
-                    continue
-                abs_path = normalize_path(os.path.join(dirpath, name))
-                try:
-                    st = os.stat(abs_path)
-                except OSError as e:  # noqa: BLE001
-                    logger.warning("Stat failed for %s: %s", abs_path, e)
-                    continue
-                if st.st_size < MIN_INGEST_BYTES:
-                    ignored_files += 1
-                    continue
-                try:
-                    checksum = compute_checksum(abs_path)
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("Checksum failed for %s: %s", abs_path, e)
-                    continue
-                hits.append(
-                    FileHit(
-                        path=abs_path,
-                        size=st.st_size,
-                        mtime=st.st_mtime,
-                        checksum=checksum,
-                        ext=ext.lstrip("."),
+    with timed_block(
+        "step.files.enumerate",
+        extra={"root_count": len(normalized_roots), "allowed_exts": sorted(allowed)},
+        logger=logger,
+    ):
+        for root in normalized_roots:
+            if not root:
+                continue
+            if not os.path.isdir(root):
+                scanned_failed.append(root)
+                logger.warning("Root not accessible: %s", root)
+                continue
+            scanned_success.append(root)
+            for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+                dirnames[:] = [d for d in dirnames if d not in IGNORE_DIR_NAMES]
+                for name in filenames:
+                    ext = os.path.splitext(name)[1].lower()
+                    if allowed and ext not in allowed:
+                        continue
+                    if _should_ignore_file(name, dirpath):
+                        ignored_files += 1
+                        continue
+                    abs_path = normalize_path(os.path.join(dirpath, name))
+                    try:
+                        st = os.stat(abs_path)
+                    except OSError as e:  # noqa: BLE001
+                        logger.warning("Stat failed for %s: %s", abs_path, e)
+                        continue
+                    if st.st_size < MIN_INGEST_BYTES:
+                        ignored_files += 1
+                        continue
+                    try:
+                        checksum = compute_checksum(abs_path)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("Checksum failed for %s: %s", abs_path, e)
+                        continue
+                    hits.append(
+                        FileHit(
+                            path=abs_path,
+                            size=st.st_size,
+                            mtime=st.st_mtime,
+                            checksum=checksum,
+                            ext=ext.lstrip("."),
+                        )
                     )
-                )
     return ScanResult(
         hits=hits,
         scanned_roots_successful=scanned_success,
@@ -257,29 +263,34 @@ def _load_index_snapshot() -> tuple[dict[str, IndexedDoc], dict[str, list[str]],
     path_to_checksum: dict[str, str] = {}
 
     # Pull all full-text docs because they store canonical + aliases.
-    for hit in helpers.scan(
-        client,
-        index=FULLTEXT_INDEX,
-        query={"query": {"match_all": {}}, "_source": ["path", "aliases", "checksum"]},
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": FULLTEXT_INDEX, "operation": "scan"},
+        logger=logger,
     ):
-        source = hit.get("_source") or {}
-        checksum = source.get("checksum") or hit.get("_id")
-        if not checksum:
-            continue
-        canonical = normalize_path(source.get("path") or "") or None
-        aliases = [normalize_path(p) for p in (source.get("aliases") or []) if p]
-        doc = IndexedDoc(
-            content_id=str(hit.get("_id") or ""),
-            checksum=checksum,
-            canonical_path=canonical,
-            aliases=aliases,
-        )
-        if checksum in docs:
-            duplicates.setdefault(checksum, [docs[checksum].content_id]).append(doc.content_id)
-        else:
-            docs[checksum] = doc
-        for p in doc.paths:
-            path_to_checksum[p] = checksum
+        for hit in helpers.scan(
+            client,
+            index=FULLTEXT_INDEX,
+            query={"query": {"match_all": {}}, "_source": ["path", "aliases", "checksum"]},
+        ):
+            source = hit.get("_source") or {}
+            checksum = source.get("checksum") or hit.get("_id")
+            if not checksum:
+                continue
+            canonical = normalize_path(source.get("path") or "") or None
+            aliases = [normalize_path(p) for p in (source.get("aliases") or []) if p]
+            doc = IndexedDoc(
+                content_id=str(hit.get("_id") or ""),
+                checksum=checksum,
+                canonical_path=canonical,
+                aliases=aliases,
+            )
+            if checksum in docs:
+                duplicates.setdefault(checksum, [docs[checksum].content_id]).append(doc.content_id)
+            else:
+                docs[checksum] = doc
+            for p in doc.paths:
+                path_to_checksum[p] = checksum
 
     return docs, duplicates, path_to_checksum
 
@@ -514,12 +525,17 @@ def _update_fulltext_paths(content_id: str, canonical_path: Optional[str], alias
             }
         )
     script = {"source": " ".join(script_lines), "lang": "painless", "params": params}
-    resp = client.update(
-        index=FULLTEXT_INDEX,
-        id=content_id,
-        body={"script": script},
-        params={"refresh": "true"},
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": FULLTEXT_INDEX, "operation": "update"},
+        logger=logger,
+    ):
+        resp = client.update(
+            index=FULLTEXT_INDEX,
+            id=content_id,
+            body={"script": script},
+            params={"refresh": "true"},
+        )
     return int(resp.get("_shards", {}).get("successful", 0))
 
 
@@ -532,11 +548,16 @@ def _update_chunk_paths(checksum: str, canonical_path: str) -> int:
         "lang": "painless",
         "params": {"path": canonical_path, "filename": os.path.basename(canonical_path)},
     }
-    resp = client.update_by_query(
-        index=CHUNKS_INDEX,
-        body={"script": script, "query": {"term": {"checksum": checksum}}},
-        params={"refresh": "true", "conflicts": "proceed"},
-    )
+    with timed_block(
+        "step.opensearch.query",
+        extra={"index": CHUNKS_INDEX, "operation": "update_by_query"},
+        logger=logger,
+    ):
+        resp = client.update_by_query(
+            index=CHUNKS_INDEX,
+            body={"script": script, "query": {"term": {"checksum": checksum}}},
+            params={"refresh": "true", "conflicts": "proceed"},
+        )
     return int(resp.get("updated", 0))
 
 
@@ -545,14 +566,19 @@ def _update_qdrant_payload(checksum: str, new_path: str) -> int:
 
     client = QdrantClient(url=QDRANT_URL)
     filename = os.path.basename(new_path)
-    result = client.set_payload(
-        collection_name=QDRANT_COLLECTION,
-        points=models.Filter(
-            must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
-        ),
-        payload={"path": new_path, "filename": filename},
-        wait=True,
-    )
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "set_payload", "collection": QDRANT_COLLECTION},
+        logger=logger,
+    ):
+        result = client.set_payload(
+            collection_name=QDRANT_COLLECTION,
+            points=models.Filter(
+                must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
+            ),
+            payload={"path": new_path, "filename": filename},
+            wait=True,
+        )
     result_any: Any = result
     if isinstance(result_any, dict):
         return int(result_any.get("result", {}).get("count", 0))
@@ -613,63 +639,74 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
     if not plan.items:
         return result
 
-    metadata_changes: dict[str, dict[str, Any]] = {}
-    ingestion_queue: list[str] = []
-    delete_checksums: list[str] = []
+    with timed_block(
+        "action.apply_moves",
+        extra={
+            "apply_safe_only": options.apply_safe_only,
+            "ingest_missing": options.ingest_missing,
+            "delete_orphaned": options.delete_orphaned,
+            "retire_replaced_content": options.retire_replaced_content,
+            "plan_items": len(plan.items),
+        },
+        logger=logger,
+    ):
+        metadata_changes: dict[str, dict[str, Any]] = {}
+        ingestion_queue: list[str] = []
+        delete_checksums: list[str] = []
 
-    for item in plan.items:
-        if item.bucket == "BLOCKED":
-            continue
-        if options.apply_safe_only and item.bucket != "SAFE":
-            continue
-        for action in item.actions:
-            if action.type == "INGEST_NEW":
-                if options.ingest_missing:
-                    payload_path = action.payload.get("path")
-                    if payload_path:
-                        ingestion_queue.append(payload_path)
-            elif action.type == "ADD_ALIAS":
-                change = metadata_changes.setdefault(
-                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
-                )
-                change["add_aliases"].add(action.payload.get("path"))
-            elif action.type == "REMOVE_ALIAS":
-                change = metadata_changes.setdefault(
-                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
-                )
-                change["remove_aliases"].add(action.payload.get("path"))
-            elif action.type == "SET_CANONICAL":
-                change = metadata_changes.setdefault(
-                    item.checksum, {"add_aliases": set(), "remove_aliases": set()}
-                )
-                change["canonical_path"] = action.payload.get("path")
-            elif action.type == "DELETE_CONTENT":
-                if options.delete_orphaned or action.payload.get("reason") == "retire_replaced_content":
-                    delete_checksums.append(action.payload.get("checksum", item.checksum))
+        for item in plan.items:
+            if item.bucket == "BLOCKED":
+                continue
+            if options.apply_safe_only and item.bucket != "SAFE":
+                continue
+            for action in item.actions:
+                if action.type == "INGEST_NEW":
+                    if options.ingest_missing:
+                        payload_path = action.payload.get("path")
+                        if payload_path:
+                            ingestion_queue.append(payload_path)
+                elif action.type == "ADD_ALIAS":
+                    change = metadata_changes.setdefault(
+                        item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                    )
+                    change["add_aliases"].add(action.payload.get("path"))
+                elif action.type == "REMOVE_ALIAS":
+                    change = metadata_changes.setdefault(
+                        item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                    )
+                    change["remove_aliases"].add(action.payload.get("path"))
+                elif action.type == "SET_CANONICAL":
+                    change = metadata_changes.setdefault(
+                        item.checksum, {"add_aliases": set(), "remove_aliases": set()}
+                    )
+                    change["canonical_path"] = action.payload.get("path")
+                elif action.type == "DELETE_CONTENT":
+                    if options.delete_orphaned or action.payload.get("reason") == "retire_replaced_content":
+                        delete_checksums.append(action.payload.get("checksum", item.checksum))
 
-    # Apply metadata updates first to avoid ingest collisions.
-    if metadata_changes:
-        _apply_alias_canonical_updates(metadata_changes, result)
+        # Apply metadata updates first to avoid ingest collisions.
+        if metadata_changes:
+            _apply_alias_canonical_updates(metadata_changes, result)
 
-    for checksum in delete_checksums:
-        try:
-            delete_vectors_by_checksum(checksum)
-            delete_chunks_by_checksum(checksum)
-            delete_fulltext_by_checksum(checksum)
-            result.deleted_checksums += 1
-        except Exception as e:  # noqa: BLE001
-            logger.error("Delete failed for checksum=%s: %s", checksum, e)
-            result.errors.append(str(e))
+        for checksum in delete_checksums:
+            try:
+                delete_vectors_by_checksum(checksum)
+                delete_chunks_by_checksum(checksum)
+                delete_fulltext_by_checksum(checksum)
+                result.deleted_checksums += 1
+            except Exception as e:  # noqa: BLE001
+                logger.error("Delete failed for checksum=%s: %s", checksum, e)
+                result.errors.append(str(e))
 
-    for path in dict.fromkeys(ingestion_queue):
-        if not path:
-            continue
-        try:
-            ingest_one(path, force=True, replace=True, op="resync", source="resync")
-            result.ingested += 1
-        except Exception as e:  # noqa: BLE001
-            logger.error("Ingest failed for %s: %s", path, e)
-            result.errors.append(str(e))
+        for path in dict.fromkeys(ingestion_queue):
+            if not path:
+                continue
+            try:
+                ingest_one(path, force=True, replace=True, op="resync", source="resync")
+                result.ingested += 1
+            except Exception as e:  # noqa: BLE001
+                logger.error("Ingest failed for %s: %s", path, e)
+                result.errors.append(str(e))
 
     return result
 

@@ -1,4 +1,5 @@
 import json
+import uuid
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
@@ -8,6 +9,7 @@ import pandas as pd
 
 import streamlit as st
 
+from config import logger
 from services.qdrant_file_vectors import (
     build_missing_file_vectors,
     ensure_file_vectors_collection,
@@ -36,6 +38,7 @@ from services.topic_naming import (
 
 from core.llm import check_llm_status
 from ui.ingestion_ui import run_root_picker
+from utils.timing import set_run_id, timed_block
 
 st.set_page_config(page_title="Topic Discovery", layout="wide")
 
@@ -403,21 +406,34 @@ with tabs[0]:
             macro_max_k = st.number_input("Macro grouping max k", min_value=2, max_value=30, value=10)
 
     action_cols = st.columns(3)
-    run_clicked = action_cols[0].button("Run clustering", type="primary")
+    run_clicked = action_cols[0].button("Run clustering", type="primary", key="run_clustering")
     load_clicked = action_cols[1].button("Load last run", disabled=not cluster_cache_exists())
     clear_clicked = action_cols[2].button("Clear cache")
 
     if run_clicked:
+        run_id = uuid.uuid4().hex[:8]
+        st.session_state["_run_id"] = run_id
+        set_run_id(run_id)
         with st.spinner("Running clustering workflow..."):
-            result, used_cache = run_topic_discovery_clustering(
-                min_cluster_size=int(min_cluster_size),
-                min_samples=int(min_samples),
-                metric="cosine",
-                use_umap=use_umap,
-                umap_config=umap_config if use_umap else None,
-                macro_k_range=(int(macro_min_k), int(macro_max_k)),
-                allow_cache=True,
-            )
+            with timed_block(
+                "action.topic_discovery.run_clustering",
+                extra={
+                    "run_id": run_id,
+                    "min_cluster_size": int(min_cluster_size),
+                    "min_samples": int(min_samples),
+                    "use_umap": use_umap,
+                },
+                logger=logger,
+            ):
+                result, used_cache = run_topic_discovery_clustering(
+                    min_cluster_size=int(min_cluster_size),
+                    min_samples=int(min_samples),
+                    metric="cosine",
+                    use_umap=use_umap,
+                    umap_config=umap_config if use_umap else None,
+                    macro_k_range=(int(macro_min_k), int(macro_max_k)),
+                    allow_cache=True,
+                )
         if result is None:
             st.warning("No file vectors found. Run Step 1 first.")
         else:
@@ -731,6 +747,9 @@ with tabs[1]:
         ignore_cache_for_run = ignore_cache or regenerate_clicked
 
         if run_naming:
+            run_id = uuid.uuid4().hex[:8]
+            st.session_state["_run_id"] = run_id
+            set_run_id(run_id)
             child_profiles: list[ClusterProfile] = []
             for cluster in clusters:
                 profile = _cluster_profile(
@@ -763,12 +782,22 @@ with tabs[1]:
                     )
                 )
 
-            rows = _build_rows(
-                child_profiles=child_profiles,
-                parent_profiles=parent_profiles,
-                llm_status=llm_status,
-                ignore_cache=ignore_cache_for_run,
-            )
+            with timed_block(
+                "action.topic_discovery.generate_names_llm",
+                extra={"run_id": run_id, "ignore_cache": ignore_cache_for_run},
+                logger=logger,
+            ):
+                with timed_block(
+                    "step.topic_naming.run",
+                    extra={"run_id": run_id, "child_clusters": len(child_profiles)},
+                    logger=logger,
+                ):
+                    rows = _build_rows(
+                        child_profiles=child_profiles,
+                        parent_profiles=parent_profiles,
+                        llm_status=llm_status,
+                        ignore_cache=ignore_cache_for_run,
+                    )
             if any(row["source"] != "llm" for row in rows):
                 st.warning(
                     "LLM naming unavailable for some rows; using baseline names instead."
@@ -818,12 +847,20 @@ with tabs[1]:
                 apply_clicked = st.button("Apply names")
 
             if apply_clicked:
-                _apply_names(
-                    rows=st.session_state.get("topic_naming_rows", []),
-                    payload_lookup=payload_lookup,
-                    file_assignments=file_assignments,
-                    hide_ids=hide_ids,
-                )
+                run_id = uuid.uuid4().hex[:8]
+                st.session_state["_run_id"] = run_id
+                set_run_id(run_id)
+                with timed_block(
+                    "action.topic_discovery.apply_names",
+                    extra={"run_id": run_id, "rows": len(rows_state)},
+                    logger=logger,
+                ):
+                    _apply_names(
+                        rows=st.session_state.get("topic_naming_rows", []),
+                        payload_lookup=payload_lookup,
+                        file_assignments=file_assignments,
+                        hide_ids=hide_ids,
+                    )
                 st.success("Applied names to the dry-run move plan.")
 
             move_plan = st.session_state.get("topic_discovery_move_plan")

@@ -17,21 +17,32 @@ import math
 from typing import Optional, List, Dict, Any, Iterable, Sequence, Callable, cast, Tuple
 
 from core.embeddings import embed_texts
+from utils.timing import timed_block
 
 client = QdrantClient(url=QDRANT_URL)
 
 
 def ensure_collection_exists() -> None:
-    collections = client.get_collections().collections
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "get_collections", "collection": QDRANT_COLLECTION},
+        logger=logger,
+    ):
+        collections = client.get_collections().collections
     if QDRANT_COLLECTION in [c.name for c in collections]:
         logger.info(f"Collection '{QDRANT_COLLECTION}' exists.")
         return
 
     logger.info(f"Creating collection '{QDRANT_COLLECTION}'...")
-    client.create_collection(
-        collection_name=QDRANT_COLLECTION,
-        vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
-    )
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "create_collection", "collection": QDRANT_COLLECTION},
+        logger=logger,
+    ):
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
+        )
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
 
 def _payload_without_text(chunk: Dict[str, Any]) -> Dict[str, Any]:
@@ -86,7 +97,12 @@ def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
         )
         for chunk, vec in zip(chunks, vectors)
     ]
-    client.upsert(collection_name=QDRANT_COLLECTION, points=points, wait=True)
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "upsert", "collection": QDRANT_COLLECTION, "points": len(points)},
+        logger=logger,
+    ):
+        client.upsert(collection_name=QDRANT_COLLECTION, points=points, wait=True)
     return True
 
 
@@ -128,17 +144,22 @@ def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
     Return the number of chunks in Qdrant matching the given checksum.
     """
     try:
-        result = client.count(
-            collection_name=QDRANT_COLLECTION,
-            count_filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="checksum", match=models.MatchValue(value=checksum)
-                    ),
-                ]
-            ),
-            exact=True,
-        )
+        with timed_block(
+            "step.qdrant.call",
+            extra={"operation": "count", "collection": QDRANT_COLLECTION},
+            logger=logger,
+        ):
+            result = client.count(
+                collection_name=QDRANT_COLLECTION,
+                count_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="checksum", match=models.MatchValue(value=checksum)
+                        ),
+                    ]
+                ),
+                exact=True,
+            )
         return result.count
     except Exception as e:
         logger.error("❌ Qdrant count error for checksum=%s: %s", checksum, e)
@@ -149,11 +170,16 @@ def delete_vectors_by_ids(ids: list[str]) -> int:
     """Delete Qdrant points by chunk IDs. Returns number requested."""
     if not ids:
         return 0
-    client.delete(
-        collection_name=QDRANT_COLLECTION,
-        points_selector=PointIdsList(points=[i for i in ids]),
-        wait=True,
-    )
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "delete_by_ids", "collection": QDRANT_COLLECTION, "points": len(ids)},
+        logger=logger,
+    ):
+        client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=PointIdsList(points=[i for i in ids]),
+            wait=True,
+        )
     return len(ids)
 
 
@@ -162,13 +188,18 @@ def delete_vectors_by_checksum(checksum: str) -> int:
     if not checksum:
         return 0
     try:
-        result = client.delete(
-            collection_name=QDRANT_COLLECTION,
-            points_selector=models.Filter(
-                must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
-            ),
-            wait=True,
-        )
+        with timed_block(
+            "step.qdrant.call",
+            extra={"operation": "delete_by_checksum", "collection": QDRANT_COLLECTION},
+            logger=logger,
+        ):
+            result = client.delete(
+                collection_name=QDRANT_COLLECTION,
+                points_selector=models.Filter(
+                    must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
+                ),
+                wait=True,
+            )
     except Exception as e:  # noqa: BLE001
         logger.error("Qdrant delete failed for checksum=%s: %s", checksum, e)
         return 0

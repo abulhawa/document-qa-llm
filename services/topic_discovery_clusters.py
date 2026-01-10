@@ -19,6 +19,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 from config import QDRANT_FILE_VECTORS_COLLECTION, QDRANT_URL, logger
+from utils.timing import timed_block
 
 
 SCROLL_BATCH_SIZE = 256
@@ -34,21 +35,26 @@ def load_all_file_vectors() -> tuple[list[str], list[list[float]], list[dict]]:
     checksums: list[str] = []
     vectors: list[list[float]] = []
     payloads: list[dict] = []
-    for point in _scroll_collection(
-        collection_name=QDRANT_FILE_VECTORS_COLLECTION,
-        with_vectors=True,
-        with_payload=True,
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "load_all_file_vectors", "collection": QDRANT_FILE_VECTORS_COLLECTION},
+        logger=logger,
     ):
-        vector = _extract_vector(point)
-        if vector is None:
-            continue
-        payload = _extract_payload(point)
-        checksum = payload.get("checksum") or _extract_id(point)
-        if not checksum:
-            continue
-        checksums.append(str(checksum))
-        vectors.append(vector)
-        payloads.append(payload)
+        for point in _scroll_collection(
+            collection_name=QDRANT_FILE_VECTORS_COLLECTION,
+            with_vectors=True,
+            with_payload=True,
+        ):
+            vector = _extract_vector(point)
+            if vector is None:
+                continue
+            payload = _extract_payload(point)
+            checksum = payload.get("checksum") or _extract_id(point)
+            if not checksum:
+                continue
+            checksums.append(str(checksum))
+            vectors.append(vector)
+            payloads.append(payload)
     return checksums, vectors, payloads
 
 
@@ -84,46 +90,51 @@ def run_hdbscan(
             min_samples,
             effective_min_samples,
         )
-    data = np.asarray(vectors, dtype=np.float32)
-    normalized = _l2_normalize_matrix(data)
-    hdbscan_data = normalized
-    effective_metric = metric
-    if use_umap:
-        hdbscan_data = _apply_umap(normalized, umap_config or {})
-        effective_metric = "euclidean"
-    elif metric.lower() == "cosine":
-        # HDBSCAN's BallTree backend does not accept cosine; for unit vectors,
-        # Euclidean distance is monotonic with cosine distance.
-        effective_metric = "euclidean"
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=effective_min_cluster_size,
-        min_samples=effective_min_samples,
-        metric=effective_metric,
-    )
-    labels = clusterer.fit_predict(hdbscan_data)
-    probs = clusterer.probabilities_
-
-    clusters: list[dict] = []
-    for cluster_id in sorted({label for label in labels if label >= 0}):
-        member_indices = np.where(labels == cluster_id)[0]
-        if member_indices.size == 0:
-            continue
-        member_vectors = normalized[member_indices]
-        centroid = member_vectors.mean(axis=0)
-        centroid = _l2_normalize_vector(centroid)
-        similarities = member_vectors @ centroid
-        top_indices = np.argsort(-similarities)[:REPRESENTATIVE_COUNT]
-        representative_indices = [int(member_indices[idx]) for idx in top_indices]
-        cluster_probs = probs[member_indices]
-        clusters.append(
-            {
-                "cluster_id": int(cluster_id),
-                "size": int(member_indices.size),
-                "avg_prob": float(np.mean(cluster_probs)) if cluster_probs.size else 0.0,
-                "centroid": centroid.tolist(),
-                "representative_indices": representative_indices,
-            }
+    with timed_block(
+        "step.clustering.run",
+        extra={"vector_count": vector_count, "use_umap": use_umap},
+        logger=logger,
+    ):
+        data = np.asarray(vectors, dtype=np.float32)
+        normalized = _l2_normalize_matrix(data)
+        hdbscan_data = normalized
+        effective_metric = metric
+        if use_umap:
+            hdbscan_data = _apply_umap(normalized, umap_config or {})
+            effective_metric = "euclidean"
+        elif metric.lower() == "cosine":
+            # HDBSCAN's BallTree backend does not accept cosine; for unit vectors,
+            # Euclidean distance is monotonic with cosine distance.
+            effective_metric = "euclidean"
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=effective_min_cluster_size,
+            min_samples=effective_min_samples,
+            metric=effective_metric,
         )
+        labels = clusterer.fit_predict(hdbscan_data)
+        probs = clusterer.probabilities_
+
+        clusters: list[dict] = []
+        for cluster_id in sorted({label for label in labels if label >= 0}):
+            member_indices = np.where(labels == cluster_id)[0]
+            if member_indices.size == 0:
+                continue
+            member_vectors = normalized[member_indices]
+            centroid = member_vectors.mean(axis=0)
+            centroid = _l2_normalize_vector(centroid)
+            similarities = member_vectors @ centroid
+            top_indices = np.argsort(-similarities)[:REPRESENTATIVE_COUNT]
+            representative_indices = [int(member_indices[idx]) for idx in top_indices]
+            cluster_probs = probs[member_indices]
+            clusters.append(
+                {
+                    "cluster_id": int(cluster_id),
+                    "size": int(member_indices.size),
+                    "avg_prob": float(np.mean(cluster_probs)) if cluster_probs.size else 0.0,
+                    "centroid": centroid.tolist(),
+                    "representative_indices": representative_indices,
+                }
+            )
     return labels.astype(int).tolist(), probs.astype(float).tolist(), clusters
 
 
@@ -380,22 +391,27 @@ def _macro_group_topics(
     candidate_metrics: list[dict] = []
     best_choice: dict | None = None
     best_labels: np.ndarray | None = None
-    for k in candidates:
-        model = _build_agglomerative_model(k)
-        labels = model.fit_predict(centroids)
-        silhouette = float(silhouette_score(centroids, labels, metric="cosine"))
-        parent_sizes = np.zeros(k, dtype=np.float32)
-        for label, size in zip(labels, topic_sizes, strict=False):
-            parent_sizes[int(label)] += float(size)
-        largest_parent_share = (
-            float(parent_sizes.max()) / total_files if total_files else 0.0
-        )
-        metrics = {
-            "k": int(k),
-            "silhouette": silhouette,
-            "largest_parent_share": largest_parent_share,
-        }
-        candidate_metrics.append({**metrics, "labels": labels})
+    with timed_block(
+        "step.clustering.k_sweep",
+        extra={"candidate_k": len(candidates), "min_k": min_k, "max_k": max_k},
+        logger=logger,
+    ):
+        for k in candidates:
+            model = _build_agglomerative_model(k)
+            labels = model.fit_predict(centroids)
+            silhouette = float(silhouette_score(centroids, labels, metric="cosine"))
+            parent_sizes = np.zeros(k, dtype=np.float32)
+            for label, size in zip(labels, topic_sizes, strict=False):
+                parent_sizes[int(label)] += float(size)
+            largest_parent_share = (
+                float(parent_sizes.max()) / total_files if total_files else 0.0
+            )
+            metrics = {
+                "k": int(k),
+                "silhouette": silhouette,
+                "largest_parent_share": largest_parent_share,
+            }
+            candidate_metrics.append({**metrics, "labels": labels})
     eligible_metrics = [
         metrics
         for metrics in candidate_metrics
@@ -712,7 +728,12 @@ def _get_cache_dir() -> Path:
 
 
 def _collection_exists(collection_name: str) -> bool:
-    collections = client.get_collections().collections
+    with timed_block(
+        "step.qdrant.call",
+        extra={"operation": "get_collections", "collection": collection_name},
+        logger=logger,
+    ):
+        collections = client.get_collections().collections
     return collection_name in [c.name for c in collections]
 
 
