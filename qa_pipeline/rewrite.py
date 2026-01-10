@@ -3,9 +3,17 @@ from core.query_rewriter import rewrite_query
 from qa_pipeline.types import QueryRewrite
 
 
-def rewrite_question(original_query: str, temperature: float = 0.2) -> QueryRewrite:
+def rewrite_question(
+    original_query: str,
+    temperature: float = 0.2,
+    use_cache: bool = True,
+) -> QueryRewrite:
     try:
-        rewritten_data = rewrite_query(original_query, temperature=temperature)
+        rewritten_data = rewrite_query(
+            original_query,
+            temperature=temperature,
+            use_cache=use_cache,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Query rewriting failed", exc_info=exc)
         return QueryRewrite(raw={"Error": "Query rewriting failed."})

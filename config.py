@@ -94,6 +94,13 @@ LLM_MODEL_LIST_ENDPOINT = _env_str("LLM_MODEL_LIST_ENDPOINT", f"{LLM_BASE_URL}/v
 LLM_MODEL_LOAD_ENDPOINT = _env_str("LLM_MODEL_LOAD_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/load")
 LLM_MODEL_INFO_ENDPOINT = _env_str("LLM_MODEL_INFO_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/info")
 
+# ── LLM cache
+LLM_CACHE_BACKEND = _env_str("LLM_CACHE_BACKEND", "none")
+LLM_CACHE_ENABLED = _env_bool("LLM_CACHE_ENABLED", False)
+LLM_CACHE_INDEX = _env_str("LLM_CACHE_INDEX", "llm_cache_v1")
+LLM_CACHE_STORE_PROMPT_TEXT = _env_bool("LLM_CACHE_STORE_PROMPT_TEXT", False)
+LLM_CACHE_TTL_DAYS = _env_int("LLM_CACHE_TTL_DAYS", 30)
+
 # ── CI toggles (handy for e2e)
 USE_STUB_EMBEDDER = _env_bool("USE_STUB_EMBEDDER", CI or TEST_MODE in ("e2e", "ui_only"))
 USE_STUB_LLM      = _env_bool("USE_STUB_LLM",      CI or TEST_MODE in ("e2e", "ui_only"))
@@ -117,5 +124,8 @@ def dump_config_for_debug() -> None:
         "INGEST_LOG_INDEX": INGEST_LOG_INDEX, "QDRANT_URL": QDRANT_URL,
         "QDRANT_COLLECTION": QDRANT_COLLECTION, "USE_STUB_EMBEDDER": USE_STUB_EMBEDDER,
         "USE_STUB_LLM": USE_STUB_LLM, "EMBEDDING_SIZE": EMBEDDING_SIZE,
+        "LLM_CACHE_BACKEND": LLM_CACHE_BACKEND,
+        "LLM_CACHE_ENABLED": LLM_CACHE_ENABLED,
+        "LLM_CACHE_INDEX": LLM_CACHE_INDEX,
     }
     logger.info("Effective config: %s", safe)

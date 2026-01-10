@@ -3,12 +3,14 @@ from typing import List, Union, Dict, Optional, TypedDict, Literal
 from tracing import get_current_span
 from config import (
     logger,
+    LLM_BASE_URL,
     LLM_COMPLETION_ENDPOINT,
     LLM_CHAT_ENDPOINT,
     LLM_MODEL_LIST_ENDPOINT,
     LLM_MODEL_LOAD_ENDPOINT,
     LLM_MODEL_INFO_ENDPOINT,
 )
+from core import llm_cache
 
 # Constants
 TIMEOUT = 30  # seconds
@@ -90,11 +92,14 @@ def ask_llm_with_status(
     model: Optional[str] = None,
     max_tokens: int = 512,
     temperature: float = 0.7,
+    use_cache: bool = True,
 ) -> LLMCallResult:
     """Unified LLM query function for chat and completion modes."""
 
     span = get_current_span()
     prompt_length = None
+    cache_key = None
+    cache_meta = None
     try:
         if mode == "chat":
             endpoint = LLM_CHAT_ENDPOINT
@@ -125,6 +130,38 @@ def ask_llm_with_status(
             }
             if model:
                 payload["model"] = model
+
+        if llm_cache.is_cache_enabled(use_cache):
+            decoding_params = {
+                k: v for k, v in payload.items() if k not in {"prompt", "messages", "model"}
+            }
+            model_id = model or "default"
+            endpoint_id = f"{LLM_BASE_URL}:{mode}"
+            (
+                cache_key,
+                canonical,
+                prompt_text,
+                prompt_hash,
+                _system_prompt,
+            ) = llm_cache.build_cache_key(
+                prompt=prompt,
+                mode=mode,
+                model_id=model_id,
+                endpoint_id=endpoint_id,
+                decoding_params=decoding_params,
+            )
+            cache_meta = {
+                "canonical": canonical,
+                "prompt_text": prompt_text,
+                "prompt_hash": prompt_hash,
+                "model_id": model_id,
+                "endpoint_id": endpoint_id,
+            }
+            cached = llm_cache.get_cached_response(cache_key)
+            if cached is not None:
+                logger.info("🧠 LLM cache hit")
+                return {"content": cached, "error": None, "prompt_length": prompt_length}
+            logger.info("🧠 LLM cache miss")
 
         response = requests.post(endpoint, json=payload, timeout=TIMEOUT)
         response.raise_for_status()
@@ -177,6 +214,19 @@ def ask_llm_with_status(
                 )
                 break
 
+        if cache_key and cache_meta and llm_cache.is_cache_enabled(use_cache):
+            llm_cache.store_cache_entry(
+                cache_key=cache_key,
+                canonical=cache_meta["canonical"],
+                prompt_text=cache_meta["prompt_text"],
+                prompt_hash=cache_meta["prompt_hash"],
+                response_text=content,
+                model_id=cache_meta["model_id"],
+                endpoint_id=cache_meta["endpoint_id"],
+                status="ok",
+            )
+            logger.info("🧠 LLM cache store")
+
         return {"content": content, "error": None, "prompt_length": prompt_length}
 
     except requests.Timeout as e:
@@ -217,6 +267,7 @@ def ask_llm(
     model: Optional[str] = None,
     max_tokens: int = 512,
     temperature: float = 0.7,
+    use_cache: bool = True,
 ) -> str:
     """Unified LLM query function for chat and completion modes."""
     result = ask_llm_with_status(
@@ -225,6 +276,7 @@ def ask_llm(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
+        use_cache=use_cache,
     )
     if result["error"]:
         return "[LLM Error]"
