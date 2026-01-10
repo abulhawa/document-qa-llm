@@ -347,3 +347,39 @@ def test_significant_terms_short_circuits_local_counts(
     )
     assert keywords[:2] == ["alpha", "beta"]
     assert calls["count"] == 0
+
+
+def test_select_representative_files_prefers_medoid_and_diversity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cluster = {
+        "cluster_id": 1,
+        "centroid": [1.0, 0.0],
+        "representative_checksums": ["checksum-a", "checksum-b", "checksum-c"],
+    }
+    checksum_payloads = {
+        "checksum-a": {"checksum": "checksum-a", "filename": "a.txt"},
+        "checksum-b": {"checksum": "checksum-b", "filename": "b.txt"},
+        "checksum-c": {"checksum": "checksum-c", "filename": "c.txt"},
+    }
+
+    def fake_load_chunk_embeddings(_checksums: list[str]) -> dict[str, list[dict[str, object]]]:
+        return {
+            "checksum-a": [{"vector": [1.0, 0.0], "chunk_id": "1"}],
+            "checksum-b": [{"vector": [0.99, 0.01], "chunk_id": "2"}],
+            "checksum-c": [{"vector": [0.7, 0.7], "chunk_id": "3"}],
+        }
+
+    monkeypatch.setattr(topic_naming, "_load_chunk_embeddings", fake_load_chunk_embeddings)
+    monkeypatch.setattr(topic_naming, "_safe_fetch_fulltext", lambda _checksum: None)
+
+    representatives = topic_naming.select_representative_files(
+        cluster,
+        checksum_payloads,
+        max_files=2,
+    )
+
+    assert [entry["checksum"] for entry in representatives] == [
+        "checksum-a",
+        "checksum-c",
+    ]
