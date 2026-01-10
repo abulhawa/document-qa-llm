@@ -50,7 +50,7 @@ DEFAULT_MAX_KEYWORDS = getattr(topic_naming, "DEFAULT_MAX_KEYWORDS", 20)
 DEFAULT_MAX_PATH_DEPTH = getattr(topic_naming, "DEFAULT_MAX_PATH_DEPTH", 4)
 DEFAULT_ROOT_PATH = getattr(topic_naming, "DEFAULT_ROOT_PATH", "")
 DEFAULT_TOP_EXTENSION_COUNT = getattr(topic_naming, "DEFAULT_TOP_EXTENSION_COUNT", 5)
-MIXEDNESS_WARNING_THRESHOLD = 0.6
+MIXEDNESS_WARNING_THRESHOLD = getattr(topic_naming, "MIXEDNESS_WARNING_THRESHOLD", 0.6)
 CONFIDENCE_MIXEDNESS_FACTOR = 0.5
 TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
@@ -227,6 +227,21 @@ def _merge_warnings(*messages: str) -> str:
     return "; ".join([message for message in messages if message])
 
 
+def _mixedness_rationale(metadata: Mapping[str, Any]) -> str:
+    subthemes = metadata.get("mixedness_subthemes") or []
+    note = metadata.get("mixedness_note")
+    lines: list[str] = []
+    if subthemes:
+        lines.append(f"Likely subthemes: {', '.join(str(item) for item in subthemes)}")
+    if note:
+        lines.append(f"Why mixed: {note}")
+    return "\n".join(lines)
+
+
+def _merge_rationale(*segments: str) -> str:
+    return "\n".join(segment for segment in segments if segment)
+
+
 def _profile_differentiator(profile: ClusterProfile | ParentProfile) -> str | None:
     for keyword in profile.keywords:
         if keyword:
@@ -271,7 +286,10 @@ def _build_rows(
                     (suggestion.metadata or {}).get("warning", ""),
                     _mixedness_warning(profile),
                 ),
-                "rationale": _profile_rationale(profile),
+                "rationale": _merge_rationale(
+                    _profile_rationale(profile),
+                    _mixedness_rationale(suggestion.metadata or {}),
+                ),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
             }
@@ -309,7 +327,10 @@ def _build_rows(
                     (suggestion.metadata or {}).get("warning", ""),
                     _mixedness_warning(profile),
                 ),
-                "rationale": _profile_rationale(profile),
+                "rationale": _merge_rationale(
+                    _profile_rationale(profile),
+                    _mixedness_rationale(suggestion.metadata or {}),
+                ),
                 "cache_hit": cache_hit,
                 "source": suggestion.source,
             }
