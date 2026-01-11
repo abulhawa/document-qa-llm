@@ -71,6 +71,20 @@ _SIGNIFICANT_TERMS_CACHE: dict[tuple[Any, ...], dict[str, float]] = {}
 
 
 @dataclass
+class _QdrantEmbeddingMetrics:
+    request_count: int = 0
+    cache_hits: int = 0
+    total_time_s: float = 0.0
+    max_time_s: float = 0.0
+    checksums: set[str] = field(default_factory=set)
+
+
+_QDRANT_EMBEDDING_METRICS = _QdrantEmbeddingMetrics()
+_CHUNK_EMBEDDINGS_CACHE: dict[str, list[dict[str, Any]]] = {}
+_CHUNK_EMBEDDINGS_MISS: set[str] = set()
+
+
+@dataclass
 class _LLMRequestMetrics:
     request_count: int = 0
     child_calls: int = 0
@@ -163,6 +177,18 @@ def reset_os_keyword_metrics(*, clear_cache: bool = False) -> None:
     _OS_KEYWORD_METRICS.query_keys.clear()
     if clear_cache:
         _SIGNIFICANT_TERMS_CACHE.clear()
+    reset_qdrant_embedding_metrics(clear_cache=clear_cache)
+
+
+def reset_qdrant_embedding_metrics(*, clear_cache: bool = False) -> None:
+    _QDRANT_EMBEDDING_METRICS.request_count = 0
+    _QDRANT_EMBEDDING_METRICS.cache_hits = 0
+    _QDRANT_EMBEDDING_METRICS.total_time_s = 0.0
+    _QDRANT_EMBEDDING_METRICS.max_time_s = 0.0
+    _QDRANT_EMBEDDING_METRICS.checksums.clear()
+    if clear_cache:
+        _CHUNK_EMBEDDINGS_CACHE.clear()
+        _CHUNK_EMBEDDINGS_MISS.clear()
 
 
 def get_os_keyword_metrics() -> dict[str, float | int]:
@@ -199,6 +225,44 @@ def log_os_keyword_metrics(*, run_id: str | None = None) -> None:
         max_time,
         cache_hits,
         metrics["unique_queries"],
+        reduction_label,
+    )
+
+
+def get_qdrant_embedding_metrics() -> dict[str, float | int]:
+    return {
+        "request_count": _QDRANT_EMBEDDING_METRICS.request_count,
+        "cache_hits": _QDRANT_EMBEDDING_METRICS.cache_hits,
+        "total_time_s": _QDRANT_EMBEDDING_METRICS.total_time_s,
+        "max_time_s": _QDRANT_EMBEDDING_METRICS.max_time_s,
+        "unique_checksums": len(_QDRANT_EMBEDDING_METRICS.checksums),
+    }
+
+
+def log_qdrant_embedding_metrics(*, run_id: str | None = None) -> None:
+    metrics = get_qdrant_embedding_metrics()
+    request_count = int(metrics["request_count"])
+    total_time = float(metrics["total_time_s"])
+    max_time = float(metrics["max_time_s"])
+    cache_hits = int(metrics["cache_hits"])
+    avg_time = total_time / request_count if request_count else 0.0
+    total_queries = request_count + cache_hits
+    reduction_label = (
+        f"estimated reduction: ~{total_queries} -> ~{request_count}"
+        if total_queries
+        else "estimated reduction: n/a"
+    )
+    run_label = f" (run_id={run_id})" if run_id else ""
+    logger.info(
+        "Qdrant embedding requests%s: %s | total: %.3fs | avg: %.3fs | max: %.3fs | "
+        "cache_hits: %s | unique_checksums: %s | %s",
+        run_label,
+        request_count,
+        total_time,
+        avg_time,
+        max_time,
+        cache_hits,
+        metrics["unique_checksums"],
         reduction_label,
     )
 
@@ -772,27 +836,57 @@ def _load_chunk_embeddings(
 ) -> dict[str, list[dict[str, Any]]]:
     if not checksums:
         return {}
+    embedding_payloads: dict[str, list[dict[str, Any]]] = {}
+    pending_checksums: list[str] = []
+    for checksum in checksums:
+        if checksum in _CHUNK_EMBEDDINGS_CACHE:
+            _QDRANT_EMBEDDING_METRICS.cache_hits += 1
+            _QDRANT_EMBEDDING_METRICS.checksums.add(checksum)
+            embedding_payloads[checksum] = list(_CHUNK_EMBEDDINGS_CACHE[checksum])
+            continue
+        if checksum in _CHUNK_EMBEDDINGS_MISS:
+            _QDRANT_EMBEDDING_METRICS.cache_hits += 1
+            _QDRANT_EMBEDDING_METRICS.checksums.add(checksum)
+            continue
+        pending_checksums.append(checksum)
+        _QDRANT_EMBEDDING_METRICS.checksums.add(checksum)
+    if not pending_checksums:
+        return embedding_payloads
     client = QdrantClient(url=QDRANT_URL)
     try:
         collections = client.get_collections().collections
         if QDRANT_COLLECTION not in [collection.name for collection in collections]:
-            return {}
+            _CHUNK_EMBEDDINGS_MISS.update(pending_checksums)
+            return embedding_payloads
     except Exception:  # noqa: BLE001
-        return {}
-    embedding_payloads: dict[str, list[dict[str, Any]]] = {}
-    for checksum in checksums:
+        _CHUNK_EMBEDDINGS_MISS.update(pending_checksums)
+        return embedding_payloads
+    for checksum in pending_checksums:
         scroll_filter = models.Filter(
             must=[models.FieldCondition(key="checksum", match=models.MatchValue(value=checksum))]
         )
         offset = None
+        entries: list[dict[str, Any]] = []
         while True:
-            points, offset = client.scroll(
-                collection_name=QDRANT_COLLECTION,
-                scroll_filter=scroll_filter,
-                limit=256,
-                with_vectors=True,
-                with_payload=True,
-                offset=offset,
+            start_time = time.perf_counter()
+            try:
+                points, offset = client.scroll(
+                    collection_name=QDRANT_COLLECTION,
+                    scroll_filter=scroll_filter,
+                    limit=256,
+                    with_vectors=True,
+                    with_payload=True,
+                    offset=offset,
+                )
+            except Exception:  # noqa: BLE001
+                _CHUNK_EMBEDDINGS_MISS.add(checksum)
+                break
+            elapsed = time.perf_counter() - start_time
+            _QDRANT_EMBEDDING_METRICS.request_count += 1
+            _QDRANT_EMBEDDING_METRICS.total_time_s += elapsed
+            _QDRANT_EMBEDDING_METRICS.max_time_s = max(
+                _QDRANT_EMBEDDING_METRICS.max_time_s,
+                elapsed,
             )
             for point in points:
                 vector = _extract_vector(point)
@@ -804,9 +898,14 @@ def _load_chunk_embeddings(
                     "vector": _l2_normalize(vector),
                     "chunk_id": str(chunk_id) if chunk_id else None,
                 }
-                embedding_payloads.setdefault(checksum, []).append(entry)
+                entries.append(entry)
             if offset is None:
                 break
+        if entries:
+            _CHUNK_EMBEDDINGS_CACHE[checksum] = entries
+            embedding_payloads[checksum] = list(entries)
+        elif checksum not in _CHUNK_EMBEDDINGS_MISS:
+            _CHUNK_EMBEDDINGS_MISS.add(checksum)
     return embedding_payloads
 
 
@@ -2839,6 +2938,7 @@ __all__ = [
     "reset_llm_request_metrics",
     "get_llm_request_metrics",
     "log_llm_request_summary",
+    "log_qdrant_embedding_metrics",
     "postprocess_name",
     "english_only_check",
     "disambiguate_duplicate_names",

@@ -314,6 +314,7 @@ def _run_naming(
                 total_runtime_s=total_runtime,
             )
     topic_naming.log_os_keyword_metrics(run_id=run_id)
+    topic_naming.log_qdrant_embedding_metrics(run_id=run_id)
     if any(row["source"] != "llm" for row in rows):
         st.warning("LLM naming unavailable for some rows; using baseline names instead.")
     _update_session_rows(cast(Sequence[Mapping[Hashable, Any]], rows))
