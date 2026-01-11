@@ -5,15 +5,11 @@ from typing import List, cast
 import pandas as pd
 import streamlit as st
 
+from app.schemas import FileResyncApplyRequest, FileResyncPlanItem, FileResyncScanRequest
+from app.usecases.file_resync_usecase import apply_plan as apply_resync_plan
+from app.usecases.file_resync_usecase import scan_and_plan
 from config import logger
-from core.sync.file_resync import (
-    DEFAULT_ALLOWED_EXTENSIONS,
-    ApplyOptions,
-    ApplyResult,
-    apply_plan,
-    build_reconciliation_plan,
-    scan_files,
-)
+from core.sync.file_resync import DEFAULT_ALLOWED_EXTENSIONS
 from ui.ingestion_ui import run_root_picker
 from utils.timing import set_run_id, timed_block
 
@@ -114,6 +110,23 @@ def _render_summary(counts: dict) -> None:
     cols = st.columns(len(counts))
     for col, (bucket, cnt) in zip(cols, counts.items()):
         col.metric(bucket.title(), cnt)
+
+
+def _plan_items_to_rows(items: List[FileResyncPlanItem]) -> List[dict]:
+    return [
+        {
+            "bucket": item.bucket,
+            "reason": item.reason,
+            "checksum": item.checksum,
+            "content_id": item.content_id,
+            "indexed_paths": "; ".join(item.indexed_paths),
+            "disk_paths": "; ".join(item.disk_paths),
+            "actions": ", ".join(sorted({action.type for action in item.actions})),
+            "explanation": item.explanation,
+            "new_checksum": item.new_checksum,
+        }
+        for item in items
+    ]
 
 
 def _render_table(rows: List[dict]) -> pd.DataFrame:
@@ -260,9 +273,9 @@ if scan_clicked:
                     extra={"run_id": run_id, "roots": len(roots), "extensions": sorted(exts)},
                     logger=logger,
                 ):
-                    scan_result = scan_files(roots, exts)
-                    plan = build_reconciliation_plan(
-                        scan_result, roots, retire_replaced_content=retire_replaced
+                    plan, scan_meta = scan_and_plan(
+                        FileResyncScanRequest(roots=roots, allowed_extensions=sorted(exts)),
+                        retire_replaced_content=retire_replaced,
                     )
         except Exception as e:  # noqa: BLE001
             st.session_state.pop("file_resync_plan", None)
@@ -271,11 +284,7 @@ if scan_clicked:
             st.stop()
         else:
             st.session_state["file_resync_plan"] = plan
-            st.session_state["file_resync_scan_meta"] = {
-                "ignored": scan_result.ignored_files,
-                "scanned_roots": scan_result.scanned_roots_successful,
-                "failed_roots": scan_result.scanned_roots_failed,
-            }
+            st.session_state["file_resync_scan_meta"] = scan_meta
             st.success(
                 f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
             )
@@ -291,11 +300,11 @@ if plan:
             f"ignored temp/small files: {scan_meta.get('ignored', 0)}"
         )
     _render_summary(plan.counts)
-    rows = plan.as_rows()
+    rows = _plan_items_to_rows(plan.items)
     filtered_df = _render_table(rows)
 
 if apply_safe_clicked and plan:
-    result: ApplyResult | None = None
+    result = None
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
@@ -306,14 +315,14 @@ if apply_safe_clicked and plan:
                 extra={"run_id": run_id, "ingest_missing": ingest_missing_safe},
                 logger=logger,
             ):
-                result = apply_plan(
-                    plan,
-                    ApplyOptions(
+                result = apply_resync_plan(
+                    FileResyncApplyRequest(
+                        items=plan.items,
                         ingest_missing=ingest_missing_safe,
                         apply_safe_only=True,
                         delete_orphaned=False,
                         retire_replaced_content=False,
-                    ),
+                    )
                 )
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "SAFE apply")
@@ -334,7 +343,7 @@ if apply_safe_clicked and plan:
     )
 
 if apply_destructive_clicked and plan:
-    result: ApplyResult | None = None
+    result = None
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
@@ -350,14 +359,14 @@ if apply_destructive_clicked and plan:
                 },
                 logger=logger,
             ):
-                result = apply_plan(
-                    plan,
-                    ApplyOptions(
+                result = apply_resync_plan(
+                    FileResyncApplyRequest(
+                        items=plan.items,
                         ingest_missing=ingest_missing_destructive,
                         apply_safe_only=False,
                         delete_orphaned=delete_orphaned,
                         retire_replaced_content=retire_replaced,
-                    ),
+                    )
                 )
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "Destructive apply")
