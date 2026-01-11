@@ -10,13 +10,20 @@ Single‑worker, single‑queue control panel to safely pause/stop Celery and pu
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
 
 import streamlit as st
 from celery import Celery
 import redis
+
+from app.usecases.worker_emergency_usecase import (
+    WorkerEmergencyStatus,
+    load_status,
+    purge_queues,
+    rate_limit_zero,
+    revoke_all_active,
+    run_compose,
+)
 
 # ----------------------------
 # Configuration (env‑driven)
@@ -43,73 +50,6 @@ def get_celery() -> Celery:
 def get_redis(db_url: str) -> redis.Redis:
     return redis.Redis.from_url(db_url, decode_responses=True)
 
-# ----------------------------
-# Helpers
-# ----------------------------
-
-def run_compose(args: List[str]) -> subprocess.CompletedProcess[str]:
-    """Run `docker compose` with a controlled working directory and project."""
-    cmd = ["docker", "compose", "-p", COMPOSE_PROJECT] + args
-    return subprocess.run(
-        cmd,
-        cwd=str(COMPOSE_DIR),
-        capture_output=True,
-        text=True,
-        shell=False,
-        check=False,
-    )
-
-
-def queue_len(r: redis.Redis, qname: str) -> int:
-    try:
-        return int(cast(int, r.llen(qname)))
-    except Exception:
-        return -1
-
-
-def inspect_counts(app: Celery) -> Dict[str, int]:
-    i = app.control.inspect(timeout=0.8)
-    active = sum(len(v) for v in (i.active() or {}).values())
-    reserved = sum(len(v) for v in (i.reserved() or {}).values())
-    scheduled = sum(len(v) for v in (i.scheduled() or {}).values())
-    return {"active": active, "reserved": reserved, "scheduled": scheduled}
-
-
-def revoke_all_active(app: Celery, signal: str = "SIGTERM") -> int:
-    i = app.control.inspect(timeout=0.8)
-    active_map = i.active() or {}
-    count = 0
-    for tasks in active_map.values():
-        for t in tasks:
-            tid = t.get("id")
-            if tid:
-                try:
-                    app.control.revoke(tid, terminate=True, signal=signal)
-                    count += 1
-                except Exception:
-                    pass
-    return count
-
-
-def rate_limit_zero(app: Celery, task_name: str) -> None:
-    try:
-        app.control.rate_limit(task_name, "0/m")
-    except Exception:
-        pass
-
-
-def purge_queues(r: redis.Redis, qnames: List[str]) -> Dict[str, int]:
-    result: Dict[str, int] = {}
-    for q in qnames:
-        try:
-            deleted = int(cast(int, r.delete(q)))  # 1 if deleted, 0 if not present
-            result[q] = deleted
-        except Exception:
-            result[q] = -1
-    return result
-
-
-# ----------------------------
 # UI
 # ----------------------------
 if st.session_state.get("_nav_context") != "hub":
@@ -131,13 +71,24 @@ rr = get_redis(RESULT_BACKEND)
 
 # Status block
 st.subheader("Status")
+status = load_status(app, rb, rr, QUEUE_NAMES)
 qcols = st.columns(len(QUEUE_NAMES) + 3)
-counts = inspect_counts(app)
 for idx, q in enumerate(QUEUE_NAMES):
-    qcols[idx].metric(f"Queue: {q}", queue_len(rb, q))
-qcols[-3].metric("Active", counts["active"])
-qcols[-2].metric("Reserved", counts["reserved"])
-qcols[-1].metric("Scheduled", counts["scheduled"])
+    qcols[idx].metric(f"Queue: {q}", status.queue_lengths.get(q, -1))
+qcols[-3].metric("Active", status.active)
+qcols[-2].metric("Reserved", status.reserved)
+qcols[-1].metric("Scheduled", status.scheduled)
+
+def render_status_alerts(status_data: WorkerEmergencyStatus) -> None:
+    if not status_data.broker_ok:
+        st.error(f"Broker connectivity check failed: {status_data.broker_error}")
+    if not status_data.result_ok:
+        st.error(f"Result backend connectivity check failed: {status_data.result_error}")
+    if status_data.celery_error:
+        st.warning(f"Celery inspection failed: {status_data.celery_error}")
+
+
+render_status_alerts(status)
 
 st.divider()
 
@@ -176,7 +127,11 @@ with st.expander("🧮 Autoscale pool (instant pause/resume)", expanded=False):
 with st.expander("🛑 Stop worker (Docker Compose)", expanded=False):
     st.write("Stops the Celery container via Docker Compose (recommended big switch).")
     if st.button("Stop worker container", type="primary"):
-        res = run_compose(["stop", CELERY_SERVICE])
+        res = run_compose(
+            ["stop", CELERY_SERVICE],
+            compose_dir=COMPOSE_DIR,
+            compose_project=COMPOSE_PROJECT,
+        )
         st.code(res.stdout or res.stderr or "(no output)")
 
 with st.expander("⏸️ Pause consumption (rate limit 0/m)", expanded=False):
@@ -226,7 +181,11 @@ with st.expander("🧼 Flush Redis DBs (nuclear)", expanded=False):
 with st.expander("▶️ Start worker (Docker Compose)", expanded=False):
     st.write("Starts the Celery container via Docker Compose.")
     if st.button("Start worker container"):
-        res = run_compose(["up", "-d", CELERY_SERVICE])
+        res = run_compose(
+            ["up", "-d", CELERY_SERVICE],
+            compose_dir=COMPOSE_DIR,
+            compose_project=COMPOSE_PROJECT,
+        )
         st.code(res.stdout or res.stderr or "(no output)")
 
 st.divider()
