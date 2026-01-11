@@ -13,8 +13,7 @@ from ui_gradio.theme import build_theme
 
 
 def create_app() -> gr.Blocks:
-    theme = build_theme()
-    with gr.Blocks(theme=theme) as demo:
+    with gr.Blocks() as demo:
         gr.Markdown("# Document QA Workspace")
         cluster_state = gr.State(None)
 
@@ -34,4 +33,5 @@ def create_app() -> gr.Blocks:
 
 
 if __name__ == "__main__":
-    create_app().launch()
+    theme = build_theme()
+    create_app().launch(theme=theme)

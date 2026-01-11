@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import gradio as gr
 
 from app.gradio_utils import format_ingest_logs
-from app.schemas import IngestLogRequest, IngestRequest
+from app.schemas import IngestLogRequest, IngestRequest, IngestMode
 from app.usecases import ingest_logs_usecase, ingest_usecase
 
 
@@ -28,18 +30,18 @@ def build_ingest_tab() -> None:
             refresh_logs = gr.Button("Refresh Logs")
             status = gr.Markdown()
         with gr.Column(scale=2):
-            logs = gr.Code(label="Ingestion Logs", language="text")
+            logs = gr.Code(label="Ingestion Logs", language="markdown")
 
     def start_ingestion(
         files: list[str] | None,
-        mode_value: str,
+        mode: str,
         state: list[str],
         progress: gr.Progress = gr.Progress(),
     ):
         if not files:
             return "No files selected.", state, ""
         progress(0, desc="Queueing files")
-        request = IngestRequest(paths=files, mode=mode_value)
+        request = IngestRequest(paths=files, mode=cast(IngestMode, mode))
         response = ingest_usecase.ingest(request)
         progress(1, desc="Queued")
         message = f"Queued {response.queued_count} files."

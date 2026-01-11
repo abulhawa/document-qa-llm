@@ -53,10 +53,13 @@ class QAResponse:
 # -----------------------------
 # Ingestion
 # -----------------------------
+IngestMode = Literal["ingest", "reingest", "delete"]
+
+
 @dataclass
 class IngestRequest:
     paths: List[str]
-    mode: Literal["ingest", "reingest", "delete"] = "ingest"
+    mode: IngestMode = "ingest"
     recursive: bool = False
     context: Optional[RequestContext] = None
 

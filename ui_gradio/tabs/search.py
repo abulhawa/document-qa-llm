@@ -24,8 +24,8 @@ def build_search_tab() -> None:
     with gr.Row():
         with gr.Column(scale=1):
             query = gr.Textbox(label="Query", placeholder="Search documents...")
-            date_from = gr.Date(label="Modified from")
-            date_to = gr.Date(label="Modified to")
+            date_from = gr.DateTime(label="Modified from", include_time=False)
+            date_to = gr.DateTime(label="Modified to", include_time=False)
             filetypes = gr.CheckboxGroup(
                 choices=list(DEFAULT_FILETYPES),
                 label="File types",
@@ -37,7 +37,7 @@ def build_search_tab() -> None:
                 headers=RESULT_HEADERS,
                 datatype=["str", "number", "str"],
                 row_count=0,
-                col_count=(len(RESULT_HEADERS), "fixed"),
+                column_count=(len(RESULT_HEADERS), "fixed"),
                 interactive=False,
                 label="Results",
             )
