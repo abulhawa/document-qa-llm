@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections.abc import Hashable, Mapping, Sequence
@@ -42,6 +43,35 @@ TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
 )
 FAST_MODE_CLUSTER_THRESHOLD = 10
+USER_LABELS_FILENAME = TOPIC_NAMING_CACHE_DIR / "user_labels.json"
+
+
+def update_labels(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Persist user-provided labels for topic naming."""
+    TOPIC_NAMING_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        cluster_id = row.get("Cluster ID") or row.get("cluster_id") or row.get("id")
+        generated = row.get("Generated Name") or row.get("generated_name") or row.get("proposed_name")
+        user_label = row.get("User Label") or row.get("user_label") or row.get("label")
+        if cluster_id is None:
+            continue
+        normalized.append(
+            {
+                "cluster_id": cluster_id,
+                "generated_name": generated,
+                "user_label": user_label,
+                "document_count": row.get("Document Count")
+                or row.get("document_count")
+                or row.get("size"),
+            }
+        )
+    payload = {
+        "saved_at": time.time(),
+        "labels": normalized,
+    }
+    USER_LABELS_FILENAME.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return {"saved": len(normalized), "path": str(USER_LABELS_FILENAME)}
 
 
 def get_llm_status() -> Mapping[str, Any]:
