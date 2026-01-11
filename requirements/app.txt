@@ -2,6 +2,7 @@
 
 # App-only
 streamlit==1.48.*
+gradio==6.3.*  # For Gradio UI
 arize-phoenix-otel==0.13.*
 hdbscan==0.8.*
 umap-learn==0.5.*
