@@ -451,6 +451,7 @@ def _cluster_profile(
     base = build_cluster_profile(
         cluster,
         payload_lookup,
+        include_snippets=include_snippets,
         max_keywords=max_keywords,
         max_path_depth=max_path_depth,
         root_path=root_path,
