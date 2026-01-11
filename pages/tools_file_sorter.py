@@ -8,10 +8,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from config import logger
 from core.llm import check_llm_status
-from core.sync.file_sorter import SortOptions, apply_sort_plan, build_sort_plan
-from utils.timing import set_run_id, timed_block
+from core.sync.file_sorter import SortOptions
+
+from app.usecases.file_sorter_usecase import apply_sort_plan_action, preview_sort_plan
 
 
 if st.session_state.get("_nav_context") != "hub":
@@ -169,7 +169,6 @@ with st.form("smart_sort_config"):
 if submitted:
     run_id = uuid.uuid4().hex[:8]
     st.session_state["_run_id"] = run_id
-    set_run_id(run_id)
     options = SortOptions(
         root=root,
         include_content=include_content,
@@ -223,16 +222,7 @@ if submitted:
 
     _update_progress("scan", {"scanned": 0, "total": 0})
     with st.spinner("Scanning and classifying files..."):
-        with timed_block(
-            "action.tools_file_sorter.preview_classification_dry_run",
-            extra={
-                "run_id": run_id,
-                "include_content": include_content,
-                "max_files": None if max_files_choice == "All" else int(max_files_choice),
-            },
-            logger=logger,
-        ):
-            plan = build_sort_plan(options, progress_callback=_update_progress)
+        plan = preview_sort_plan(options, run_id=run_id, progress_callback=_update_progress)
     _update_progress("scan", {"scanned": progress_state["scan"], "total": progress_state["scan_total"]})
     st.session_state["smart_sort_plan"] = plan
     st.session_state["smart_sort_options"] = options
@@ -641,22 +631,13 @@ if plan is not None:
         else:
             run_id = uuid.uuid4().hex[:8]
             st.session_state["_run_id"] = run_id
-            set_run_id(run_id)
             with st.spinner("Processing plan..."):
-                with timed_block(
-                    "action.tools_file_sorter.smart_sort_apply",
-                    extra={
-                        "run_id": run_id,
-                        "dry_run": not enable_moving,
-                        "min_confidence": float(min_confidence),
-                    },
-                    logger=logger,
-                ):
-                    result = apply_sort_plan(
-                        plan,
-                        min_confidence=min_confidence,
-                        dry_run=not enable_moving,
-                    )
+                result = apply_sort_plan_action(
+                    plan,
+                    min_confidence=min_confidence,
+                    dry_run=not enable_moving,
+                    run_id=run_id,
+                )
             moved_items = result.get("moved")
             if isinstance(moved_items, list):
                 moved_list = moved_items
