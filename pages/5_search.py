@@ -1,17 +1,20 @@
 import math
+import os
+import subprocess
+import sys
 from datetime import date, datetime, time, tzinfo
 
 import streamlit as st
 
-from app.schemas import SearchRequest
-from app.usecases.search_usecase import search
-from utils.file_utils import open_file_local
-from utils.opensearch_utils import list_files_missing_fulltext
-from utils.time_utils import format_date
-from ui.ingest_client import enqueue_paths
+from app.schemas import IngestRequest, SearchRequest
+from app.usecases.ingest_usecase import ingest
+from app.usecases.search_usecase import (
+    find_missing_files,
+    refresh_search_index,
+    search,
+)
 from ui.task_status import add_records
-from core.opensearch_client import get_client
-from config import CHUNKS_INDEX, FULLTEXT_INDEX
+from utils.time_utils import format_date
 
 @st.cache_data(ttl=180, show_spinner=False)
 def cached_search_documents(**params):
@@ -40,6 +43,8 @@ _defaults = {
 
 for k, v in _defaults.items():
     st.session_state.setdefault(k, v)
+
+st.session_state.setdefault("ingest_tasks", [])
 
 
 def _local_tz() -> tzinfo:
@@ -81,6 +86,20 @@ def _reset_and_search() -> None:
     st.session_state.page = 0
 
 
+def _open_file_local(path: str) -> None:
+    if not path:
+        return
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception:
+        pass
+
+
 params = current_params()
 res = None
 if params:
@@ -94,36 +113,40 @@ if params:
 refresh_col, _ = st.columns([1, 3])
 with refresh_col:
     if st.button("Refresh indices and cache", help="Refresh OpenSearch indices and clear cached search results"):
-        try:
-            get_client().indices.refresh(index=",".join([CHUNKS_INDEX, FULLTEXT_INDEX]))
-        except Exception:
-            pass
+        refreshed = refresh_search_index()
         try:
             cached_search_documents.clear()
         except Exception:
             pass
+        if not refreshed:
+            st.warning("Index refresh failed. Please check logs for details.")
         st.rerun()
 
 if st.checkbox("Show files missing from full-text index"):
-    missing_files = list_files_missing_fulltext(size=10000)
-    if not missing_files:
+    missing_paths = find_missing_files(limit=10000)
+    if not missing_paths:
         st.success("All indexed files are present in the full-text index.")
     else:
-        st.warning(f"{len(missing_files)} file(s) missing from full-text index:")
-        paths = [f.get("path", "") for f in missing_files if f.get("path")]
-        for p in paths:
-            st.code(p, language="")
+        st.warning(f"{len(missing_paths)} file(s) missing from full-text index:")
+        for path in missing_paths:
+            st.code(path, language="")
 
         if st.button("Rebuild full-text (reingest)", key="reindex_missing"):
-            with st.spinner(f"Queuing reingest for {len(paths)} file(s)…"):
-                task_ids = enqueue_paths(paths, mode="reingest")
-                st.session_state["ingest_tasks"] = add_records(
-                    st.session_state.get("ingest_tasks"),
-                    paths,
-                    task_ids,
-                    action="reingest",
+            with st.spinner(f"Queuing reingest for {len(missing_paths)} file(s)…"):
+                response = ingest(IngestRequest(paths=missing_paths, mode="reingest"))
+                if response.task_ids:
+                    st.session_state["ingest_tasks"] = add_records(
+                        st.session_state.get("ingest_tasks"),
+                        missing_paths,
+                        response.task_ids,
+                        action="reingest",
+                    )
+            if response.errors:
+                st.error("\n".join(response.errors))
+            if response.task_ids:
+                st.success(
+                    f"Queued reingest for {response.queued_count} file(s)."
                 )
-            st.success(f"Queued reingest for {len(paths)} file(s).")
             # st.rerun()
 
 
@@ -221,7 +244,7 @@ if res:
             c1, c2, _ = st.columns(3, vertical_alignment="bottom")
             with c1:
                 if st.button("Open", key=f"open_{i}"):
-                    open_file_local(path)
+                    _open_file_local(path)
             with c2:
                 # easy "copy path"
                 st.code(path, language="")

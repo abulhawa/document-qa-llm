@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from app.schemas import SearchHit, SearchRequest, SearchResponse
+from config import CHUNKS_INDEX, FULLTEXT_INDEX
+from core.opensearch_client import get_client
 from utils.fulltext_search import search_documents
+from utils.opensearch_utils import list_files_missing_fulltext
 
 
 def search(req: SearchRequest) -> SearchResponse:
@@ -52,3 +55,22 @@ def search(req: SearchRequest) -> SearchResponse:
         hits=hits,
         aggregations=result.get("aggs", {}),
     )
+
+
+def find_missing_files(limit: int) -> list[str]:
+    """Return file paths missing from the full-text index."""
+    missing_files = list_files_missing_fulltext(size=limit)
+    return [
+        file_meta.get("path", "")
+        for file_meta in missing_files
+        if file_meta.get("path")
+    ]
+
+
+def refresh_search_index() -> bool:
+    """Refresh the search indices so queries see the latest data."""
+    try:
+        get_client().indices.refresh(index=",".join([CHUNKS_INDEX, FULLTEXT_INDEX]))
+        return True
+    except Exception:
+        return False
