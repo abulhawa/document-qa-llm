@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import qa_pipeline
 from app.schemas import DocumentSnippet, QARequest, QAResponse
-from qa_pipeline import RetrievalConfig, answer_question
+from qa_pipeline import RetrievalConfig
 
 
 def answer(req: QARequest) -> QAResponse:
     """Run the QA pipeline and normalize output for the UI."""
     retrieval_cfg = RetrievalConfig()
     try:
-        context = answer_question(
+        context = qa_pipeline.answer_question(
             question=req.question,
             mode=req.mode,
             temperature=req.temperature,
