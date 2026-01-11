@@ -9,17 +9,18 @@ from opensearchpy.exceptions import NotFoundError, TransportError
 from typing import List, Dict, Any, Tuple, cast
 
 from utils.time_utils import format_timestamp, format_timestamp_ampm
-from utils.opensearch_utils import (
-    list_files_from_opensearch,
-)
-from utils.qdrant_utils import (
-    count_qdrant_chunks_by_checksum,
-)
 from utils.file_utils import format_file_size
-from ui.ingest_client import enqueue_paths, enqueue_delete_by_path
 from ui.task_status import add_records
 from components.task_panel import render_task_panel
 from config import logger
+from app.usecases.index_viewer_usecase import (
+    compute_qdrant_counts,
+    enqueue_delete,
+    enqueue_reembed,
+    enqueue_reingest,
+    fetch_indexed_files,
+    prefetch_indexed_files,
+)
 
 if st.session_state.get("_nav_context") != "hub":
     st.set_page_config(page_title="File Index Viewer", layout="wide")
@@ -42,16 +43,7 @@ if kind_msg:
 @st.cache_data(show_spinner=False)
 def load_indexed_files() -> List[Dict[str, Any]]:
     # Fast path: do NOT compute per-file Qdrant counts here to keep UI responsive
-    return list_files_from_opensearch()
-
-
-def _prefetch_index_in_bg(out_q: "queue.Queue") -> None:
-    """Background fetch that doesn't touch Streamlit APIs."""
-    try:
-        files = list_files_from_opensearch()
-        out_q.put({"ok": True, "files": files})
-    except Exception as e:
-        out_q.put({"ok": False, "error": str(e)})
+    return fetch_indexed_files()
 
 
 def trigger_refresh() -> None:
@@ -72,7 +64,7 @@ def trigger_refresh() -> None:
                 q.get_nowait()
         except queue.Empty:
             pass
-        t = threading.Thread(target=_prefetch_index_in_bg, args=(q,), daemon=True)
+        t = threading.Thread(target=prefetch_indexed_files, args=(q,), daemon=True)
         t.start()
 
 
@@ -195,24 +187,13 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
     need_counts = need_counts or show_qdrant_counts
 
     if need_counts and not fdf.empty:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
         checksum_series = cast(pd.Series, fdf["Checksum"])
         visible_checksums = checksum_series.dropna().astype(str).unique().tolist()
         memo = st.session_state.setdefault("_qdrant_count_memo", {})
         missing = [cs for cs in visible_checksums if cs not in memo and cs]
         if missing:
             with st.spinner(f"Counting Qdrant chunks for {len(missing)} file(s)…"):
-                with ThreadPoolExecutor(max_workers=8) as ex:
-                    futs = {
-                        ex.submit(count_qdrant_chunks_by_checksum, cs): cs for cs in missing
-                    }
-                    for fut in as_completed(futs):
-                        cs = futs[fut]
-                        try:
-                            memo[cs] = fut.result() or 0
-                        except Exception:
-                            memo[cs] = 0
+                memo.update(compute_qdrant_counts(missing))
         # update counts in the DataFrame for filtering and display
         checksum_series = cast(pd.Series, fdf["Checksum"])
         existing_qdrant = (
@@ -438,7 +419,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                             f"Queuing re-embed for {len(selected_paths)} file(s)…"
                         ):
                             # Reuse ingestion path in the worker; it handles re-embedding
-                            task_ids = enqueue_paths(selected_paths, mode="reembed")
+                            task_ids = enqueue_reembed(selected_paths)
                             st.session_state["ingest_tasks"] = add_records(
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
@@ -465,7 +446,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         with st.spinner(
                             f"Queuing reingestion for {len(selected_paths)} file(s)…"
                         ):
-                            task_ids = enqueue_paths(selected_paths, mode="reingest")
+                            task_ids = enqueue_reingest(selected_paths)
                             st.session_state["ingest_tasks"] = add_records(
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
@@ -492,7 +473,7 @@ def render_filtered_table(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]
                         with st.spinner(
                             f"Queuing deletion for {len(selected_paths)} file(s)…"
                         ):
-                            task_ids = enqueue_delete_by_path(selected_paths)
+                            task_ids = enqueue_delete(selected_paths)
                             st.session_state["ingest_tasks"] = add_records(
                                 st.session_state.get("ingest_tasks"),
                                 selected_paths,
