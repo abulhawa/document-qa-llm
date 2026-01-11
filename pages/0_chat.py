@@ -1,9 +1,11 @@
 import streamlit as st
 import uuid
 from typing import List, Optional
+
+from app.schemas import QARequest
+from app.usecases.qa_usecase import answer as answer_usecase
 from config import logger
 from core.llm import get_available_models, load_model, check_llm_status
-from qa_pipeline import RetrievalConfig, answer_question
 from utils.timing import set_run_id, timed_block
 
 st.set_page_config(page_title="Ask Your Documents", layout="wide")
@@ -23,7 +25,6 @@ llm_status = check_llm_status()
 if not llm_status["active"]:
     st.error(llm_status["status_message"], icon="⚠️")
 
-retrieval_cfg = RetrievalConfig()
 # ───────────────────────────────────────
 # 🔸 Sidebar: LLM Settings
 # ───────────────────────────────────────
@@ -144,26 +145,30 @@ with st.container():
                 },
                 logger=logger,
             ):
-                result = answer_question(
-                    question=user_input,
-                    mode="chat",
-                    temperature=temperature,
-                    model=loaded_llm_model,
-                    chat_history=st.session_state.chat_history,
-                    retrieval_cfg=retrieval_cfg,
-                    use_cache=use_cache,
+                result = answer_usecase(
+                    QARequest(
+                        question=user_input,
+                        mode="chat",
+                        temperature=temperature,
+                        model=loaded_llm_model,
+                        chat_history=st.session_state.chat_history,
+                        use_cache=use_cache,
+                    )
                 )
 
+            assistant_message = result.answer or result.error or ""
             st.session_state.chat_history.append(
-                {"role": "assistant", "content": result.answer or ""}
+                {"role": "assistant", "content": assistant_message}
             )
 
             with st.chat_message("assistant"):
-                st.markdown(result.answer or "")
+                st.markdown(assistant_message)
                 if result.sources:
                     st.markdown("#### 📁 Sources:")
                     for src in result.sources:
                         st.markdown(f"- {src}")
+                if result.error and not result.answer:
+                    st.error(result.error)
 
     # ───────────────────────────────────────
     # 🔹 Completion Mode UI
@@ -195,23 +200,27 @@ with st.container():
                     },
                     logger=logger,
                 ):
-                    result = answer_question(
-                        question=query,
-                        mode="completion",
-                        temperature=temperature,
-                        model=loaded_llm_model,
-                        retrieval_cfg=retrieval_cfg,
-                        use_cache=use_cache,
+                    result = answer_usecase(
+                        QARequest(
+                            question=query,
+                            mode="completion",
+                            temperature=temperature,
+                            model=loaded_llm_model,
+                            use_cache=use_cache,
+                        )
                     )
 
             st.subheader("📝 Answer")
-            st.markdown(result.answer or "")
-            logger.info(f"LLM Answer:\n{result.answer}")
+            answer_text = result.answer or result.error or ""
+            st.markdown(answer_text)
+            logger.info(f"LLM Answer:\n{answer_text}")
 
             if result.sources:
                 st.markdown("#### 📁 Sources:")
                 for src in result.sources:
                     st.markdown(f"- {src}")
+            if result.error and not result.answer:
+                st.error(result.error)
 
             st.caption(
                 f"Mode: {mode} | Temp: {temperature} | Model: {loaded_llm_model}"
