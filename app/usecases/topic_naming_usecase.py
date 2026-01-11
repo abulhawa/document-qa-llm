@@ -51,19 +51,39 @@ def update_labels(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     TOPIC_NAMING_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     normalized: list[dict[str, Any]] = []
     for row in rows:
-        cluster_id = row.get("Cluster ID") or row.get("cluster_id") or row.get("id")
-        generated = row.get("Generated Name") or row.get("generated_name") or row.get("proposed_name")
-        user_label = row.get("User Label") or row.get("user_label") or row.get("label")
+        cluster_id = row.get("Cluster ID")
+        if cluster_id is None:
+            cluster_id = row.get("cluster_id")
+        if cluster_id is None:
+            cluster_id = row.get("id")
+
+        generated = row.get("Generated Name")
+        if generated is None:
+            generated = row.get("generated_name")
+        if generated is None:
+            generated = row.get("proposed_name")
+
+        user_label = row.get("User Label")
+        if user_label is None:
+            user_label = row.get("user_label")
+        if user_label is None:
+            user_label = row.get("label")
+
         if cluster_id is None:
             continue
+
+        document_count = row.get("Document Count")
+        if document_count is None:
+            document_count = row.get("document_count")
+        if document_count is None:
+            document_count = row.get("size")
+
         normalized.append(
             {
                 "cluster_id": cluster_id,
                 "generated_name": generated,
                 "user_label": user_label,
-                "document_count": row.get("Document Count")
-                or row.get("document_count")
-                or row.get("size"),
+                "document_count": document_count,
             }
         )
     payload = {
