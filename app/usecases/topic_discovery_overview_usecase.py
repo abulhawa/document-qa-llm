@@ -9,6 +9,7 @@ from typing import Any
 from config import logger
 from services.topic_discovery_clusters import (
     clear_cluster_cache,
+    cluster_cache_exists,
     ensure_macro_grouping,
     load_last_cluster_cache,
     run_topic_discovery_clustering,
@@ -56,3 +57,8 @@ def load_cached(settings: Mapping[str, Any]) -> Mapping[str, Any] | None:
 def clear_cache() -> bool:
     """Clear cached clustering artifacts."""
     return clear_cluster_cache()
+
+
+def has_cached_run() -> bool:
+    """Check whether a cached clustering run exists."""
+    return cluster_cache_exists()
