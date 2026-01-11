@@ -68,6 +68,7 @@ class _OSKeywordMetrics:
 
 _OS_KEYWORD_METRICS = _OSKeywordMetrics()
 _SIGNIFICANT_TERMS_CACHE: dict[tuple[Any, ...], dict[str, float]] = {}
+_KEYWORD_COUNTS_CACHE: dict[tuple[Any, ...], dict[str, float]] = {}
 
 
 @dataclass
@@ -177,6 +178,7 @@ def reset_os_keyword_metrics(*, clear_cache: bool = False) -> None:
     _OS_KEYWORD_METRICS.query_keys.clear()
     if clear_cache:
         _SIGNIFICANT_TERMS_CACHE.clear()
+        _KEYWORD_COUNTS_CACHE.clear()
     reset_qdrant_embedding_metrics(clear_cache=clear_cache)
 
 
@@ -192,9 +194,11 @@ def reset_qdrant_embedding_metrics(*, clear_cache: bool = False) -> None:
 
 
 def get_os_keyword_metrics() -> dict[str, float | int]:
+    total_requests = _OS_KEYWORD_METRICS.request_count + _OS_KEYWORD_METRICS.cache_hits
     return {
         "request_count": _OS_KEYWORD_METRICS.request_count,
         "cache_hits": _OS_KEYWORD_METRICS.cache_hits,
+        "total_requests": total_requests,
         "total_time_s": _OS_KEYWORD_METRICS.total_time_s,
         "max_time_s": _OS_KEYWORD_METRICS.max_time_s,
         "unique_queries": len(_OS_KEYWORD_METRICS.query_keys),
@@ -207,6 +211,7 @@ def log_os_keyword_metrics(*, run_id: str | None = None) -> None:
     total_time = float(metrics["total_time_s"])
     max_time = float(metrics["max_time_s"])
     cache_hits = int(metrics["cache_hits"])
+    total_requests = int(metrics["total_requests"])
     avg_time = total_time / request_count if request_count else 0.0
     total_queries = request_count + cache_hits
     reduction_label = (
@@ -217,13 +222,14 @@ def log_os_keyword_metrics(*, run_id: str | None = None) -> None:
     run_label = f" (run_id={run_id})" if run_id else ""
     logger.info(
         "OS keyword requests%s: %s | total: %.3fs | avg: %.3fs | max: %.3fs | "
-        "cache_hits: %s | unique_queries: %s | %s",
+        "cache_hits: %s | total_requests: %s | unique_queries: %s | %s",
         run_label,
         request_count,
         total_time,
         avg_time,
         max_time,
         cache_hits,
+        total_requests,
         metrics["unique_queries"],
         reduction_label,
     )
@@ -456,6 +462,13 @@ def build_cluster_profile(
     representative_checksums = [
         str(checksum) for checksum in cluster.get("representative_checksums", [])
     ]
+    keyword_cache_key = (
+        tuple(sorted(representative_checksums)),
+        int(max_keywords),
+        max_path_depth,
+        root_path or "",
+        bool(include_snippets),
+    )
     representative_files = select_representative_files(
         cluster,
         checksum_payloads,
@@ -472,13 +485,18 @@ def build_cluster_profile(
     else:
         snippets = []
         snippet_metadata = {}
-    keyword_counts = _keyword_counts_from_os(
-        representative_checksums,
-        snippets,
-        max_keywords=max_keywords,
-        max_path_depth=max_path_depth,
-        root_path=root_path,
-    )
+    cached_keyword_counts = _KEYWORD_COUNTS_CACHE.get(keyword_cache_key)
+    if cached_keyword_counts is None:
+        keyword_counts = _keyword_counts_from_os(
+            representative_checksums,
+            snippets,
+            max_keywords=max_keywords,
+            max_path_depth=max_path_depth,
+            root_path=root_path,
+        )
+        _KEYWORD_COUNTS_CACHE[keyword_cache_key] = keyword_counts
+    else:
+        keyword_counts = cached_keyword_counts
     keywords = _top_keywords_from_counts(keyword_counts, max_keywords=max_keywords)
     keyword_entropy = _keyword_mixedness(keyword_counts, max_keywords=max_keywords)
     extension_counts = _extension_counts(representative_files)
@@ -2668,7 +2686,6 @@ def _significant_terms_from_os(
     if not checksums:
         return {}
     cache_key = (
-        FULLTEXT_INDEX,
         tuple(sorted(str(checksum) for checksum in checksums)),
         int(max_keywords),
     )
