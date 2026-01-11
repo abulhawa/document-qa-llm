@@ -1,46 +1,15 @@
-import runpy
-from pathlib import Path
-
 import streamlit as st
+
+from app.usecases.storage_index_usecase import (
+    STORAGE_INDEX_TABS,
+    render_storage_index_page,
+)
 
 st.set_page_config(page_title="Storage & Index", layout="wide")
 
-PAGES_DIR = Path(__file__).resolve().parent
 
+tabs = st.tabs([label for label, _ in STORAGE_INDEX_TABS])
 
-def render_page(filename):
-    st.session_state["_nav_context"] = "hub"
-    try:
-        runpy.run_path(str(PAGES_DIR / filename))
-    finally:
-        st.session_state.pop("_nav_context", None)
-
-
-tabs = st.tabs(
-    [
-        "Search",
-        "File Index Viewer",
-        "Ingestion Logs",
-        "File Path Re-Sync",
-        "Duplicate Files",
-        "Watchlist",
-    ]
-)
-
-with tabs[0]:
-    render_page("5_search.py")
-
-with tabs[1]:
-    render_page("2_index_viewer.py")
-
-with tabs[2]:
-    render_page("4_ingest_logs.py")
-
-with tabs[3]:
-    render_page("7_file_resync.py")
-
-with tabs[4]:
-    render_page("3_duplicates_viewer.py")
-
-with tabs[5]:
-    render_page("6_watchlist.py")
+for tab, (_, filename) in zip(tabs, STORAGE_INDEX_TABS):
+    with tab:
+        render_storage_index_page(filename)
