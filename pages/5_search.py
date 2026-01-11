@@ -1,12 +1,13 @@
-import streamlit as st
 import math
-from datetime import date, time, datetime, tzinfo
-from utils.file_utils import format_file_size, open_file_local
-from utils.time_utils import format_timestamp, format_date
-from utils.fulltext_search import search_documents
-from utils.opensearch_utils import (
-    list_files_missing_fulltext,
-)
+from datetime import date, datetime, time, tzinfo
+
+import streamlit as st
+
+from app.schemas import SearchRequest
+from app.usecases.search_usecase import search
+from utils.file_utils import open_file_local
+from utils.opensearch_utils import list_files_missing_fulltext
+from utils.time_utils import format_date
 from ui.ingest_client import enqueue_paths
 from ui.task_status import add_records
 from core.opensearch_client import get_client
@@ -17,8 +18,8 @@ def cached_search_documents(**params):
     # cache keys must be hashable; you already pass filetypes as tuple in current_params()
     p = dict(params)
     if isinstance(p.get("filetypes"), tuple):
-        p["filetypes"] = list(p["filetypes"])  # your utils expect list/None
-    return search_documents(**p)
+        p["filetypes"] = list(p["filetypes"])  # schema expects list/None
+    return search(SearchRequest(**p))
 
 
 if st.session_state.get("_nav_context") != "hub":
@@ -62,9 +63,9 @@ def current_params() -> dict | None:
     if not q:
         return None
     params = {
-        "q": q,
-        "from_": st.session_state.page * st.session_state.page_size,
-        "size": st.session_state.page_size,
+        "query": q,
+        "page": st.session_state.page,
+        "page_size": st.session_state.page_size,
         "sort": st.session_state.sort,
         "path_contains": (st.session_state.path_contains or None),
         "filetypes": tuple(st.session_state.filetypes) or None,
@@ -81,7 +82,12 @@ def _reset_and_search() -> None:
 
 
 params = current_params()
-res = cached_search_documents(**params) if params else None
+res = None
+if params:
+    try:
+        res = cached_search_documents(**params)
+    except Exception as exc:  # noqa: BLE001
+        st.error(f"Search failed: {exc}")
 
 
 # Optional: force refresh + clear cache button
@@ -144,9 +150,10 @@ with filters_col1:
 with filters_col2:
     # populate options from last search aggs (if any)
     options = []
-    if res and res.get("aggs"):
+    if res and res.aggregations:
         options = [
-            b["key"] for b in res["aggs"].get("filetypes", {}).get("buckets", [])
+            b["key"]
+            for b in res.aggregations.get("filetypes", {}).get("buckets", [])
         ]
     st.multiselect(
         "File type", options=options, key="filetypes", on_change=_reset_and_search
@@ -188,20 +195,20 @@ with d2:
             min_value=st.session_state.created_from,
         )
 
-total_results = res.get("total", 0) if res else 0
+total_results = res.total if res else 0
 if res:
-    st.markdown(f"Found {total_results} results • {res.get('took', 0)} ms")
+    st.markdown(f"Found {total_results} results • {res.took_ms} ms")
     with st.container(height=500):
         if total_results == 0:
             st.markdown(f'No results were found for "{st.session_state.q}"!')
-        for i, hit in enumerate(res.get("hits", [])):
-            path = hit.get("path", "") or ""
-            filename = hit.get("filename")
-            date_str = format_date(hit.get("modified_at"))
+        for i, hit in enumerate(res.hits):
+            path = hit.path or ""
+            filename = hit.filename or path
+            date_str = format_date(hit.modified_at)
             st.markdown(f"**{filename}** • {date_str}")
 
             # first highlight inline, rest in expander
-            frags = hit.get("highlights", [])
+            frags = hit.highlights
             if frags:
                 frags = [f.replace("\n\n", "  \n") for f in frags]
                 st.markdown(f"…{frags[0]}…", unsafe_allow_html=True)
