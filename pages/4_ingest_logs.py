@@ -1,7 +1,8 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
-from utils.opensearch_utils import search_ingest_logs
+from app.schemas import IngestLogRequest
+from app.usecases.ingest_logs_usecase import fetch_ingest_logs
 from utils.file_utils import format_file_size
 from utils.time_utils import format_timestamp
 
@@ -35,26 +36,28 @@ start_str = start_date.isoformat() if start_date else None
 end_str = end_date.isoformat() if end_date else None
 status_param = None if status_filter == "All" else status_filter
 
-logs = search_ingest_logs(
-    status=status_param,
-    path_query=path_filter or None,
-    start=start_str,
-    end=end_str,
-    size=200,
+response = fetch_ingest_logs(
+    IngestLogRequest(
+        status=status_param,
+        path_query=path_filter or None,
+        start_date=start_str,
+        end_date=end_str,
+        size=200,
+    )
 )
-if logs:
+if response.logs:
     df = pd.DataFrame(
         [
             {
-                "Path": l.get("path"),
-                "Size": l.get("bytes", 0),
-                "Status": l.get("status"),
-                "Error": l.get("error_type"),
-                "Reason": (l.get("reason") or "")[:100],
-                "Stage": l.get("stage"),
-                "Attempt": l.get("attempt_at"),
+                "Path": log.path,
+                "Size": log.bytes or 0,
+                "Status": log.status,
+                "Error": log.error_type,
+                "Reason": (log.reason or "")[:100],
+                "Stage": log.stage,
+                "Attempt": log.attempt_at,
             }
-            for l in logs
+            for log in response.logs
         ]
     )
     df["Attempt"] = df["Attempt"].apply(lambda x: format_timestamp(x) if x else "")
