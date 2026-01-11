@@ -445,6 +445,9 @@ def build_cluster_profile(
     cluster: Mapping[str, Any],
     checksum_payloads: Mapping[str, Mapping[str, Any]],
     *,
+    include_snippets: bool = True,
+    snippets: Sequence[str] | None = None,
+    snippet_metadata: dict[str, Any] | None = None,
     max_keywords: int = DEFAULT_MAX_KEYWORDS,
     max_path_depth: int | None = DEFAULT_MAX_PATH_DEPTH,
     root_path: str | None = DEFAULT_ROOT_PATH,
@@ -458,7 +461,17 @@ def build_cluster_profile(
         checksum_payloads,
     )
     representative_paths = _extract_representative_paths(representative_files)
-    snippets, snippet_metadata = select_representative_chunks_for_files(representative_files)
+    if include_snippets:
+        if snippets is None and snippet_metadata is None:
+            snippets, snippet_metadata = select_representative_chunks_for_files(
+                representative_files
+            )
+        else:
+            snippets = list(snippets or [])
+            snippet_metadata = dict(snippet_metadata or {})
+    else:
+        snippets = []
+        snippet_metadata = {}
     keyword_counts = _keyword_counts_from_os(
         representative_checksums,
         snippets,
