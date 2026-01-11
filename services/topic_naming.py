@@ -856,10 +856,8 @@ def _load_chunk_embeddings(
     try:
         collections = client.get_collections().collections
         if QDRANT_COLLECTION not in [collection.name for collection in collections]:
-            _CHUNK_EMBEDDINGS_MISS.update(pending_checksums)
             return embedding_payloads
     except Exception:  # noqa: BLE001
-        _CHUNK_EMBEDDINGS_MISS.update(pending_checksums)
         return embedding_payloads
     for checksum in pending_checksums:
         scroll_filter = models.Filter(
@@ -867,6 +865,7 @@ def _load_chunk_embeddings(
         )
         offset = None
         entries: list[dict[str, Any]] = []
+        had_error = False
         while True:
             start_time = time.perf_counter()
             try:
@@ -879,7 +878,7 @@ def _load_chunk_embeddings(
                     offset=offset,
                 )
             except Exception:  # noqa: BLE001
-                _CHUNK_EMBEDDINGS_MISS.add(checksum)
+                had_error = True
                 break
             elapsed = time.perf_counter() - start_time
             _QDRANT_EMBEDDING_METRICS.request_count += 1
@@ -904,7 +903,7 @@ def _load_chunk_embeddings(
         if entries:
             _CHUNK_EMBEDDINGS_CACHE[checksum] = entries
             embedding_payloads[checksum] = list(entries)
-        elif checksum not in _CHUNK_EMBEDDINGS_MISS:
+        elif not had_error and checksum not in _CHUNK_EMBEDDINGS_MISS:
             _CHUNK_EMBEDDINGS_MISS.add(checksum)
     return embedding_payloads
 
