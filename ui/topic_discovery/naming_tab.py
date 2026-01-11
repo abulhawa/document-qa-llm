@@ -44,6 +44,7 @@ CONFIDENCE_MIXEDNESS_FACTOR = 0.5
 TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
 )
+FAST_MODE_CLUSTER_THRESHOLD = 10
 
 
 def render_naming_tab() -> None:
@@ -56,8 +57,10 @@ def render_naming_tab() -> None:
         return
 
     llm_status = check_llm_status()
+    clusters = cluster_result.get("clusters", [])
+    cluster_count = len(clusters)
     settings = _render_naming_settings()
-    controls = _render_naming_controls()
+    controls = _render_naming_controls(cluster_count=cluster_count)
 
     if not llm_status.get("active"):
         st.warning("LLM is inactive. Baseline naming will be used until a model is loaded.")
@@ -173,7 +176,7 @@ def _render_naming_settings() -> dict[str, Any]:
     }
 
 
-def _render_naming_controls() -> dict[str, Any]:
+def _render_naming_controls(*, cluster_count: int) -> dict[str, Any]:
     controls = st.columns(5)
     with controls[0]:
         include_snippets = st.toggle("Include content snippets", value=True)
@@ -188,7 +191,7 @@ def _render_naming_controls() -> dict[str, Any]:
     with controls[3]:
         fast_mode = st.toggle(
             "Fast mode (batch LLM naming)",
-            value=True,
+            value=cluster_count > FAST_MODE_CLUSTER_THRESHOLD,
         )
     with controls[4]:
         generate_clicked = st.button(
@@ -241,6 +244,11 @@ def _render_llm_estimate(
     else:
         estimated_llm_calls = len(clusters) + len(parent_summaries)
     st.caption(f"LLM calls: ~{estimated_llm_calls}")
+    if len(clusters) > FAST_MODE_CLUSTER_THRESHOLD and not fast_mode:
+        st.info(
+            "Large cluster count detected. Consider enabling Fast mode (batch LLM naming) "
+            "to reduce total LLM calls."
+        )
 
 
 def _run_naming(
@@ -263,6 +271,11 @@ def _run_naming(
     run_id = uuid.uuid4().hex[:8]
     st.session_state["_run_id"] = run_id
     set_run_id(run_id)
+    if not fast_mode and len(clusters) > FAST_MODE_CLUSTER_THRESHOLD:
+        st.warning(
+            "Fast mode is disabled with a large cluster count. Naming may take longer "
+            "and require many LLM calls."
+        )
     topic_naming.reset_os_keyword_metrics(clear_cache=True)
     topic_naming.reset_llm_request_metrics()
     child_profiles: list[ClusterProfile] = []
