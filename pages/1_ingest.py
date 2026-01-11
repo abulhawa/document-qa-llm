@@ -2,8 +2,8 @@
 import streamlit as st
 import pandas as pd
 
-from ui.ingest_client import enqueue_paths
-from utils.inventory import upsert_watch_inventory_for_paths
+from app.schemas import IngestRequest
+from app.usecases.ingest_usecase import ingest
 from ui.ingestion_ui import run_file_picker, run_folder_picker
 from ui.task_status import add_records
 from components.task_panel import render_task_panel
@@ -44,30 +44,31 @@ if selected_files:
 
         span.set_attribute(INPUT_VALUE, preview)
 
-        # Upsert selection into the watch inventory (exists_now/first_seen/last_seen)
-        try:
-            upsert_watch_inventory_for_paths(selected_files)
-        except Exception:
-            pass
-
         # Enqueue ingestion to the worker; progress bar shows "queued" state only.
-        task_ids = enqueue_paths(selected_files, mode="ingest")
-        st.session_state["ingest_tasks"] = add_records(
-            st.session_state.get("ingest_tasks"),
-            selected_files,
-            task_ids,
-            action="ingest",
-        )
-        status_line.info(f"Queued {len(task_ids)} file(s) for ingestion.")
+        response = ingest(IngestRequest(paths=selected_files, mode="ingest"))
+        if response.task_ids:
+            st.session_state["ingest_tasks"] = add_records(
+                st.session_state.get("ingest_tasks"),
+                selected_files,
+                response.task_ids,
+                action="ingest",
+            )
+            status_line.info(
+                f"Queued {response.queued_count} file(s) for ingestion."
+            )
 
         # Mark foreground progress as "all queued"
         progress_bar.progress(1.0)
-        eta_display.text(f"Queued {len(selected_files)} / {len(selected_files)} files.")
+        eta_display.text(
+            f"Queued {response.queued_count} / {len(selected_files)} files."
+        )
+        if response.errors:
+            st.error("\n".join(response.errors))
 
         # Tracing: record what we actually did in async mode
-        span.set_attribute("files_queued", len(task_ids))
-        span.set_attribute("task_ids_preview", str(task_ids[:5]))
-        span.set_attribute(OUTPUT_VALUE, f"queued {len(task_ids)}")
+        span.set_attribute("files_queued", response.queued_count)
+        span.set_attribute("task_ids_preview", str(response.task_ids[:5]))
+        span.set_attribute(OUTPUT_VALUE, f"queued {response.queued_count}")
         span.set_status(STATUS_OK)
 
 # Render a small task panel so users can refresh/clear task states
