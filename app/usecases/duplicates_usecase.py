@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from app.schemas import DuplicateFileEntry, DuplicateGroup, DuplicatesResponse
 from utils.file_utils import format_file_size
-from utils.opensearch_utils import get_duplicate_checksums, get_files_by_checksum
+from utils import opensearch_utils
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 
 
 def lookup_duplicates() -> DuplicatesResponse:
     """Fetch duplicate file groups from OpenSearch."""
     groups: list[DuplicateGroup] = []
-    for checksum in get_duplicate_checksums():
-        files = get_files_by_checksum(checksum)
+    for checksum in opensearch_utils.get_duplicate_checksums():
+        files = opensearch_utils.get_files_by_checksum(checksum)
         entries = [
             DuplicateFileEntry(
                 checksum=checksum,
