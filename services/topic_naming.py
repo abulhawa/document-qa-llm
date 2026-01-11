@@ -462,13 +462,6 @@ def build_cluster_profile(
     representative_checksums = [
         str(checksum) for checksum in cluster.get("representative_checksums", [])
     ]
-    keyword_cache_key = (
-        tuple(sorted(representative_checksums)),
-        int(max_keywords),
-        max_path_depth,
-        root_path or "",
-        bool(include_snippets),
-    )
     representative_files = select_representative_files(
         cluster,
         checksum_payloads,
@@ -485,6 +478,21 @@ def build_cluster_profile(
     else:
         snippets = []
         snippet_metadata = {}
+    snippet_cache_key: str | None = None
+    if include_snippets:
+        snippet_hasher = hashlib.sha256()
+        for snippet in snippets or []:
+            snippet_hasher.update(str(snippet).encode("utf-8"))
+            snippet_hasher.update(b"\0")
+        snippet_cache_key = snippet_hasher.hexdigest()
+    keyword_cache_key = (
+        tuple(sorted(representative_checksums)),
+        int(max_keywords),
+        max_path_depth,
+        root_path or "",
+        bool(include_snippets),
+        snippet_cache_key,
+    )
     cached_keyword_counts = _KEYWORD_COUNTS_CACHE.get(keyword_cache_key)
     if cached_keyword_counts is None:
         keyword_counts = _keyword_counts_from_os(
