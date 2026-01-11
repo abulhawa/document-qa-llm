@@ -4,8 +4,6 @@ from typing import Any
 
 import streamlit as st
 
-from services.topic_discovery_clusters import cluster_cache_exists
-
 from app.usecases import topic_discovery_overview_usecase
 
 from .shared import format_file_label
@@ -84,7 +82,8 @@ def _handle_clustering_actions(settings: Mapping[str, Any]) -> None:
         "Run clustering", type="primary", key="run_clustering"
     )
     load_clicked = action_cols[1].button(
-        "Load last run", disabled=not cluster_cache_exists()
+        "Load last run",
+        disabled=not topic_discovery_overview_usecase.has_cached_run(),
     )
     clear_clicked = action_cols[2].button("Clear cache")
 

@@ -7,7 +7,6 @@ import pandas as pd
 import streamlit as st
 
 from config import logger
-from core.llm import check_llm_status
 from ui.ingestion_ui import run_root_picker
 from utils.timing import set_run_id, timed_block
 
@@ -35,7 +34,7 @@ def render_naming_tab() -> None:
         st.info("Run clustering in the Overview tab to generate results before naming topics.")
         return
 
-    llm_status = check_llm_status()
+    llm_status = topic_naming_usecase.get_llm_status()
     clusters = cluster_result.get("clusters", [])
     cluster_count = len(clusters)
     settings = _render_naming_settings()

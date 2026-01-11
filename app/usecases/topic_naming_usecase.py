@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from config import logger
+from core.llm import check_llm_status
 from services import topic_naming
 from services.topic_naming import (
     ClusterProfile,
@@ -41,6 +42,11 @@ TOPIC_NAMING_CACHE_DIR = getattr(
     topic_naming, "CACHE_DIR", Path(".cache") / "topic_naming"
 )
 FAST_MODE_CLUSTER_THRESHOLD = 10
+
+
+def get_llm_status() -> Mapping[str, Any]:
+    """Return current LLM status for UI display."""
+    return check_llm_status()
 
 
 def run_naming(
