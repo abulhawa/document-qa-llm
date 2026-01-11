@@ -1,16 +1,8 @@
-import os, json
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+import json
 import streamlit as st
 import pandas as pd
-from typing import Any, Dict, List
-from ui.celery_admin import (
-    fetch_overview,
-    failed_count_lookback,
-    redis_queue_depth,
-    revoke_task,
-    list_failed_tasks,
-)
+from app.usecases.running_tasks_usecase import fetch_running_tasks_snapshot
+from ui.celery_admin import revoke_task
 from ui.task_status import fetch_states, clear_finished
 
 if st.session_state.get("_nav_context") != "hub":
@@ -20,21 +12,25 @@ st.title("🧵 Running Tasks")
 st.session_state.setdefault("ingest_tasks", [])
 st.session_state.setdefault("revoke_task_id", "")
 
-# ---- Stats (fast) ----
-ov = fetch_overview(timeout=0.5, cache_ttl=2.0)
 # Failed lookback selector
 col_win, _, _ = st.columns([1, 1, 3])
 with col_win:
     win_label = st.selectbox("Failed lookback", ["1h", "6h", "24h", "7d"], index=2)
 win_hours = {"1h": 1, "6h": 6, "24h": 24, "7d": 24 * 7}[win_label]
-fails = failed_count_lookback(win_hours)
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Active", ov["counts"]["active"])
-c2.metric("Reserved", ov["counts"]["reserved"])
-c3.metric("Scheduled", ov["counts"]["scheduled"])
+snapshot = fetch_running_tasks_snapshot(
+    failed_window_hours=win_hours,
+    failed_page=st.session_state.get("failed_page_num", 0),
+    failed_page_size=st.session_state.get("failed_page_size", 25),
+)
+overview = snapshot["overview"]
+fails = snapshot["failed_count"]
+c1.metric("Active", overview["counts"]["active"])
+c2.metric("Reserved", overview["counts"]["reserved"])
+c3.metric("Scheduled", overview["counts"]["scheduled"])
 c4.metric(f"Failed ({win_label})", "—" if fails is None else fails)
-c5.metric("Queue depth", redis_queue_depth("ingest"))
+c5.metric("Queue depth", snapshot["queue_depth"])
 
 # View failed list (paged) for the selected window
 with st.expander(f"View failed tasks ({win_label})", expanded=False):
@@ -48,7 +44,8 @@ with st.expander(f"View failed tasks ({win_label})", expanded=False):
             "Page", min_value=0, step=1, value=0, key="failed_page_num"
         )
 
-    rows, total = list_failed_tasks(win_hours, failed_page, failed_page_size)
+    rows = snapshot["failed_rows"]
+    total = snapshot["failed_total"]
     st.caption(f"{total} failed task(s) in {win_label}. Showing {len(rows)}.")
 
     if not rows:
@@ -66,89 +63,28 @@ with st.expander(f"View failed tasks ({win_label})", expanded=False):
             )
 
 
-def _short(val, limit=120):
-    if val is None:
-        s = ""
-    elif isinstance(val, (dict, list, tuple)):
-        try:
-            s = json.dumps(val, ensure_ascii=False)
-        except Exception:
-            s = str(val)
-    else:
-        s = str(val)
-    return s[:limit]
-
-def _fmt_time(val):
-    """Render inspector's eta/time_start in local time, handling floats and strings."""
-    if val in (None, "", 0):
-        return ""
-    # numeric epoch (seconds or ms)
-    if isinstance(val, (int, float)):
-        ts = float(val)
-        # Heuristic: if it's ridiculously large, treat as milliseconds
-        if ts > 10**12:  # e.g. 1693050000000
-            ts = ts / 1000.0
-        try:
-            dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
-            return dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return str(val)
-    # string: try ISO parse with stdlib
-    if isinstance(val, str):
-        try:
-            # Accept both "YYYY-MM-DD HH:MM:SS" and ISO "YYYY-MM-DDTHH:MM:SS[+TZ]"
-            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))  # handle trailing Z
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return val  # fallback raw
-    return str(val)
-
-# ---- Tables (first 200 rows to keep snappy) ----
-def _flatten(kind: str, by_worker: Dict[str, List[Dict[str, Any]]]) -> pd.DataFrame:
-    rows = []
-    for worker, items in (by_worker or {}).items():
-        for t in items or []:
-            req = t.get("request") or {}
-            args_raw = t.get("args") or req.get("argsrepr") or req.get("args")
-            kwargs_raw = t.get("kwargs") or req.get("kwargsrepr") or req.get("kwargs")
-            # Prefer ETA for scheduled entries; otherwise show time_start for active
-            eta_raw = t.get("eta") or req.get("eta") or t.get("time_start")
-            rows.append({
-                "Type": kind,
-                "Worker": worker,
-                "Task": t.get("name") or t.get("type"),
-                "ID": t.get("id") or req.get("id"),
-                "Args": _short(args_raw),
-                "Kwargs": _short(kwargs_raw),
-                "ETA": _fmt_time(eta_raw),
-            })
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.iloc[:200].reset_index(drop=True)  # keep UI snappy
-    return df
-
-
-
 tab1, tab2, tab3 = st.tabs(
     [
-        f"Active ({ov['counts']['active']})",
-        f"Reserved ({ov['counts']['reserved']})",
-        f"Scheduled ({ov['counts']['scheduled']})",
+        f"Active ({overview['counts']['active']})",
+        f"Reserved ({overview['counts']['reserved']})",
+        f"Scheduled ({overview['counts']['scheduled']})",
     ]
 )
 with tab1:
     st.dataframe(
-        _flatten("Active", ov["active"]), use_container_width=True, hide_index=True
+        pd.DataFrame(snapshot["tables"]["active"]),
+        use_container_width=True,
+        hide_index=True,
     )
 with tab2:
     st.dataframe(
-        _flatten("Reserved", ov["reserved"]), use_container_width=True, hide_index=True
+        pd.DataFrame(snapshot["tables"]["reserved"]),
+        use_container_width=True,
+        hide_index=True,
     )
 with tab3:
     st.dataframe(
-        _flatten("Scheduled", ov["scheduled"]),
+        pd.DataFrame(snapshot["tables"]["scheduled"]),
         use_container_width=True,
         hide_index=True,
     )
