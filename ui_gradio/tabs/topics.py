@@ -99,7 +99,7 @@ def build_topics_tab(cluster_state: gr.State) -> None:
         datatype=["number", "str", "str", "number"],
         interactive=True,
         row_count=0,
-        col_count=(4, "fixed"),
+        column_count=(4, "fixed"),
         label="Editable cluster labels",
     )
     naming_status = gr.Markdown()

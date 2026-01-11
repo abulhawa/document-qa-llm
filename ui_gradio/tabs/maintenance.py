@@ -24,7 +24,7 @@ def build_maintenance_tab() -> None:
             headers=["Path", "Filetype", "Modified", "Created"],
             datatype=["str", "str", "str", "str"],
             row_count=0,
-            col_count=(4, "fixed"),
+            column_count=(4, "fixed"),
             interactive=False,
         )
 
@@ -49,7 +49,7 @@ def build_maintenance_tab() -> None:
             headers=["Checksum", "Location", "Filetype", "Created", "Modified"],
             datatype=["str", "str", "str", "str", "str"],
             row_count=0,
-            col_count=(5, "fixed"),
+            column_count=(5, "fixed"),
             interactive=False,
         )
         delete_button = gr.Button("Delete Selected")
