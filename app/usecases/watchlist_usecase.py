@@ -163,10 +163,12 @@ def refresh_status(prefix: str) -> WatchlistRefreshResult:
 def scan_folder(prefix: str) -> WatchlistScanResult:
     result = WatchlistScanResult()
     summary: Dict[str, Any] = {}
+    scan_ok = False
     try:
         summary = scan_watch_inventory_for_prefix(prefix)
         result.found = int(summary.get("found", 0))
         result.marked_missing = int(summary.get("marked_missing", 0))
+        scan_ok = True
     except Exception as exc:  # noqa: BLE001
         result.errors.append(str(exc))
     try:
@@ -174,11 +176,12 @@ def scan_folder(prefix: str) -> WatchlistScanResult:
         result.remaining = count_watch_inventory_remaining(prefix)
         result.indexed = max(0, result.total - result.remaining)
         update_watchlist_stats(prefix, result.total, result.indexed, result.remaining)
-        update_watchlist_scan_stats(
-            prefix,
-            found=result.found,
-            marked_missing=result.marked_missing,
-        )
+        if scan_ok:
+            update_watchlist_scan_stats(
+                prefix,
+                found=result.found,
+                marked_missing=result.marked_missing,
+            )
     except Exception as exc:  # noqa: BLE001
         result.errors.append(str(exc))
     return result
