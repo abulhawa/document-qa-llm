@@ -1,19 +1,12 @@
 import json
-import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import streamlit as st
 
-from config import logger
-from services.topic_discovery_clusters import (
-    clear_cluster_cache,
-    cluster_cache_exists,
-    ensure_macro_grouping,
-    load_last_cluster_cache,
-    run_topic_discovery_clustering,
-)
-from utils.timing import set_run_id, timed_block
+from services.topic_discovery_clusters import cluster_cache_exists
+
+from app.usecases import topic_discovery_overview_usecase
 
 from .shared import format_file_label
 
@@ -104,29 +97,11 @@ def _handle_clustering_actions(settings: Mapping[str, Any]) -> None:
 
 
 def _run_clustering(settings: Mapping[str, Any]) -> None:
-    run_id = uuid.uuid4().hex[:8]
-    st.session_state["_run_id"] = run_id
-    set_run_id(run_id)
     with st.spinner("Running clustering workflow..."):
-        with timed_block(
-            "action.topic_discovery.run_clustering",
-            extra={
-                "run_id": run_id,
-                "min_cluster_size": settings["min_cluster_size"],
-                "min_samples": settings["min_samples"],
-                "use_umap": settings["use_umap"],
-            },
-            logger=logger,
-        ):
-            result, used_cache = run_topic_discovery_clustering(
-                min_cluster_size=settings["min_cluster_size"],
-                min_samples=settings["min_samples"],
-                metric="cosine",
-                use_umap=settings["use_umap"],
-                umap_config=settings["umap_config"],
-                macro_k_range=settings["macro_k_range"],
-                allow_cache=True,
-            )
+        result, used_cache, run_id = topic_discovery_overview_usecase.run_clustering(
+            settings
+        )
+    st.session_state["_run_id"] = run_id
     if result is None:
         st.warning("No file vectors found. Run Step 1 first.")
     else:
@@ -138,20 +113,16 @@ def _run_clustering(settings: Mapping[str, Any]) -> None:
 
 
 def _load_cached(settings: Mapping[str, Any]) -> None:
-    cached = load_last_cluster_cache()
+    cached = topic_discovery_overview_usecase.load_cached(settings)
     if cached is None:
         st.warning("No cached clustering run found.")
         return
-    cached = ensure_macro_grouping(
-        cached,
-        macro_k_range=settings["macro_k_range"],
-    )
     st.session_state["topic_discovery_clusters"] = cached
     st.success("Loaded cached clustering results.")
 
 
 def _clear_cache() -> None:
-    removed = clear_cluster_cache()
+    removed = topic_discovery_overview_usecase.clear_cache()
     st.session_state.pop("topic_discovery_clusters", None)
     if removed:
         st.success("Cluster cache cleared.")
