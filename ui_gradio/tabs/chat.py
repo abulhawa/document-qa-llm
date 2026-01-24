@@ -89,6 +89,7 @@ def build_chat_tab() -> None:
 
     with gr.Group(visible=False) as chat_group:
         chatbot = gr.Chatbot(label="Conversation")
+        raw_chat_history = gr.State([])
         with gr.Row():
             chat_input = gr.Textbox(
                 placeholder="Ask a question...",
@@ -219,7 +220,8 @@ def build_chat_tab() -> None:
 
     def respond_chat(
         message: str,
-        history: list[list[str]],
+        display_history: list[list[str]],
+        raw_history: list[list[str]],
         temperature_value: float,
         model_value: str | None,
         use_cache_value: bool,
@@ -229,8 +231,8 @@ def build_chat_tab() -> None:
         model_md = _format_model_status(llm_status)
         if not llm_status.get("active"):
             warning = f"⚠️ {llm_status.get('status_message')}"
-            return "", history, status_md, model_md, warning
-        chat_history = to_chat_history(history, message)
+            return "", display_history, raw_history, status_md, model_md, warning
+        chat_history = to_chat_history(raw_history, message)
         req = QARequest(
             question=message,
             mode="chat",
@@ -241,13 +243,16 @@ def build_chat_tab() -> None:
         )
         response = qa_usecase.answer(req)
         answer = response.answer or response.error or ""
+        display_answer = answer
         sources_md = _format_sources(response.sources)
         if sources_md:
-            answer = f"{answer}\n\n{sources_md}"
+            display_answer = f"{display_answer}\n\n{sources_md}"
         if response.error and not response.answer:
             answer = f"⚠️ {response.error}"
-        updated_history = history + [[message, answer]]
-        return "", updated_history, status_md, model_md, ""
+            display_answer = f"⚠️ {response.error}"
+        updated_display_history = display_history + [[message, display_answer]]
+        updated_raw_history = raw_history + [[message, answer]]
+        return "", updated_display_history, updated_raw_history, status_md, model_md, ""
 
     def respond_completion(
         message: str,
@@ -322,15 +327,43 @@ def build_chat_tab() -> None:
 
     chat_send.click(
         respond_chat,
-        inputs=[chat_input, chatbot, temperature, loaded_llm_model_state, use_cache],
-        outputs=[chat_input, chatbot, llm_status_md, model_status_md, model_feedback_md],
+        inputs=[
+            chat_input,
+            chatbot,
+            raw_chat_history,
+            temperature,
+            loaded_llm_model_state,
+            use_cache,
+        ],
+        outputs=[
+            chat_input,
+            chatbot,
+            raw_chat_history,
+            llm_status_md,
+            model_status_md,
+            model_feedback_md,
+        ],
     )
     chat_input.submit(
         respond_chat,
-        inputs=[chat_input, chatbot, temperature, loaded_llm_model_state, use_cache],
-        outputs=[chat_input, chatbot, llm_status_md, model_status_md, model_feedback_md],
+        inputs=[
+            chat_input,
+            chatbot,
+            raw_chat_history,
+            temperature,
+            loaded_llm_model_state,
+            use_cache,
+        ],
+        outputs=[
+            chat_input,
+            chatbot,
+            raw_chat_history,
+            llm_status_md,
+            model_status_md,
+            model_feedback_md,
+        ],
     )
-    clear_chat.click(lambda: [], outputs=[chatbot])
+    clear_chat.click(lambda: ([], []), outputs=[chatbot, raw_chat_history])
 
     completion_submit.click(
         respond_completion,
