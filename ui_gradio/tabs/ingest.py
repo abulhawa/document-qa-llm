@@ -9,10 +9,15 @@ import subprocess
 import gradio as gr
 import pandas as pd
 
-from app.gradio_utils import format_ingest_logs
+from app.gradio_utils import normalize_date_input
 from app.schemas import IngestLogRequest, IngestRequest, IngestMode
 from app.usecases import ingest_logs_usecase, ingest_usecase
 from ui.task_status import add_records, clear_finished, fetch_states
+from utils.file_utils import format_file_size
+from utils.time_utils import format_timestamp
+
+
+LOG_HEADERS = ["Path", "Size", "Status", "Error", "Reason", "Stage", "Attempt"]
 
 
 def build_ingest_tab() -> None:
@@ -39,8 +44,31 @@ def build_ingest_tab() -> None:
             start_button = gr.Button("Start Ingestion", variant="primary")
             refresh_logs = gr.Button("Refresh Logs")
             status = gr.Markdown()
+            gr.Markdown("### Log filters")
+            path_filter = gr.Textbox(label="Path contains", value="")
+            status_filter = gr.Dropdown(
+                choices=[
+                    "All",
+                    "Failed",
+                    "Success",
+                    "Already indexed",
+                    "Duplicate & Indexed",
+                    "No valid content found",
+                ],
+                value="All",
+                label="Status",
+            )
+            start_date = gr.DateTime(label="Start date", include_time=False)
+            end_date = gr.DateTime(label="End date", include_time=False)
         with gr.Column(scale=2):
-            logs = gr.Code(label="Ingestion Logs", language="markdown")
+            logs = gr.Dataframe(
+                headers=LOG_HEADERS,
+                datatype=["str", "str", "str", "str", "str", "str", "str"],
+                row_count=0,
+                column_count=(len(LOG_HEADERS), "fixed"),
+                interactive=False,
+                label="Ingestion Logs",
+            )
 
     with gr.Accordion("Selected Paths", open=False):
         selected_table = gr.Dataframe(
@@ -57,7 +85,7 @@ def build_ingest_tab() -> None:
             headers=task_columns,
             datatype=["str", "str", "str", "str", "str"],
             row_count=0,
-            column_count=(5, "fixed"),
+            column_count=(len(task_columns), "fixed"),
             interactive=False,
         )
         with gr.Row():
@@ -112,6 +140,37 @@ def build_ingest_tab() -> None:
         combined, table, message = update_selected_paths(uploads_list, folder_paths)
         return folder_paths, combined, table, message
 
+    def build_log_rows(request: IngestLogRequest) -> pd.DataFrame:
+        log_response = ingest_logs_usecase.fetch_ingest_logs(request)
+        rows = [
+            {
+                "Path": log.path,
+                "Size": format_file_size(log.bytes or 0),
+                "Status": log.status,
+                "Error": log.error_type,
+                "Reason": (log.reason or "")[:100],
+                "Stage": log.stage,
+                "Attempt": format_timestamp(log.attempt_at) if log.attempt_at else "",
+            }
+            for log in log_response.logs
+        ]
+        return pd.DataFrame(rows, columns=LOG_HEADERS)
+
+    def build_log_request(
+        status_value: str,
+        path_value: str,
+        start_value: object,
+        end_value: object,
+    ) -> IngestLogRequest:
+        status_param = None if status_value == "All" else status_value
+        return IngestLogRequest(
+            status=status_param,
+            path_query=path_value or None,
+            start_date=normalize_date_input(start_value),
+            end_date=normalize_date_input(end_value),
+            size=200,
+        )
+
     def summarize_result(result: Any) -> str:
         if not isinstance(result, dict) or not result:
             return ""
@@ -146,10 +205,21 @@ def build_ingest_tab() -> None:
         selected_paths: list[str],
         mode: str,
         state: list[dict[str, Any]],
+        status_value: str,
+        path_value: str,
+        start_value: object,
+        end_value: object,
         progress: gr.Progress = gr.Progress(),
     ):
         if not selected_paths:
-            return "No files selected.", state, "", *build_task_panel(state)
+            task_message, task_table = build_task_panel(state)
+            return (
+                "No files selected.",
+                state,
+                pd.DataFrame(columns=LOG_HEADERS),
+                task_message,
+                task_table,
+            )
         progress(0, desc="Queueing files")
         request = IngestRequest(paths=selected_paths, mode=cast(IngestMode, mode))
         response = ingest_usecase.ingest(request)
@@ -157,7 +227,7 @@ def build_ingest_tab() -> None:
         message = f"Queued {response.queued_count} files."
         if response.errors:
             message += "\n" + "\n".join(response.errors)
-        log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
+        log_request = build_log_request(status_value, path_value, start_value, end_value)
         updated_records = add_records(
             state,
             selected_paths,
@@ -168,14 +238,19 @@ def build_ingest_tab() -> None:
         return (
             message,
             updated_records,
-            format_ingest_logs(log_response.logs),
+            build_log_rows(log_request),
             task_message,
             task_table,
         )
 
-    def load_logs() -> str:
-        log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
-        return format_ingest_logs(log_response.logs)
+    def load_logs(
+        status_value: str,
+        path_value: str,
+        start_value: object,
+        end_value: object,
+    ) -> pd.DataFrame:
+        log_request = build_log_request(status_value, path_value, start_value, end_value)
+        return build_log_rows(log_request)
 
     def refresh_task_panel(records: list[dict[str, Any]]):
         task_message, task_table = build_task_panel(records)
@@ -202,10 +277,22 @@ def build_ingest_tab() -> None:
     )
     start_button.click(
         start_ingestion,
-        inputs=[selected_state, mode, ingest_state],
+        inputs=[
+            selected_state,
+            mode,
+            ingest_state,
+            status_filter,
+            path_filter,
+            start_date,
+            end_date,
+        ],
         outputs=[status, ingest_state, logs, task_status, task_table],
     )
-    refresh_logs.click(load_logs, outputs=[logs])
+    refresh_logs.click(
+        load_logs,
+        inputs=[status_filter, path_filter, start_date, end_date],
+        outputs=[logs],
+    )
     refresh_tasks.click(
         refresh_task_panel,
         inputs=[ingest_state],
