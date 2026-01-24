@@ -308,6 +308,14 @@ def build_topics_tab(cluster_state: gr.State) -> None:
             )
 
         df = pd.DataFrame(rows)
+        df["needs_review"] = df.apply(
+            lambda row: topic_discovery_review_usecase.needs_review(
+                row,
+                mixedness_threshold_value,
+                confidence_threshold_value,
+            ),
+            axis=1,
+        )
         filters = {
             "selected_levels": selected_levels,
             "selected_status": selected_status,
