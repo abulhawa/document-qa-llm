@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import pandas as pd
 import gradio as gr
@@ -86,7 +87,7 @@ def build_search_tab() -> None:
     ):
         safe_page_size = int(page_size_value or PAGE_SIZE_OPTIONS[1])
         safe_page = max(int(page_value or 1), 1)
-        request = SearchRequest(
+        base_request = SearchRequest(
             query=query_value or "",
             filetypes=filetypes_value or [],
             page=safe_page - 1,
@@ -98,9 +99,12 @@ def build_search_tab() -> None:
             created_from=normalize_date_input(created_from_value),
             created_to=normalize_date_input(created_to_value),
         )
-        response = search_usecase.search(request)
+        response = search_usecase.search(base_request)
         total_pages = max(1, math.ceil(response.total / safe_page_size))
-        safe_page = min(safe_page, total_pages)
+        if safe_page > total_pages:
+            safe_page = total_pages
+            request = replace(base_request, page=safe_page - 1)
+            response = search_usecase.search(request)
         rows = search_hits_to_rows(response.hits)
         summary_text = (
             f"Found {response.total} results in {response.took_ms} ms. "
