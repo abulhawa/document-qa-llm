@@ -843,10 +843,21 @@ def build_duplicates_section(*, use_accordion: bool = True) -> None:
     with wrapper:
         dup_button = gr.Button("Load duplicates", variant="primary")
         dup_table = gr.Dataframe(
-            headers=["Checksum", "Location", "Filetype", "Created", "Modified"],
-            datatype=["str", "str", "str", "str", "str"],
+            headers=[
+                "Checksum",
+                "Location",
+                "Canonical Path",
+                "Location Type",
+                "Filetype",
+                "Created",
+                "Modified",
+                "Indexed",
+                "Chunks",
+                "Size",
+            ],
+            datatype=["str", "str", "str", "str", "str", "str", "str", "str", "str", "str"],
             row_count=0,
-            column_count=(5, "fixed"),
+            column_count=(10, "fixed"),
             interactive=False,
         )
         delete_button = gr.Button("Delete Selected")
@@ -855,17 +866,24 @@ def build_duplicates_section(*, use_accordion: bool = True) -> None:
     def load_duplicates():
         response = duplicates_usecase.lookup_duplicates()
         rows = duplicates_usecase.format_duplicate_rows(response)
-        trimmed = [
-            {
-                "Checksum": row.get("Checksum"),
-                "Location": row.get("Location"),
-                "Filetype": row.get("Filetype"),
-                "Created": row.get("Created"),
-                "Modified": row.get("Modified"),
-            }
-            for row in rows
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
+        df = df.copy()
+        df["Size"] = df["Size"].apply(duplicates_usecase.format_duplicate_size)
+        ordered_cols = [
+            "Checksum",
+            "Location",
+            "Canonical Path",
+            "Location Type",
+            "Filetype",
+            "Created",
+            "Modified",
+            "Indexed",
+            "Chunks",
+            "Size",
         ]
-        return pd.DataFrame(trimmed)
+        return df[[col for col in ordered_cols if col in df.columns]]
 
     def select_duplicate(evt: gr.SelectData):
         row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
