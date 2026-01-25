@@ -25,7 +25,8 @@ from app.usecases import (
     watchlist_usecase,
 )
 from core.sync.file_resync import DEFAULT_ALLOWED_EXTENSIONS
-from utils.file_utils import format_file_size
+from ui.task_status import add_records, clear_finished, fetch_states
+from utils.file_utils import format_file_size, open_file_local, show_in_folder
 from utils.time_utils import format_timestamp, format_timestamp_ampm
 
 DEFAULT_ROOT = os.getenv("LOCAL_SYNC_ROOT", "")
@@ -42,6 +43,7 @@ INDEX_COLUMNS = [
     "Checksum",
 ]
 PAGE_SIZE_OPTIONS = [5, 25, 50, 100]
+MAX_BULK_OPEN = 10
 REASON_ORDER = [
     "DUPLICATE_INDEX_DOCS",
     "NOT_INDEXED",
@@ -202,6 +204,7 @@ def build_maintenance_tab() -> None:
         page_state = gr.State(0)
         total_pages_state = gr.State(1)
         qdrant_memo_state = gr.State({})
+        task_records_state = gr.State([])
 
         control_row = gr.Row()
         with control_row:
@@ -262,6 +265,45 @@ def build_maintenance_tab() -> None:
             ],
             row_count=0,
             column_count=(len(INDEX_COLUMNS), "fixed"),
+            interactive=False,
+        )
+
+        selected_paths = gr.CheckboxGroup(
+            label="Selected files (current page)",
+            choices=[],
+            value=[],
+        )
+
+        action_row = gr.Row()
+        with action_row:
+            open_selected = gr.Button("📂 Open selected")
+            show_selected = gr.Button("📁 Show in folder")
+            reembed_selected = gr.Button("🧠 Re-embed selected", variant="primary")
+            reingest_selected = gr.Button("🔄 Reingest selected")
+            delete_selected = gr.Button("🗑️ Delete selected", variant="stop")
+            open_all = gr.Button("📂 Open all shown")
+
+        confirm_row = gr.Row()
+        with confirm_row:
+            bulk_open_confirm = gr.Checkbox(
+                label=f"Confirm bulk open/show when > {MAX_BULK_OPEN}",
+                value=False,
+            )
+            delete_confirm = gr.Checkbox(label="Confirm delete selected", value=False)
+
+        action_status = gr.Markdown()
+        action_details = gr.JSON()
+
+        gr.Markdown("**Task panel (queued actions)**")
+        task_controls = gr.Row()
+        with task_controls:
+            refresh_tasks = gr.Button("🔄 Refresh task status")
+            clear_tasks = gr.Button("🧹 Clear finished")
+        task_table = gr.Dataframe(
+            headers=["Path", "Task ID", "Action", "State", "Result"],
+            datatype=["str", "str", "str", "str", "str"],
+            row_count=0,
+            column_count=(5, "fixed"),
             interactive=False,
         )
 
@@ -380,6 +422,160 @@ def build_maintenance_tab() -> None:
         )
         return table, info, page_index, total_pages, qdrant_memo
 
+    def _extract_paths(df: pd.DataFrame | None) -> list[str]:
+        if df is None or getattr(df, "empty", True):
+            return []
+        if "Path" not in df.columns:
+            return []
+        return df["Path"].dropna().astype(str).unique().tolist()
+
+    def _sync_selection(table_df: pd.DataFrame, current_selection: list[str]):
+        choices = _extract_paths(table_df)
+        selected = [path for path in current_selection if path in choices]
+        return gr.update(choices=choices, value=selected)
+
+    def _build_task_table(records: list[dict]) -> pd.DataFrame:
+        if not records:
+            return pd.DataFrame(columns=["Path", "Task ID", "Action", "State", "Result"])
+        task_ids = [record["task_id"] for record in records]
+        states = fetch_states(task_ids)
+        rows = []
+        for record in records:
+            task_id = record["task_id"]
+            state = states.get(task_id, {}).get("state", "UNKNOWN")
+            result = states.get(task_id, {}).get("result")
+            rows.append(
+                {
+                    "Path": record.get("path", ""),
+                    "Task ID": task_id,
+                    "Action": record.get("action", ""),
+                    "State": state,
+                    "Result": result,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def _refresh_task_table(records: list[dict]):
+        return records, _build_task_table(records)
+
+    def _clear_finished_tasks(records: list[dict]):
+        if not records:
+            return records, _build_task_table(records), "No queued tasks to clear."
+        task_ids = [record["task_id"] for record in records]
+        states = fetch_states(task_ids)
+        remaining = clear_finished(records, states)
+        return remaining, _build_task_table(remaining), "Cleared finished tasks."
+
+    def _open_selected(
+        selected: list[str], confirm_bulk: bool
+    ) -> tuple[str, dict | None]:
+        if not selected:
+            return "Select one or more rows first.", None
+        if len(selected) > MAX_BULK_OPEN and not confirm_bulk:
+            return (
+                f"Confirm bulk open to proceed with {len(selected)} file(s).",
+                {"blocked": True, "count": len(selected)},
+            )
+        for path in sorted(selected):
+            open_file_local(path)
+        return f"Opened {len(selected)} file(s).", {"opened": selected}
+
+    def _show_selected(
+        selected: list[str], confirm_bulk: bool
+    ) -> tuple[str, dict | None]:
+        if not selected:
+            return "Select one or more rows first.", None
+        if len(selected) > MAX_BULK_OPEN and not confirm_bulk:
+            return (
+                f"Confirm bulk open to proceed with {len(selected)} file(s).",
+                {"blocked": True, "count": len(selected)},
+            )
+        for path in sorted(selected):
+            show_in_folder(path)
+        return f"Opened {len(selected)} folder(s).", {"shown": selected}
+
+    def _open_all_shown(
+        table_df: pd.DataFrame, confirm_bulk: bool
+    ) -> tuple[str, dict | None]:
+        paths = _extract_paths(table_df)
+        if not paths:
+            return "No rows shown.", None
+        if len(paths) > MAX_BULK_OPEN and not confirm_bulk:
+            return (
+                f"Confirm bulk open to proceed with {len(paths)} file(s).",
+                {"blocked": True, "count": len(paths)},
+            )
+        for path in sorted(paths):
+            open_file_local(path)
+        return f"Opened {len(paths)} file(s).", {"opened": paths}
+
+    def _enqueue_reembed(selected: list[str], records: list[dict]):
+        if not selected:
+            return records, _build_task_table(records), "Select one or more rows first.", None
+        try:
+            task_ids = index_viewer_usecase.enqueue_reembed(selected)
+        except Exception as exc:  # noqa: BLE001
+            return (
+                records,
+                _build_task_table(records),
+                f"Re-embed enqueue failed: {exc}",
+                {"error": str(exc)},
+            )
+        updated = add_records(records, selected, task_ids, action="reembed")
+        return (
+            updated,
+            _build_task_table(updated),
+            f"Queued re-embed for {len(task_ids)} file(s).",
+            {"action": "reembed", "task_ids": task_ids, "paths": selected},
+        )
+
+    def _enqueue_reingest(selected: list[str], records: list[dict]):
+        if not selected:
+            return records, _build_task_table(records), "Select one or more rows first.", None
+        try:
+            task_ids = index_viewer_usecase.enqueue_reingest(selected)
+        except Exception as exc:  # noqa: BLE001
+            return (
+                records,
+                _build_task_table(records),
+                f"Reingest enqueue failed: {exc}",
+                {"error": str(exc)},
+            )
+        updated = add_records(records, selected, task_ids, action="reingest")
+        return (
+            updated,
+            _build_task_table(updated),
+            f"Queued reingest for {len(task_ids)} file(s).",
+            {"action": "reingest", "task_ids": task_ids, "paths": selected},
+        )
+
+    def _enqueue_delete(selected: list[str], confirm: bool, records: list[dict]):
+        if not selected:
+            return records, _build_task_table(records), "Select one or more rows first.", None
+        if not confirm:
+            return (
+                records,
+                _build_task_table(records),
+                "Confirm delete to proceed.",
+                {"blocked": True, "count": len(selected)},
+            )
+        try:
+            task_ids = index_viewer_usecase.enqueue_delete(selected)
+        except Exception as exc:  # noqa: BLE001
+            return (
+                records,
+                _build_task_table(records),
+                f"Delete enqueue failed: {exc}",
+                {"error": str(exc)},
+            )
+        updated = add_records(records, selected, task_ids, action="delete")
+        return (
+            updated,
+            _build_task_table(updated),
+            f"Queued delete for {len(task_ids)} file(s).",
+            {"action": "delete", "task_ids": task_ids, "paths": selected},
+        )
+
     def reset_page():
         return 0
 
@@ -409,6 +605,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     refresh_button.click(
@@ -428,6 +628,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     path_filter.change(reset_page, outputs=[page_state]).then(
@@ -444,6 +648,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     clear_filter.click(clear_path_filter, outputs=[path_filter, page_state]).then(
@@ -460,6 +668,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     missing_only.change(reset_page, outputs=[page_state]).then(
@@ -476,6 +688,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     show_qdrant.change(reset_page, outputs=[page_state]).then(
@@ -492,6 +708,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     sort_col.change(reset_page, outputs=[page_state]).then(
@@ -508,6 +728,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     sort_dir.change(reset_page, outputs=[page_state]).then(
@@ -524,6 +748,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     page_size.change(reset_page, outputs=[page_state]).then(
@@ -540,6 +768,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     prev_page.click(go_prev, inputs=[page_state, total_pages_state], outputs=[page_state]).then(
@@ -556,6 +788,10 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
     )
 
     next_page.click(go_next, inputs=[page_state, total_pages_state], outputs=[page_state]).then(
@@ -572,6 +808,52 @@ def build_maintenance_tab() -> None:
             qdrant_memo_state,
         ],
         outputs=[index_table, page_info, page_state, total_pages_state, qdrant_memo_state],
+    ).then(
+        _sync_selection,
+        inputs=[index_table, selected_paths],
+        outputs=[selected_paths],
+    )
+
+    open_selected.click(
+        _open_selected,
+        inputs=[selected_paths, bulk_open_confirm],
+        outputs=[action_status, action_details],
+    )
+    show_selected.click(
+        _show_selected,
+        inputs=[selected_paths, bulk_open_confirm],
+        outputs=[action_status, action_details],
+    )
+    open_all.click(
+        _open_all_shown,
+        inputs=[index_table, bulk_open_confirm],
+        outputs=[action_status, action_details],
+    )
+    reembed_selected.click(
+        _enqueue_reembed,
+        inputs=[selected_paths, task_records_state],
+        outputs=[task_records_state, task_table, action_status, action_details],
+    )
+    reingest_selected.click(
+        _enqueue_reingest,
+        inputs=[selected_paths, task_records_state],
+        outputs=[task_records_state, task_table, action_status, action_details],
+    )
+    delete_selected.click(
+        _enqueue_delete,
+        inputs=[selected_paths, delete_confirm, task_records_state],
+        outputs=[task_records_state, task_table, action_status, action_details],
+    )
+
+    refresh_tasks.click(
+        _refresh_task_table,
+        inputs=[task_records_state],
+        outputs=[task_records_state, task_table],
+    )
+    clear_tasks.click(
+        _clear_finished_tasks,
+        inputs=[task_records_state],
+        outputs=[task_records_state, task_table, action_status],
     )
 
     with gr.Accordion("Duplicate Files", open=False):
