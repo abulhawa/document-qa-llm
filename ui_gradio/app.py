@@ -8,6 +8,7 @@ from ui_gradio.tabs.chat import build_chat_tab
 from ui_gradio.tabs.ingest import build_ingest_tab
 from ui_gradio.tabs.maintenance import build_maintenance_tab
 from ui_gradio.tabs.search import build_search_tab
+from ui_gradio.tabs.storage_index import build_storage_index_tab
 from ui_gradio.tabs.topics import build_topics_tab
 from ui_gradio.theme import build_theme
 
@@ -22,6 +23,8 @@ def create_app() -> gr.Blocks:
                 build_chat_tab()
             with gr.Tab("Intelligent Search"):
                 build_search_tab()
+            with gr.Tab("Storage & Index"):
+                build_storage_index_tab()
             with gr.Tab("Ingestion Pipeline"):
                 build_ingest_tab()
             with gr.Tab("Topic Discovery & Naming"):

@@ -11,6 +11,18 @@ from app.schemas import IngestLogRequest, IngestRequest, IngestMode
 from app.usecases import ingest_logs_usecase, ingest_usecase
 
 
+def build_ingest_logs_section() -> gr.Code:
+    refresh_logs = gr.Button("Refresh Logs")
+    logs = gr.Code(label="Ingestion Logs", language="markdown")
+
+    def load_logs() -> str:
+        log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
+        return format_ingest_logs(log_response.logs)
+
+    refresh_logs.click(load_logs, outputs=[logs])
+    return logs
+
+
 def build_ingest_tab() -> None:
     ingest_state = gr.State([])
 
@@ -27,10 +39,9 @@ def build_ingest_tab() -> None:
                 label="Mode",
             )
             start_button = gr.Button("Start Ingestion", variant="primary")
-            refresh_logs = gr.Button("Refresh Logs")
             status = gr.Markdown()
         with gr.Column(scale=2):
-            logs = gr.Code(label="Ingestion Logs", language="markdown")
+            logs = build_ingest_logs_section()
 
     def start_ingestion(
         files: list[str] | None,
@@ -50,13 +61,8 @@ def build_ingest_tab() -> None:
         log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
         return message, response.task_ids, format_ingest_logs(log_response.logs)
 
-    def load_logs() -> str:
-        log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
-        return format_ingest_logs(log_response.logs)
-
     start_button.click(
         start_ingestion,
         inputs=[uploads, mode, ingest_state],
         outputs=[status, ingest_state, logs],
     )
-    refresh_logs.click(load_logs, outputs=[logs])
