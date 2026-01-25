@@ -10,12 +10,20 @@ import gradio as gr
 import pandas as pd
 
 from app.gradio_utils import normalize_date_input
-from app.schemas import IngestLogRequest, IngestRequest, IngestMode
+from app.schemas import IngestLogRequest, IngestMode, IngestRequest
 from app.usecases import ingest_logs_usecase, ingest_usecase
+from ui.task_status import add_records, clear_finished, fetch_states
+from utils.file_utils import format_file_size
+from utils.time_utils import format_timestamp
+
+LOG_HEADERS = ["Path", "Size", "Status", "Error", "Reason", "Stage", "Attempt"]
+TASK_HEADERS = ["Path", "Task ID", "Action", "State", "Result"]
 
 
-def build_ingest_tab() -> None:
+def build_ingest_tab(session_tasks_state: gr.State) -> None:
     ingest_state = gr.State([])
+    folder_state = gr.State([])
+    selected_state = gr.State([])
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -72,10 +80,10 @@ def build_ingest_tab() -> None:
     with gr.Accordion("Task Panel", open=True):
         task_status = gr.Markdown("No tasks enqueued in this session yet.")
         task_table = gr.Dataframe(
-            headers=task_columns,
+            headers=TASK_HEADERS,
             datatype=["str", "str", "str", "str", "str"],
             row_count=0,
-            column_count=(len(task_columns), "fixed"),
+            column_count=(len(TASK_HEADERS), "fixed"),
             interactive=False,
         )
         with gr.Row():
@@ -112,17 +120,22 @@ def build_ingest_tab() -> None:
             combined.extend(folder_paths)
         if uploads_list:
             combined.extend(uploads_list)
-        return combined
+        # Dedupe while preserving order.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for path in combined:
+            if path in seen:
+                continue
+            seen.add(path)
+            ordered.append(path)
+        return ordered
 
     def update_selected_paths(
         uploads_list: list[str] | None,
         folder_paths: list[str] | None,
     ):
         combined = combine_paths(uploads_list, folder_paths)
-        if combined:
-            message = f"Selected {len(combined)} path(s)."
-        else:
-            message = "No paths selected."
+        message = f"Selected {len(combined)} path(s)." if combined else "No paths selected."
         return combined, build_selected_table(combined), message
 
     def pick_folder(uploads_list: list[str] | None):
@@ -171,7 +184,7 @@ def build_ingest_tab() -> None:
 
     def build_task_panel(records: list[dict[str, Any]]):
         if not records:
-            empty = pd.DataFrame(columns=task_columns)
+            empty = pd.DataFrame(columns=TASK_HEADERS)
             return "No tasks enqueued in this session yet.", empty
         ids = [record["task_id"] for record in records]
         states = fetch_states(ids)
@@ -189,25 +202,46 @@ def build_ingest_tab() -> None:
                     "Result": summarize_result(result),
                 }
             )
-        return f"{len(records)} task(s) queued in this session.", pd.DataFrame(rows)
+        return f"{len(records)} task(s) queued in this session.", pd.DataFrame(rows, columns=TASK_HEADERS)
 
     def start_ingestion(
         selected_paths: list[str],
-        mode: str,
-        state: list[str],
+        mode_value: str,
+        records: list[dict[str, Any]],
+        session_records: list[dict[str, Any]],
+        status_value: str,
+        path_value: str,
+        start_value: object,
+        end_value: object,
         progress: gr.Progress = gr.Progress(),
     ):
-        if not files:
-            return "No files selected.", state, ""
+        log_request = build_log_request(status_value, path_value, start_value, end_value)
+
+        if not selected_paths:
+            task_message, task_df = build_task_panel(records)
+            return "No files selected.", records, session_records, build_log_rows(log_request), task_message, task_df
+
         progress(0, desc="Queueing files")
-        request = IngestRequest(paths=selected_paths, mode=cast(IngestMode, mode))
+        request = IngestRequest(paths=selected_paths, mode=cast(IngestMode, mode_value))
         response = ingest_usecase.ingest(request)
         progress(1, desc="Queued")
+
         message = f"Queued {response.queued_count} files."
         if response.errors:
             message += "\n" + "\n".join(response.errors)
-        log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
-        return message, response.task_ids, format_ingest_logs(log_response.logs)
+
+        updated_records = add_records(records, selected_paths, response.task_ids, action=mode_value)
+        updated_session = add_records(session_records, selected_paths, response.task_ids, action=mode_value)
+        task_message, task_df = build_task_panel(updated_records)
+
+        return (
+            message,
+            updated_records,
+            updated_session,
+            build_log_rows(log_request),
+            task_message,
+            task_df,
+        )
 
     def load_logs(
         status_value: str,
@@ -218,18 +252,18 @@ def build_ingest_tab() -> None:
         log_request = build_log_request(status_value, path_value, start_value, end_value)
         return build_log_rows(log_request)
 
-    def refresh_task_panel(records: list[dict[str, Any]]):
-        task_message, task_table = build_task_panel(records)
-        return task_message, task_table, records
+    def refresh_task_panel(records: list[dict[str, Any]], session_records: list[dict[str, Any]]):
+        task_message, task_df = build_task_panel(records)
+        return task_message, task_df, records, session_records
 
-    def clear_finished_tasks(records: list[dict[str, Any]]):
-        if not records:
-            task_message, task_table = build_task_panel(records)
-            return task_message, task_table, records
-        states = fetch_states([record["task_id"] for record in records])
-        updated = clear_finished(records, states)
-        task_message, task_table = build_task_panel(updated)
-        return task_message, task_table, updated
+    def clear_finished_tasks(records: list[dict[str, Any]], session_records: list[dict[str, Any]]):
+        task_ids = {record["task_id"] for record in records}
+        task_ids.update(record["task_id"] for record in session_records)
+        states = fetch_states(task_ids)
+        updated_records = clear_finished(records, states)
+        updated_session = clear_finished(session_records, states)
+        task_message, task_df = build_task_panel(updated_records)
+        return task_message, task_df, updated_records, updated_session
 
     uploads.change(
         update_selected_paths,
@@ -243,8 +277,17 @@ def build_ingest_tab() -> None:
     )
     start_button.click(
         start_ingestion,
-        inputs=[uploads, mode, ingest_state],
-        outputs=[status, ingest_state, logs],
+        inputs=[
+            selected_state,
+            mode,
+            ingest_state,
+            session_tasks_state,
+            status_filter,
+            path_filter,
+            start_date,
+            end_date,
+        ],
+        outputs=[status, ingest_state, session_tasks_state, logs, task_status, task_table],
     )
     refresh_logs.click(
         load_logs,
@@ -253,11 +296,11 @@ def build_ingest_tab() -> None:
     )
     refresh_tasks.click(
         refresh_task_panel,
-        inputs=[ingest_state],
-        outputs=[task_status, task_table, ingest_state],
+        inputs=[ingest_state, session_tasks_state],
+        outputs=[task_status, task_table, ingest_state, session_tasks_state],
     )
     clear_tasks.click(
         clear_finished_tasks,
-        inputs=[ingest_state],
-        outputs=[task_status, task_table, ingest_state],
+        inputs=[ingest_state, session_tasks_state],
+        outputs=[task_status, task_table, ingest_state, session_tasks_state],
     )
