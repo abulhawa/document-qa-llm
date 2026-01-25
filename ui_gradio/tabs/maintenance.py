@@ -15,18 +15,15 @@ from app.usecases import (
 )
 
 
-def build_maintenance_tab() -> None:
-    duplicate_selection = gr.State(None)
-
-    with gr.Accordion("Index Viewer", open=True):
-        index_button = gr.Button("Load indexed files", variant="primary")
-        index_table = gr.Dataframe(
-            headers=["Path", "Filetype", "Modified", "Created"],
-            datatype=["str", "str", "str", "str"],
-            row_count=0,
-            column_count=(4, "fixed"),
-            interactive=False,
-        )
+def build_index_viewer_section() -> None:
+    index_button = gr.Button("Load indexed files", variant="primary")
+    index_table = gr.Dataframe(
+        headers=["Path", "Filetype", "Modified", "Created"],
+        datatype=["str", "str", "str", "str"],
+        row_count=0,
+        column_count=(4, "fixed"),
+        interactive=False,
+    )
 
     def load_indexed():
         files = index_viewer_usecase.fetch_indexed_files()
@@ -43,17 +40,20 @@ def build_maintenance_tab() -> None:
 
     index_button.click(load_indexed, outputs=[index_table])
 
-    with gr.Accordion("Duplicate Files", open=False):
-        dup_button = gr.Button("Load duplicates", variant="primary")
-        dup_table = gr.Dataframe(
-            headers=["Checksum", "Location", "Filetype", "Created", "Modified"],
-            datatype=["str", "str", "str", "str", "str"],
-            row_count=0,
-            column_count=(5, "fixed"),
-            interactive=False,
-        )
-        delete_button = gr.Button("Delete Selected")
-        dup_status = gr.Markdown()
+
+def build_duplicates_section() -> None:
+    duplicate_selection = gr.State(None)
+
+    dup_button = gr.Button("Load duplicates", variant="primary")
+    dup_table = gr.Dataframe(
+        headers=["Checksum", "Location", "Filetype", "Created", "Modified"],
+        datatype=["str", "str", "str", "str", "str"],
+        row_count=0,
+        column_count=(5, "fixed"),
+        interactive=False,
+    )
+    delete_button = gr.Button("Delete Selected")
+    dup_status = gr.Markdown()
 
     def load_duplicates():
         response = duplicates_usecase.lookup_duplicates()
@@ -91,17 +91,25 @@ def build_maintenance_tab() -> None:
     dup_table.select(select_duplicate, outputs=[duplicate_selection])
     delete_button.click(delete_selected, inputs=[duplicate_selection, dup_table], outputs=[dup_status])
 
-    with gr.Accordion("Watchlist & File Resync", open=False):
-        watchlist_prefix = gr.Textbox(label="Watchlist prefix")
-        add_watchlist = gr.Button("Add to Watchlist")
-        resync_button = gr.Button("Scan & Plan Resync")
-        watchlist_status = gr.Markdown()
+
+def build_watchlist_section() -> None:
+    watchlist_prefix = gr.Textbox(label="Watchlist prefix")
+    add_watchlist = gr.Button("Add to Watchlist")
+    watchlist_status = gr.Markdown()
 
     def add_prefix(prefix: str) -> str:
         if not prefix:
             return "Enter a prefix to add."
         added = watchlist_usecase.add_prefix(prefix)
         return "Prefix added." if added else "Prefix already exists or failed."
+
+    add_watchlist.click(add_prefix, inputs=[watchlist_prefix], outputs=[watchlist_status])
+
+
+def build_file_resync_section() -> None:
+    resync_prefix = gr.Textbox(label="File path prefix")
+    resync_button = gr.Button("Scan & Plan Resync")
+    resync_status = gr.Markdown()
 
     def scan_resync(prefix: str) -> str:
         if not prefix:
@@ -115,17 +123,17 @@ def build_maintenance_tab() -> None:
             f"Scanned: {meta.get('scanned_roots', [])}."
         )
 
-    add_watchlist.click(add_prefix, inputs=[watchlist_prefix], outputs=[watchlist_status])
-    resync_button.click(scan_resync, inputs=[watchlist_prefix], outputs=[watchlist_status])
+    resync_button.click(scan_resync, inputs=[resync_prefix], outputs=[resync_status])
 
-    with gr.Accordion("Admin & Worker", open=False):
-        queue_names = gr.Textbox(
-            label="Queues to purge",
-            value="ingest,celery",
-        )
-        clear_cache = gr.Button("Clear Cache")
-        purge_queues = gr.Button("Purge Queues")
-        admin_status = gr.Markdown()
+
+def build_admin_section() -> None:
+    queue_names = gr.Textbox(
+        label="Queues to purge",
+        value="ingest,celery",
+    )
+    clear_cache = gr.Button("Clear Cache")
+    purge_queues = gr.Button("Purge Queues")
+    admin_status = gr.Markdown()
 
     def clear_all():
         result = admin_usecase.clear_cache()
@@ -138,3 +146,21 @@ def build_maintenance_tab() -> None:
 
     clear_cache.click(clear_all, outputs=[admin_status])
     purge_queues.click(purge, inputs=[queue_names], outputs=[admin_status])
+
+
+def build_maintenance_tab() -> None:
+    with gr.Accordion("Index Viewer", open=True):
+        build_index_viewer_section()
+
+    with gr.Accordion("Duplicate Files", open=False):
+        build_duplicates_section()
+
+    with gr.Accordion("Watchlist & File Resync", open=False):
+        with gr.Row():
+            with gr.Column(scale=1):
+                build_watchlist_section()
+            with gr.Column(scale=1):
+                build_file_resync_section()
+
+    with gr.Accordion("Admin & Worker", open=False):
+        build_admin_section()
