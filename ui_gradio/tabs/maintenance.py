@@ -148,6 +148,10 @@ def _write_csv(df: pd.DataFrame) -> str | None:
     return tmp.name
 
 
+def _roots_to_df(roots: list[str]) -> pd.DataFrame:
+    return pd.DataFrame({"Sync roots": roots}) if roots else pd.DataFrame({"Sync roots": []})
+
+
 def build_maintenance_tab() -> None:
     duplicate_selection = gr.State(None)
     resync_roots = gr.State([DEFAULT_ROOT] if DEFAULT_ROOT else [])
@@ -270,6 +274,7 @@ def build_maintenance_tab() -> None:
 
         root_status = gr.Markdown()
         roots_table = gr.Dataframe(
+            value=_roots_to_df([DEFAULT_ROOT] if DEFAULT_ROOT else []),
             headers=["Sync roots"],
             datatype=["str"],
             row_count=0,
@@ -354,9 +359,6 @@ def build_maintenance_tab() -> None:
             interactive=False,
             label="Reason Map (Mismatch -> Apply Action)",
         )
-
-    def _roots_to_df(roots: list[str]) -> pd.DataFrame:
-        return pd.DataFrame({"Sync roots": roots}) if roots else pd.DataFrame({"Sync roots": []})
 
     def _add_root(roots: list[str], new_root: str):
         if not new_root:
