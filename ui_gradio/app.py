@@ -9,6 +9,7 @@ from ui_gradio.tabs.ingest import build_ingest_tab
 from ui_gradio.tabs.maintenance import build_maintenance_tab
 from ui_gradio.tabs.search import build_search_tab
 from ui_gradio.tabs.topics import build_topics_tab
+from ui_gradio.tabs.watchlist import build_watchlist_tab
 from ui_gradio.theme import build_theme
 
 
@@ -26,6 +27,8 @@ def create_app() -> gr.Blocks:
                 build_ingest_tab()
             with gr.Tab("Topic Discovery & Naming"):
                 build_topics_tab(cluster_state)
+            with gr.Tab("Watchlist"):
+                build_watchlist_tab()
             with gr.Tab("Knowledge Base Maintenance"):
                 build_maintenance_tab()
 
