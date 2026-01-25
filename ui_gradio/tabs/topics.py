@@ -218,19 +218,34 @@ def build_topics_tab(cluster_state: gr.State) -> None:
         )
 
     with gr.Row():
-        mixedness_range = gr.RangeSlider(
+        mixedness_min = gr.Slider(
             0.0,
             1.0,
-            value=(0.0, 1.0),
+            value=0.0,
             step=0.01,
-            label="Mixedness range",
+            label="Mixedness min",
         )
-        confidence_range = gr.RangeSlider(
+        mixedness_max = gr.Slider(
             0.0,
             1.0,
-            value=(0.0, 1.0),
+            value=1.0,
             step=0.01,
-            label="Confidence range",
+            label="Mixedness max",
+        )
+    with gr.Row():
+        confidence_min = gr.Slider(
+            0.0,
+            1.0,
+            value=0.0,
+            step=0.01,
+            label="Confidence min",
+        )
+        confidence_max = gr.Slider(
+            0.0,
+            1.0,
+            value=1.0,
+            step=0.01,
+            label="Confidence max",
         )
 
     review_search = gr.Textbox(label="Search proposed names / example paths")
@@ -291,8 +306,10 @@ def build_topics_tab(cluster_state: gr.State) -> None:
         selected_status: list[str],
         mixedness_threshold_value: float,
         confidence_threshold_value: float,
-        mixedness_range_value: tuple[float, float],
-        confidence_range_value: tuple[float, float],
+        mixedness_min_value: float,
+        mixedness_max_value: float,
+        confidence_min_value: float,
+        confidence_max_value: float,
         needs_review_only_value: bool,
         search_query: str,
     ) -> tuple:
@@ -308,6 +325,14 @@ def build_topics_tab(cluster_state: gr.State) -> None:
             )
 
         df = pd.DataFrame(rows)
+        mixedness_range_value = (
+            min(mixedness_min_value, mixedness_max_value),
+            max(mixedness_min_value, mixedness_max_value),
+        )
+        confidence_range_value = (
+            min(confidence_min_value, confidence_max_value),
+            max(confidence_min_value, confidence_max_value),
+        )
         df["needs_review"] = df.apply(
             lambda row: topic_discovery_review_usecase.needs_review(
                 row,
@@ -508,8 +533,10 @@ def build_topics_tab(cluster_state: gr.State) -> None:
         review_statuses,
         mixedness_threshold,
         confidence_threshold,
-        mixedness_range,
-        confidence_range,
+        mixedness_min,
+        mixedness_max,
+        confidence_min,
+        confidence_max,
         needs_review_only,
         review_search,
     ]

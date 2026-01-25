@@ -59,7 +59,7 @@ def build_search_tab() -> None:
             with gr.Accordion("Full-text index health", open=False):
                 missing_button = gr.Button("Check for missing full-text")
                 missing_status = gr.Markdown()
-                missing_list = gr.Code(label="Missing paths", language="text")
+                missing_list = gr.Code(label="Missing paths", language="markdown")
                 reingest_button = gr.Button("Rebuild full-text (reingest)")
         with gr.Column(scale=2):
             with gr.Row():
