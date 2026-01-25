@@ -9,11 +9,10 @@ import gradio as gr
 from app.gradio_utils import format_ingest_logs
 from app.schemas import IngestLogRequest, IngestRequest, IngestMode
 from app.usecases import ingest_logs_usecase, ingest_usecase
+from ui.task_status import add_records
 
 
-def build_ingest_tab() -> None:
-    ingest_state = gr.State([])
-
+def build_ingest_tab(session_tasks_state: gr.State) -> None:
     with gr.Row():
         with gr.Column(scale=1):
             uploads = gr.File(
@@ -35,11 +34,11 @@ def build_ingest_tab() -> None:
     def start_ingestion(
         files: list[str] | None,
         mode: str,
-        state: list[str],
+        records: list[dict],
         progress: gr.Progress = gr.Progress(),
     ):
         if not files:
-            return "No files selected.", state, ""
+            return "No files selected.", records, ""
         progress(0, desc="Queueing files")
         request = IngestRequest(paths=files, mode=cast(IngestMode, mode))
         response = ingest_usecase.ingest(request)
@@ -48,7 +47,8 @@ def build_ingest_tab() -> None:
         if response.errors:
             message += "\n" + "\n".join(response.errors)
         log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
-        return message, response.task_ids, format_ingest_logs(log_response.logs)
+        updated_records = add_records(records, files, response.task_ids, action=mode)
+        return message, updated_records, format_ingest_logs(log_response.logs)
 
     def load_logs() -> str:
         log_response = ingest_logs_usecase.fetch_ingest_logs(IngestLogRequest())
@@ -56,7 +56,7 @@ def build_ingest_tab() -> None:
 
     start_button.click(
         start_ingestion,
-        inputs=[uploads, mode, ingest_state],
-        outputs=[status, ingest_state, logs],
+        inputs=[uploads, mode, session_tasks_state],
+        outputs=[status, session_tasks_state, logs],
     )
     refresh_logs.click(load_logs, outputs=[logs])
