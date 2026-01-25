@@ -37,10 +37,10 @@ def create_app() -> gr.Blocks:
                 build_watchlist_tab()
             with gr.Tab("Knowledge Base Maintenance"):
                 build_maintenance_tab()
-            with gr.Tab("Tools - Smart File Sorter"):
-                build_tools_file_sorter_tab()
             with gr.Tab("Task Administration"):
                 build_running_tasks_tab(session_tasks_state)
+            with gr.Tab("Tools - Smart File Sorter"):
+                build_tools_file_sorter_tab()
 
     return demo
 
