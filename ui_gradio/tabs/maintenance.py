@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import math
-
 import os
+import subprocess
 import tempfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -954,6 +955,8 @@ def build_file_resync_section(*, use_accordion: bool = True) -> None:
             with gr.Column(scale=1):
                 add_root_button = gr.Button("Add root", variant="secondary")
             with gr.Column(scale=1):
+                pick_root_button = gr.Button("Select Folder Root", variant="secondary")
+            with gr.Column(scale=1):
                 clear_roots_button = gr.Button("Clear roots", variant="secondary")
 
         root_status = gr.Markdown()
@@ -1055,6 +1058,29 @@ def build_file_resync_section(*, use_accordion: bool = True) -> None:
     def _clear_roots():
         return [], _roots_to_df([]), "Cleared all roots."
 
+    def _run_root_picker() -> list[str]:
+        try:
+            result = subprocess.run(
+                ["python", "file_picker.py", "root"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except Exception:
+            return []
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return []
+
+    def _pick_roots(roots: list[str]):
+        picked = _run_root_picker()
+        if not picked:
+            return roots, _roots_to_df(roots), "No folder roots selected."
+        merged = list(dict.fromkeys(roots + picked))
+        message = f"Added {len(merged) - len(roots)} root(s) from picker."
+        return merged, _roots_to_df(merged), message
+
     def _scan_plan(roots: list[str], raw_exts: str, retire_replaced_flag: bool, buckets: list[str]):
         if not roots:
             empty_df = pd.DataFrame()
@@ -1140,6 +1166,11 @@ def build_file_resync_section(*, use_accordion: bool = True) -> None:
     add_root_button.click(
         _add_root,
         inputs=[resync_roots, root_input],
+        outputs=[resync_roots, roots_table, root_status],
+    )
+    pick_root_button.click(
+        _pick_roots,
+        inputs=[resync_roots],
         outputs=[resync_roots, roots_table, root_status],
     )
     clear_roots_button.click(
