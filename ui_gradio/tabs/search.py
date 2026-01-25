@@ -16,6 +16,7 @@ from app.gradio_utils import (
 )
 from app.schemas import IngestRequest, SearchRequest
 from app.usecases import ingest_usecase, search_usecase
+from utils.file_utils import open_file_local, show_in_folder
 
 
 RESULT_HEADERS = ["Filename", "Path", "Score", "Date"]
@@ -26,6 +27,7 @@ def build_search_tab() -> None:
     hits_state = gr.State([])
     missing_state = gr.State([])
     total_pages_state = gr.State(1)
+    selected_index_state = gr.State(None)
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -71,6 +73,10 @@ def build_search_tab() -> None:
                 interactive=False,
                 label="Results",
             )
+            with gr.Row():
+                open_selected_button = gr.Button("Open selected", variant="primary")
+                show_folder_button = gr.Button("Show in folder")
+            open_status = gr.Markdown()
             snippet = gr.Markdown(label="Selected document")
 
     def run_search(
@@ -115,17 +121,53 @@ def build_search_tab() -> None:
             response.hits,
             summary_text,
             "",
+            "",
             total_pages,
             safe_page,
         )
 
+    def _get_hit_row_index(evt: gr.SelectData) -> int | None:
+        row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+        if row_index is None:
+            return None
+        return int(row_index)
+
+    def _extract_hit_path(hit) -> tuple[str, str]:
+        if isinstance(hit, dict):
+            path = hit.get("path") or ""
+            filename = hit.get("filename") or path
+            return path, filename
+        path = getattr(hit, "path", "") or ""
+        filename = getattr(hit, "filename", "") or path
+        return path, filename
+
     def show_snippet(evt: gr.SelectData, hits):
         if not hits:
-            return ""
-        row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+            return "", None
+        row_index = _get_hit_row_index(evt)
         if row_index is None or row_index >= len(hits):
-            return ""
-        return render_search_snippet(hits[row_index])
+            return "", None
+        return render_search_snippet(hits[row_index]), row_index
+
+    def open_selected(hits, selected_index: int | None, show_folder: bool = False) -> str:
+        if not hits:
+            return "No results to open."
+        if selected_index is None:
+            return "Select a row to open."
+        if selected_index < 0 or selected_index >= len(hits):
+            return "Selected row is out of range."
+        path, filename = _extract_hit_path(hits[selected_index])
+        if not path:
+            return "Selected row has no file path."
+        try:
+            if show_folder:
+                show_in_folder(path)
+                return f"Opened folder for {filename}."
+            open_file_local(path)
+            return f"Opened {filename}."
+        except Exception as exc:  # noqa: BLE001
+            action = "show folder" if show_folder else "open"
+            return f"Failed to {action} {filename}: {exc}"
 
     def refresh_indices() -> str:
         refreshed = search_usecase.refresh_search_index()
@@ -173,7 +215,15 @@ def build_search_tab() -> None:
             created_to,
             filetypes,
         ],
-        outputs=[results, hits_state, summary, snippet, total_pages_state, page_number],
+        outputs=[
+            results,
+            hits_state,
+            summary,
+            snippet,
+            open_status,
+            total_pages_state,
+            page_number,
+        ],
     )
     query.submit(
         run_search,
@@ -189,9 +239,29 @@ def build_search_tab() -> None:
             created_to,
             filetypes,
         ],
-        outputs=[results, hits_state, summary, snippet, total_pages_state, page_number],
+        outputs=[
+            results,
+            hits_state,
+            summary,
+            snippet,
+            open_status,
+            total_pages_state,
+            page_number,
+        ],
     )
-    results.select(show_snippet, inputs=[hits_state], outputs=[snippet])
+    results.select(
+        show_snippet, inputs=[hits_state], outputs=[snippet, selected_index_state]
+    )
+    open_selected_button.click(
+        lambda hits, selected_index: open_selected(hits, selected_index, False),
+        inputs=[hits_state, selected_index_state],
+        outputs=[open_status],
+    )
+    show_folder_button.click(
+        lambda hits, selected_index: open_selected(hits, selected_index, True),
+        inputs=[hits_state, selected_index_state],
+        outputs=[open_status],
+    )
     refresh_button.click(refresh_indices, outputs=[refresh_status])
     missing_button.click(
         find_missing_fulltext,
@@ -216,7 +286,15 @@ def build_search_tab() -> None:
             created_to,
             filetypes,
         ],
-        outputs=[results, hits_state, summary, snippet, total_pages_state, page_number],
+        outputs=[
+            results,
+            hits_state,
+            summary,
+            snippet,
+            open_status,
+            total_pages_state,
+            page_number,
+        ],
     )
     prev_button.click(prev_page, inputs=[page_number], outputs=[page_number]).then(
         run_search,
@@ -232,5 +310,13 @@ def build_search_tab() -> None:
             created_to,
             filetypes,
         ],
-        outputs=[results, hits_state, summary, snippet, total_pages_state, page_number],
+        outputs=[
+            results,
+            hits_state,
+            summary,
+            snippet,
+            open_status,
+            total_pages_state,
+            page_number,
+        ],
     )
