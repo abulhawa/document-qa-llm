@@ -13,6 +13,16 @@ from ui.task_status import clear_finished, fetch_states
 
 FAILED_WINDOWS = {"1h": 1, "6h": 6, "24h": 24, "7d": 24 * 7}
 SESSION_HEADERS = ["Path", "Action", "Task ID", "State", "Result"]
+SESSION_RESULT_PREVIEW = 160
+
+
+def _safe_preview(value: object) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        return json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def _format_metrics(overview: dict, fails: int | None, window_label: str, queue_depth: int):
@@ -53,13 +63,14 @@ def _format_session_rows(records: list[dict], states: dict) -> pd.DataFrame:
                 for key in ("status", "checksum", "n_chunks", "path")
                 if key in result
             }
+        preview = _safe_preview(result)[:SESSION_RESULT_PREVIEW]
         rows.append(
             {
                 "Path": record.get("path", ""),
                 "Action": record.get("action"),
                 "Task ID": record["task_id"],
                 "State": state_info.get("state", "UNKNOWN"),
-                "Result": json.dumps(result, ensure_ascii=False)[:160] if result else "",
+                "Result": preview,
             }
         )
     return pd.DataFrame(rows, columns=SESSION_HEADERS)
