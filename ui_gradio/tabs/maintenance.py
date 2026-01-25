@@ -6,6 +6,7 @@ import math
 
 import os
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Iterable, List
 
@@ -175,31 +176,10 @@ def _write_csv(df: pd.DataFrame) -> str | None:
 def _roots_to_df(roots: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"Sync roots": roots}) if roots else pd.DataFrame({"Sync roots": []})
 
-# ----------------------------
-# Worker emergency env config
-# ----------------------------
-BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-QUEUE_NAMES = os.getenv("CELERY_QUEUES", "ingest,celery").split(",")
-DEFAULT_TASK = os.getenv("CELERY_DEFAULT_TASK", "tasks.ingest_document")
-COMPOSE_DIR = Path(os.getenv("COMPOSE_DIR", Path.cwd()))
-COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT", "document_qa")
-CELERY_SERVICE = os.getenv("CELERY_SERVICE", "celery")
 
-
-def build_maintenance_tab() -> None:
-    duplicate_selection = gr.State(None)
-    resync_roots = gr.State([DEFAULT_ROOT] if DEFAULT_ROOT else [])
-    resync_plan = gr.State(None)
-    resync_scan_meta = gr.State({})
-    resync_rows = gr.State([])
-    resync_filtered = gr.State(pd.DataFrame())
-
-    celery_app = Celery(broker=BROKER_URL, backend=RESULT_BACKEND)
-    broker_client = redis.Redis.from_url(BROKER_URL, decode_responses=True)
-    result_client = redis.Redis.from_url(RESULT_BACKEND, decode_responses=True)
-
-    with gr.Accordion("Index Viewer", open=True):
+def build_index_viewer_section(*, use_accordion: bool = True) -> None:
+    wrapper = gr.Accordion("Index Viewer", open=True) if use_accordion else nullcontext()
+    with wrapper:
         files_state = gr.State([])
         page_state = gr.State(0)
         total_pages_state = gr.State(1)
@@ -856,7 +836,11 @@ def build_maintenance_tab() -> None:
         outputs=[task_records_state, task_table, action_status],
     )
 
-    with gr.Accordion("Duplicate Files", open=False):
+
+def build_duplicates_section(*, use_accordion: bool = True) -> None:
+    duplicate_selection = gr.State(None)
+    wrapper = gr.Accordion("Duplicate Files", open=False) if use_accordion else nullcontext()
+    with wrapper:
         dup_button = gr.Button("Load duplicates", variant="primary")
         dup_table = gr.Dataframe(
             headers=["Checksum", "Location", "Filetype", "Created", "Modified"],
@@ -904,7 +888,10 @@ def build_maintenance_tab() -> None:
     dup_table.select(select_duplicate, outputs=[duplicate_selection])
     delete_button.click(delete_selected, inputs=[duplicate_selection, dup_table], outputs=[dup_status])
 
-    with gr.Accordion("Watchlist", open=False):
+
+def build_watchlist_section(*, use_accordion: bool = True) -> None:
+    wrapper = gr.Accordion("Watchlist", open=False) if use_accordion else nullcontext()
+    with wrapper:
         watchlist_prefix = gr.Textbox(label="Watchlist prefix")
         add_watchlist = gr.Button("Add to Watchlist")
         watchlist_status = gr.Markdown()
@@ -917,7 +904,15 @@ def build_maintenance_tab() -> None:
 
     add_watchlist.click(add_prefix, inputs=[watchlist_prefix], outputs=[watchlist_status])
 
-    with gr.Accordion("File Resync", open=False):
+
+def build_file_resync_section(*, use_accordion: bool = True) -> None:
+    resync_roots = gr.State([DEFAULT_ROOT] if DEFAULT_ROOT else [])
+    resync_plan = gr.State(None)
+    resync_scan_meta = gr.State({})
+    resync_rows = gr.State([])
+    resync_filtered = gr.State(pd.DataFrame())
+    wrapper = gr.Accordion("File Resync", open=False) if use_accordion else nullcontext()
+    with wrapper:
         gr.Markdown(
             """
             **Phase A: Scan & Plan** (dry run only)
@@ -1171,6 +1166,28 @@ def build_maintenance_tab() -> None:
         ],
         outputs=[apply_summary, apply_result],
     )
+
+# ----------------------------
+# Worker emergency env config
+# ----------------------------
+BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+QUEUE_NAMES = os.getenv("CELERY_QUEUES", "ingest,celery").split(",")
+DEFAULT_TASK = os.getenv("CELERY_DEFAULT_TASK", "tasks.ingest_document")
+COMPOSE_DIR = Path(os.getenv("COMPOSE_DIR", Path.cwd()))
+COMPOSE_PROJECT = os.getenv("COMPOSE_PROJECT", "document_qa")
+CELERY_SERVICE = os.getenv("CELERY_SERVICE", "celery")
+
+
+def build_maintenance_tab() -> None:
+    build_index_viewer_section()
+    build_duplicates_section()
+    build_watchlist_section()
+    build_file_resync_section()
+
+    celery_app = Celery(broker=BROKER_URL, backend=RESULT_BACKEND)
+    broker_client = redis.Redis.from_url(BROKER_URL, decode_responses=True)
+    result_client = redis.Redis.from_url(RESULT_BACKEND, decode_responses=True)
 
     with gr.Accordion("Admin & Worker", open=False):
         queue_names = gr.Textbox(
