@@ -20,6 +20,86 @@ LOG_HEADERS = ["Path", "Size", "Status", "Error", "Reason", "Stage", "Attempt"]
 TASK_HEADERS = ["Path", "Task ID", "Action", "State", "Result"]
 
 
+def _build_log_rows(request: IngestLogRequest) -> pd.DataFrame:
+    log_response = ingest_logs_usecase.fetch_ingest_logs(request)
+    rows = [
+        {
+            "Path": log.path,
+            "Size": format_file_size(log.bytes or 0),
+            "Status": log.status,
+            "Error": log.error_type,
+            "Reason": (log.reason or "")[:100],
+            "Stage": log.stage,
+            "Attempt": format_timestamp(log.attempt_at) if log.attempt_at else "",
+        }
+        for log in log_response.logs
+    ]
+    return pd.DataFrame(rows, columns=LOG_HEADERS)
+
+
+def _build_log_request(
+    status_value: str,
+    path_value: str,
+    start_value: object,
+    end_value: object,
+) -> IngestLogRequest:
+    status_param = None if status_value == "All" else status_value
+    return IngestLogRequest(
+        status=status_param,
+        path_query=path_value or None,
+        start_date=normalize_date_input(start_value),
+        end_date=normalize_date_input(end_value),
+        size=200,
+    )
+
+
+def build_ingest_logs_section() -> None:
+    """Build a logs-only ingestion section used by the storage/index hub."""
+    with gr.Row():
+        with gr.Column(scale=1):
+            refresh_logs = gr.Button("Refresh Logs")
+            gr.Markdown("### Log filters")
+            path_filter = gr.Textbox(label="Path contains", value="")
+            status_filter = gr.Dropdown(
+                choices=[
+                    "All",
+                    "Failed",
+                    "Success",
+                    "Already indexed",
+                    "Duplicate & Indexed",
+                    "No valid content found",
+                ],
+                value="All",
+                label="Status",
+            )
+            start_date = gr.DateTime(label="Start date", include_time=False)
+            end_date = gr.DateTime(label="End date", include_time=False)
+        with gr.Column(scale=2):
+            logs = gr.Dataframe(
+                headers=LOG_HEADERS,
+                datatype=["str", "str", "str", "str", "str", "str", "str"],
+                row_count=0,
+                column_count=(len(LOG_HEADERS), "fixed"),
+                interactive=False,
+                label="Ingestion Logs",
+            )
+
+    def load_logs(
+        status_value: str,
+        path_value: str,
+        start_value: object,
+        end_value: object,
+    ) -> pd.DataFrame:
+        log_request = _build_log_request(status_value, path_value, start_value, end_value)
+        return _build_log_rows(log_request)
+
+    refresh_logs.click(
+        load_logs,
+        inputs=[status_filter, path_filter, start_date, end_date],
+        outputs=[logs],
+    )
+
+
 def build_ingest_tab(session_tasks_state: gr.State) -> None:
     ingest_state = gr.State([])
     folder_state = gr.State([])
@@ -143,37 +223,6 @@ def build_ingest_tab(session_tasks_state: gr.State) -> None:
         combined, table, message = update_selected_paths(uploads_list, folder_paths)
         return folder_paths, combined, table, message
 
-    def build_log_rows(request: IngestLogRequest) -> pd.DataFrame:
-        log_response = ingest_logs_usecase.fetch_ingest_logs(request)
-        rows = [
-            {
-                "Path": log.path,
-                "Size": format_file_size(log.bytes or 0),
-                "Status": log.status,
-                "Error": log.error_type,
-                "Reason": (log.reason or "")[:100],
-                "Stage": log.stage,
-                "Attempt": format_timestamp(log.attempt_at) if log.attempt_at else "",
-            }
-            for log in log_response.logs
-        ]
-        return pd.DataFrame(rows, columns=LOG_HEADERS)
-
-    def build_log_request(
-        status_value: str,
-        path_value: str,
-        start_value: object,
-        end_value: object,
-    ) -> IngestLogRequest:
-        status_param = None if status_value == "All" else status_value
-        return IngestLogRequest(
-            status=status_param,
-            path_query=path_value or None,
-            start_date=normalize_date_input(start_value),
-            end_date=normalize_date_input(end_value),
-            size=200,
-        )
-
     def summarize_result(result: Any) -> str:
         if not isinstance(result, dict) or not result:
             return ""
@@ -215,11 +264,18 @@ def build_ingest_tab(session_tasks_state: gr.State) -> None:
         end_value: object,
         progress: gr.Progress = gr.Progress(),
     ):
-        log_request = build_log_request(status_value, path_value, start_value, end_value)
+        log_request = _build_log_request(status_value, path_value, start_value, end_value)
 
         if not selected_paths:
             task_message, task_df = build_task_panel(records)
-            return "No files selected.", records, session_records, build_log_rows(log_request), task_message, task_df
+            return (
+                "No files selected.",
+                records,
+                session_records,
+                _build_log_rows(log_request),
+                task_message,
+                task_df,
+            )
 
         progress(0, desc="Queueing files")
         request = IngestRequest(paths=selected_paths, mode=cast(IngestMode, mode_value))
@@ -238,7 +294,7 @@ def build_ingest_tab(session_tasks_state: gr.State) -> None:
             message,
             updated_records,
             updated_session,
-            build_log_rows(log_request),
+            _build_log_rows(log_request),
             task_message,
             task_df,
         )
@@ -249,8 +305,8 @@ def build_ingest_tab(session_tasks_state: gr.State) -> None:
         start_value: object,
         end_value: object,
     ) -> pd.DataFrame:
-        log_request = build_log_request(status_value, path_value, start_value, end_value)
-        return build_log_rows(log_request)
+        log_request = _build_log_request(status_value, path_value, start_value, end_value)
+        return _build_log_rows(log_request)
 
     def refresh_task_panel(records: list[dict[str, Any]], session_records: list[dict[str, Any]]):
         task_message, task_df = build_task_panel(records)
