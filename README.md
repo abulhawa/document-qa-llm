@@ -70,6 +70,37 @@ The system is built from modular, testable components:
 
 ---
 
+## 🧩 App Components & UI Pages
+
+### Streamlit App Pages
+
+- **Ask Your Documents (Chat)**: local LLM chat or completion mode with model loading, temperature, cache toggle, and cited sources.  
+- **Ingest Documents**: file/folder picker that queues ingestion jobs with progress feedback and task panel.  
+- **Storage & Index Hub** (tabbed):  
+  - **Search** with filters, sorting, index refresh, and reingest for missing files.  
+  - **File Index Viewer** with filtering, chunk counts, open/show file helpers, and reingest/re-embed/delete actions.  
+  - **Ingestion Logs** for recent indexing activity.  
+  - **File Path Re-Sync** to reconcile on-disk paths with the index.  
+  - **Duplicate Files** manager.  
+  - **Watchlist** for tracking folders, scanning for new files, and batch ingestion.  
+- **Topic Discovery**: overview, naming, review, and admin tabs for clustering/naming document topics.  
+- **Tools Hub**: Smart File Sorter utility.  
+- **Admin Hub**: Running Tasks monitor (including revoke/clear) and Worker Emergency controls for queues and Celery.  
+
+### Gradio Workspace Tabs
+
+- Chat Assistant  
+- Intelligent Search  
+- Storage & Index  
+- Ingestion Pipeline  
+- Topic Discovery & Naming  
+- Watchlist  
+- Knowledge Base Maintenance  
+- Task Administration  
+- Tools – Smart File Sorter  
+
+---
+
 ## 🧪 Usage Guide
 
 ### 📥 Ingest Documents
