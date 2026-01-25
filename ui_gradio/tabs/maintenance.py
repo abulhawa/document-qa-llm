@@ -109,21 +109,27 @@ def build_maintenance_tab() -> None:
     def _build_index_rows(files: list[dict]) -> pd.DataFrame:
         rows = []
         for file_meta in files:
+            modified_at = file_meta.get("modified_at")
+            created_at = file_meta.get("created_at")
+            size_bytes = file_meta.get("bytes", 0)
             rows.append(
                 {
                     "Filename": file_meta.get("filename", ""),
                     "Path": file_meta.get("path", ""),
                     "Filetype": file_meta.get("filetype", ""),
-                    "Modified": format_timestamp_ampm(file_meta.get("modified_at") or ""),
-                    "Created": format_timestamp_ampm(file_meta.get("created_at") or ""),
+                    "Modified": format_timestamp_ampm(modified_at or ""),
+                    "Created": format_timestamp_ampm(created_at or ""),
                     "Indexed": format_timestamp(file_meta.get("indexed_at") or ""),
-                    "Size": format_file_size(file_meta.get("bytes", 0)),
+                    "Size": format_file_size(size_bytes),
                     "OpenSearch Chunks": file_meta.get("num_chunks", 0),
                     "Qdrant Chunks": file_meta.get("qdrant_count", 0),
                     "Checksum": file_meta.get("checksum", ""),
+                    "Modified Raw": modified_at,
+                    "Created Raw": created_at,
+                    "Size Bytes": size_bytes,
                 }
             )
-        return pd.DataFrame(rows, columns=INDEX_COLUMNS)
+        return pd.DataFrame(rows)
 
     def _apply_index_filters(
         files: list[dict],
@@ -161,8 +167,18 @@ def build_maintenance_tab() -> None:
 
         if sort_by not in df.columns:
             sort_by = "Modified"
+        sort_key = sort_by
+        if sort_by == "Modified":
+            df["_sort_key"] = pd.to_datetime(df["Modified Raw"], errors="coerce")
+            sort_key = "_sort_key"
+        elif sort_by == "Created":
+            df["_sort_key"] = pd.to_datetime(df["Created Raw"], errors="coerce")
+            sort_key = "_sort_key"
+        elif sort_by == "Size":
+            df["_sort_key"] = pd.to_numeric(df["Size Bytes"], errors="coerce")
+            sort_key = "_sort_key"
         df = df.sort_values(
-            sort_by,
+            sort_key,
             ascending=(sort_order == "Ascending"),
             na_position="last",
         )
@@ -173,7 +189,7 @@ def build_maintenance_tab() -> None:
         page_index = max(0, min(page_index, total_pages - 1))
         start = page_index * page_size_value
         end = start + page_size_value
-        page_df = df.iloc[start:end].reset_index(drop=True)
+        page_df = df.iloc[start:end].reset_index(drop=True)[INDEX_COLUMNS]
         info = f"Page {page_index + 1} of {total_pages} • {total_rows} file(s)"
         return page_df, info, page_index, total_pages, qdrant_memo
 
