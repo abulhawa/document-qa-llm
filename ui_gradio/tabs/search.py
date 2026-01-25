@@ -29,55 +29,57 @@ def build_search_tab() -> None:
     total_pages_state = gr.State(1)
     selected_index_state = gr.State(None)
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            query = gr.Textbox(label="Query", placeholder="Search documents...")
-            path_contains = gr.Textbox(label="Path contains")
-            sort = gr.Dropdown(
-                choices=["relevance", "modified"],
-                value="relevance",
-                label="Sort",
-            )
-            page_size = gr.Dropdown(
-                choices=PAGE_SIZE_OPTIONS,
-                value=PAGE_SIZE_OPTIONS[1],
-                label="Page size",
-            )
-            page_number = gr.Number(label="Page", precision=0, value=1, minimum=1)
-            date_from = gr.DateTime(label="Modified from", include_time=False)
-            date_to = gr.DateTime(label="Modified to", include_time=False)
-            created_from = gr.DateTime(label="Created from", include_time=False)
-            created_to = gr.DateTime(label="Created to", include_time=False)
-            filetypes = gr.CheckboxGroup(
-                choices=list(DEFAULT_FILETYPES),
-                label="File types",
-            )
-            run_button = gr.Button("Search", variant="primary")
-            refresh_button = gr.Button("Refresh indices and cache")
-            refresh_status = gr.Markdown()
-            summary = gr.Markdown()
-            with gr.Accordion("Full-text index health", open=False):
-                missing_button = gr.Button("Check for missing full-text")
-                missing_status = gr.Markdown()
-                missing_list = gr.Code(label="Missing paths", language="markdown")
-                reingest_button = gr.Button("Rebuild full-text (reingest)")
+    with gr.Row(equal_height=True):
+        with gr.Column(scale=1, min_width=320):
+            with gr.Group(elem_classes=["card"]):
+                query = gr.Textbox(label="Query", placeholder="Search documents...")
+                path_contains = gr.Textbox(label="Path contains")
+                sort = gr.Dropdown(
+                    choices=["relevance", "modified"],
+                    value="relevance",
+                    label="Sort",
+                )
+                page_size = gr.Dropdown(
+                    choices=PAGE_SIZE_OPTIONS,
+                    value=PAGE_SIZE_OPTIONS[1],
+                    label="Page size",
+                )
+                page_number = gr.Number(label="Page", precision=0, value=1, minimum=1)
+                date_from = gr.DateTime(label="Modified from", include_time=False)
+                date_to = gr.DateTime(label="Modified to", include_time=False)
+                created_from = gr.DateTime(label="Created from", include_time=False)
+                created_to = gr.DateTime(label="Created to", include_time=False)
+                filetypes = gr.CheckboxGroup(
+                    choices=list(DEFAULT_FILETYPES),
+                    label="File types",
+                )
+                run_button = gr.Button("Search", variant="primary")
+                refresh_button = gr.Button("Refresh indices and cache")
+                refresh_status = gr.Markdown()
+                summary = gr.Markdown()
+                with gr.Accordion("Full-text index health", open=False):
+                    missing_button = gr.Button("Check for missing full-text")
+                    missing_status = gr.Markdown()
+                    missing_list = gr.Code(label="Missing paths", language="markdown")
+                    reingest_button = gr.Button("Rebuild full-text (reingest)")
         with gr.Column(scale=2):
-            with gr.Row():
-                prev_button = gr.Button("Previous")
-                next_button = gr.Button("Next")
-            results = gr.Dataframe(
-                headers=RESULT_HEADERS,
-                datatype=["str", "str", "number", "str"],
-                row_count=0,
-                column_count=(len(RESULT_HEADERS), "fixed"),
-                interactive=False,
-                label="Results",
-            )
-            with gr.Row():
-                open_selected_button = gr.Button("Open selected", variant="primary")
-                show_folder_button = gr.Button("Show in folder")
-            open_status = gr.Markdown()
-            snippet = gr.Markdown(label="Selected document")
+            with gr.Group(elem_classes=["card"]):
+                with gr.Row():
+                    prev_button = gr.Button("Previous")
+                    next_button = gr.Button("Next")
+                results = gr.Dataframe(
+                    headers=RESULT_HEADERS,
+                    datatype=["str", "str", "number", "str"],
+                    row_count=0,
+                    column_count=(len(RESULT_HEADERS), "fixed"),
+                    interactive=False,
+                    label="Results",
+                )
+                with gr.Row():
+                    open_selected_button = gr.Button("Open selected", variant="primary")
+                    show_folder_button = gr.Button("Show in folder")
+                open_status = gr.Markdown()
+                snippet = gr.Markdown(label="Selected document")
 
     def run_search(
         query_value: str,

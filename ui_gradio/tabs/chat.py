@@ -48,75 +48,81 @@ def build_chat_tab() -> None:
     llm_models_state = gr.State(llm_models)
     loaded_llm_model_state = gr.State(loaded_llm_model)
 
-    with gr.Accordion("🧠 LLM Settings", open=True):
-        llm_status_md = gr.Markdown(_format_llm_status(llm_status))
-        model_status_md = gr.Markdown(_format_model_status(llm_status))
-        model_feedback_md = gr.Markdown()
+    with gr.Row(equal_height=True):
+        with gr.Column(min_width=320, scale=1):
+            with gr.Group(elem_classes=["card"]):
+                with gr.Accordion("🧠 LLM Settings", open=False):
+                    llm_status_md = gr.Markdown(_format_llm_status(llm_status))
+                    model_status_md = gr.Markdown(_format_model_status(llm_status))
+                    model_feedback_md = gr.Markdown()
 
-        model = gr.Dropdown(
-            choices=llm_models,
-            value=loaded_llm_model if loaded_llm_model in llm_models else None,
-            allow_custom_value=False,
-            label="Choose a model to load",
-        )
-        with gr.Row():
-            load_button = gr.Button("📦 Load Model", variant="primary")
-            refresh_button = gr.Button("🔄 Refresh")
+                    model = gr.Dropdown(
+                        choices=llm_models,
+                        value=loaded_llm_model if loaded_llm_model in llm_models else None,
+                        allow_custom_value=False,
+                        label="Choose a model to load",
+                    )
+                    with gr.Row():
+                        load_button = gr.Button("📦 Load Model", variant="primary")
+                        refresh_button = gr.Button("🔄 Refresh")
 
-        gr.Markdown("---")
-        mode = gr.Radio(
-            ["completion", "chat"],
-            value="completion",
-            label="LLM Mode",
-            interactive=bool(llm_status.get("active")),
-        )
-        temperature = gr.Slider(
-            0.0,
-            1.5,
-            value=0.7,
-            step=0.05,
-            label="Temperature",
-            interactive=bool(llm_status.get("active")),
-        )
-        use_cache = gr.Checkbox(
-            label="Use LLM cache",
-            value=True,
-            interactive=bool(llm_status.get("active")),
-        )
+                    mode = gr.Radio(
+                        ["completion", "chat"],
+                        value="completion",
+                        label="LLM Mode",
+                        interactive=bool(llm_status.get("active")),
+                    )
+                    temperature = gr.Slider(
+                        0.0,
+                        1.5,
+                        value=0.7,
+                        step=0.05,
+                        label="Temperature",
+                        interactive=bool(llm_status.get("active")),
+                    )
+                    use_cache = gr.Checkbox(
+                        label="Use LLM cache",
+                        value=True,
+                        interactive=bool(llm_status.get("active")),
+                    )
+        with gr.Column(scale=3):
+            with gr.Group(elem_classes=["card"]):
+                gr.Markdown("## Chat Assistant")
+                gr.Markdown("Ask questions across your indexed documents.")
 
-    gr.Markdown("## Chat Assistant")
-    gr.Markdown("Ask questions across your indexed documents.")
+                with gr.Group(visible=False) as chat_group:
+                    chatbot = gr.Chatbot(label="Conversation", height=560)
+                    raw_chat_history = gr.State([])
+                    with gr.Row():
+                        chat_input = gr.Textbox(
+                            placeholder="Ask a question...",
+                            label="Message",
+                            interactive=bool(llm_status.get("active")),
+                            scale=5,
+                        )
+                        chat_send = gr.Button(
+                            "Send",
+                            variant="primary",
+                            interactive=bool(llm_status.get("active")),
+                            scale=1,
+                        )
+                        clear_chat = gr.Button(
+                            "🗑️ Clear Chat",
+                            interactive=bool(llm_status.get("active")),
+                            scale=1,
+                        )
 
-    with gr.Group(visible=False) as chat_group:
-        chatbot = gr.Chatbot(label="Conversation")
-        raw_chat_history = gr.State([])
-        with gr.Row():
-            chat_input = gr.Textbox(
-                placeholder="Ask a question...",
-                label="Message",
-                interactive=bool(llm_status.get("active")),
-            )
-            chat_send = gr.Button(
-                "Send",
-                variant="primary",
-                interactive=bool(llm_status.get("active")),
-            )
-            clear_chat = gr.Button(
-                "🗑️ Clear Chat",
-                interactive=bool(llm_status.get("active")),
-            )
-
-    with gr.Group(visible=True) as completion_group:
-        completion_input = gr.Textbox(
-            label="Your question",
-            interactive=bool(llm_status.get("active")),
-        )
-        completion_submit = gr.Button(
-            "Get Answer",
-            variant="primary",
-            interactive=bool(llm_status.get("active")),
-        )
-        completion_output = gr.Markdown()
+                with gr.Group(visible=True) as completion_group:
+                    completion_input = gr.Textbox(
+                        label="Your question",
+                        interactive=bool(llm_status.get("active")),
+                    )
+                    completion_submit = gr.Button(
+                        "Get Answer",
+                        variant="primary",
+                        interactive=bool(llm_status.get("active")),
+                    )
+                    completion_output = gr.Markdown()
 
     def update_visibility(selected_mode: str):
         return (
