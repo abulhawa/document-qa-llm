@@ -7,9 +7,9 @@ import gradio as gr
 
 def build_theme() -> gr.themes.Theme:
     return gr.themes.Soft(
-        primary_hue="indigo",
+        primary_hue="blue",
         secondary_hue="slate",
-        neutral_hue="gray",
+        neutral_hue="slate",
     ).set(
         block_title_text_weight="600",
         block_label_text_weight="600",
