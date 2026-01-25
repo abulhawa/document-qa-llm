@@ -126,6 +126,12 @@ The system is built from modular, testable components:
    streamlit run main.py
    ```
 
+4. **Launch the Gradio app (auto-reload)**
+
+   ```bash
+   python -m gradio ui_gradio/app.py --watch-dirs ui_gradio,app,core,services
+   ```
+
 ### Run tests
 
 Install development requirements and run the test suite:
@@ -231,4 +237,3 @@ Mid-term roadmap items queued for future sprints:
 - [ ] Agent workflows (document reasoning) – multi-step agents for deeper analysis
 
 ---
-
