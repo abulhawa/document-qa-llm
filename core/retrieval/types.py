@@ -27,6 +27,10 @@ class RetrievalConfig:
     authority_boost_enabled: bool = True
     authority_boost_weight: float = 0.08
     authority_boost_max_fraction: float = 0.15
+    recency_boost_enabled: bool = True
+    recency_boost_weight: float = 0.06
+    recency_boost_half_life_days: float = 120.0
+    recency_boost_max_fraction: float = 0.12
 
     def with_top_k(self, top_k: int) -> "RetrievalConfig":
         return replace(self, top_k=top_k)
