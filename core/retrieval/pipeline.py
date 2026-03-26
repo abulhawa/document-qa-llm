@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple, Sequence
 
 from config import logger
@@ -93,6 +94,58 @@ def _apply_authority_boost(docs: Sequence[DocHit], cfg: RetrievalConfig) -> None
         doc["retrieval_score"] = base_score + boost
 
 
+def _parse_epoch_seconds(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _apply_recency_boost(docs: Sequence[DocHit], cfg: RetrievalConfig) -> None:
+    if not cfg.recency_boost_enabled or cfg.recency_boost_weight <= 0:
+        return
+
+    half_life_days = max(cfg.recency_boost_half_life_days, 1e-6)
+    timestamps = [_parse_epoch_seconds(doc.get("modified_at")) for doc in docs]
+    valid_timestamps = [ts for ts in timestamps if ts is not None]
+    if not valid_timestamps:
+        return
+
+    newest_ts = max(valid_timestamps)
+    for doc, ts in zip(docs, timestamps):
+        if ts is None:
+            continue
+
+        base_score = float(doc.get("retrieval_score", 0.0) or 0.0)
+        if base_score <= 0:
+            continue
+
+        age_days = max((newest_ts - ts) / 86400.0, 0.0)
+        freshness = 0.5 ** (age_days / half_life_days)
+        raw_boost = cfg.recency_boost_weight * freshness
+        max_boost = base_score * max(cfg.recency_boost_max_fraction, 0.0)
+        boost = min(raw_boost, max_boost)
+        if boost <= 0:
+            continue
+
+        doc["retrieval_score"] = base_score + boost
+
+
 def retrieve(
     query: str,
     *,
@@ -152,6 +205,7 @@ def retrieve(
             d.get("score_bm25", 0.0) * w
         )
     _apply_authority_boost(fused, cfg)
+    _apply_recency_boost(fused, cfg)
 
     fused_sorted: List[DocHit] = sorted(
         fused,

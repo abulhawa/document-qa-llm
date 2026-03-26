@@ -418,5 +418,74 @@ def test_retrieval_authority_boost_respects_bound():
     assert result.documents[1].get("retrieval_score") == pytest.approx(0.55)
 
 
+def test_retrieval_applies_recency_boost_from_modified_at():
+    vector_hits = [
+        {
+            "id": "old",
+            "text": "old doc",
+            "score": 1.0,
+            "checksum": "r1",
+            "modified_at": "2023-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "new",
+            "text": "new doc",
+            "score": 0.97,
+            "checksum": "r2",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_weight=0.08,
+        recency_boost_half_life_days=90,
+        recency_boost_max_fraction=0.2,
+    )
+    result = pipeline.retrieve("query", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["new", "old"]
+    assert result.documents[0].get("retrieval_score") == pytest.approx(1.05)
+
+
+def test_retrieval_recency_boost_respects_bound():
+    vector_hits = [
+        {
+            "id": "older",
+            "text": "older doc",
+            "score": 1.0,
+            "checksum": "s1",
+            "modified_at": "2020-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "newer",
+            "text": "newer doc",
+            "score": 0.5,
+            "checksum": "s2",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_weight=0.5,
+        recency_boost_half_life_days=365,
+        recency_boost_max_fraction=0.1,
+    )
+    result = pipeline.retrieve("query", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["older", "newer"]
+    assert result.documents[1].get("retrieval_score") == pytest.approx(0.55)
+
+
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
+    cfg = RetrievalConfig()
+    assert cfg.recency_boost_enabled is True
+    assert cfg.recency_boost_weight == pytest.approx(0.06)
