@@ -40,12 +40,13 @@ def retrieve_context(
         return RetrievalResult(query=query, documents=documents)
 
     for result in output.documents:
+        retrieval_score = result.get("retrieval_score")
         documents.append(
             RetrievedDocument(
                 text=result.get("text", ""),
                 path=result.get("path", ""),
                 chunk_index=result.get("chunk_index"),
-                score=result.get("score") or result.get("retrieval_score"),
+                score=retrieval_score if retrieval_score is not None else result.get("score"),
                 page=result.get("page"),
                 location_percent=result.get("location_percent"),
             )
