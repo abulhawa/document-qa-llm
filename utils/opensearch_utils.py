@@ -53,6 +53,9 @@ CHUNKS_INDEX_SETTINGS = {
             "size": {"type": "keyword"},
             "page": {"type": "integer"},
             "location_percent": {"type": "float"},
+            "doc_type": {"type": "keyword"},
+            "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+            "authority_rank": {"type": "float"},
         }
     },
 }
@@ -115,6 +118,9 @@ FULLTEXT_INDEX_SETTINGS = {
             "indexed_at": {"type": "date"},
             "size_bytes": {"type": "long"},
             "checksum": {"type": "keyword"},
+            "doc_type": {"type": "keyword"},
+            "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+            "authority_rank": {"type": "float"},
         }
     },
 }
@@ -173,6 +179,89 @@ def ensure_chunk_char_len_mapping() -> None:
             CHUNKS_INDEX,
         )
         raise
+
+
+_IDENTITY_MAPPINGS: Dict[str, Dict[str, Any]] = {
+    "doc_type": {"type": "keyword"},
+    "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "authority_rank": {"type": "float"},
+}
+
+
+def _extract_properties_from_mapping_response(mapping: Dict[str, Any]) -> Dict[str, Any]:
+    if not mapping:
+        return {}
+    first_index_mapping = next(iter(mapping.values()), {})
+    return first_index_mapping.get("mappings", {}).get("properties", {}) or {}
+
+
+def _is_identity_mapping_compatible(field: str, existing: Dict[str, Any]) -> bool:
+    existing_type = existing.get("type")
+    if field == "doc_type":
+        # Accept either keyword or text for legacy dynamic mappings.
+        return existing_type in {"keyword", "text"}
+    if field == "person_name":
+        # Text or keyword are both safe for read-time pass-through.
+        return existing_type in {"text", "keyword"}
+    if field == "authority_rank":
+        return existing_type in {"float", "half_float", "double", "scaled_float", "long", "integer"}
+    return False
+
+
+def ensure_identity_metadata_mappings() -> None:
+    """Ensure identity metadata fields exist on both chunks/fulltext indices.
+
+    This operation is non-destructive: it only adds missing fields via put_mapping.
+    If an existing field has an incompatible type, it raises to avoid risky writes.
+    """
+
+    client = get_client()
+    for index_name in (CHUNKS_INDEX, FULLTEXT_INDEX):
+        try:
+            mapping = client.indices.get_mapping(index=index_name)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to fetch OpenSearch mappings for index=%s", index_name)
+            raise
+
+        properties = _extract_properties_from_mapping_response(mapping)
+        additions: Dict[str, Dict[str, Any]] = {}
+        conflicts: list[str] = []
+        for field, expected_mapping in _IDENTITY_MAPPINGS.items():
+            existing = properties.get(field)
+            if existing is None:
+                additions[field] = expected_mapping
+                continue
+            if not _is_identity_mapping_compatible(field, existing):
+                conflicts.append(
+                    f"{field}: existing_type={existing.get('type')} expected={expected_mapping.get('type')}"
+                )
+
+        if conflicts:
+            conflict_message = "; ".join(conflicts)
+            raise RuntimeError(
+                f"Incompatible mapping detected for index '{index_name}'. "
+                f"Refusing to continue to avoid data risk. Conflicts: {conflict_message}"
+            )
+
+        if not additions:
+            continue
+
+        try:
+            client.indices.put_mapping(
+                index=index_name,
+                body={"properties": additions},
+            )
+            logger.info(
+                "Added identity metadata mappings for index=%s fields=%s",
+                index_name,
+                sorted(additions.keys()),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to add identity metadata mappings for index=%s",
+                index_name,
+            )
+            raise
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
