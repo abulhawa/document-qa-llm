@@ -78,6 +78,8 @@ class AnswerContext:
     retrieval: Optional[RetrievalResult] = None
     prompt_request: Optional[PromptRequest] = None
     answer: Optional[str] = None
+    is_grounded: Optional[bool] = None
+    grounding_score: Optional[float] = None
 
     @property
     def sources(self) -> List[str]:

@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 
-from config import logger
+from config import logger, QA_GROUNDING_ENABLED, QA_GROUNDING_THRESHOLD
 from core.retrieval.types import RetrievalConfig
 from tracing import (
     start_span,
@@ -14,6 +14,7 @@ from tracing import (
     TOOL,
 )
 
+from qa_pipeline.grounding import evaluate_grounding
 from qa_pipeline.llm_client import generate_answer
 from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
@@ -156,6 +157,20 @@ def answer_question(
             record_span_error(chain_span, exc)
             context.answer = "❌ LLM call failed."
             return context
+
+        if QA_GROUNDING_ENABLED:
+            try:
+                grounding = evaluate_grounding(
+                    answer=context.answer or "",
+                    context_chunks=context.retrieval.context_chunks,
+                    threshold=QA_GROUNDING_THRESHOLD,
+                )
+                context.grounding_score = grounding.score
+                context.is_grounded = grounding.is_grounded
+                chain_span.set_attribute("grounding_score", grounding.score)
+                chain_span.set_attribute("is_grounded", grounding.is_grounded)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Grounding check failed: %s", exc)
 
         chain_span.set_attribute(OUTPUT_VALUE, context.answer or "")
         chain_span.set_status(STATUS_OK)
