@@ -14,8 +14,8 @@ from core import llm_cache
 
 # Constants
 TIMEOUT = 30  # seconds
-STOP_TOKENS = ["</s>", "###", "---"]
-PROMPT_LENGTH_WARN_THRESHOLD = 600
+STOP_TOKENS = ["</s>"]
+PROMPT_LENGTH_WARN_THRESHOLD = 2000
 
 
 class LLMCallError(TypedDict):

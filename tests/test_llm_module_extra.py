@@ -44,6 +44,7 @@ def test_check_llm_status_variants(monkeypatch):
 
 def test_ask_llm_payload_and_error(monkeypatch):
     captured = {}
+
     def fake_post(endpoint, json=None, timeout=None):
         captured["endpoint"] = endpoint
         captured["json"] = json
@@ -60,14 +61,23 @@ def test_ask_llm_payload_and_error(monkeypatch):
     assert captured["json"]["messages"]
     assert captured["json"]["temperature"] == 0.1
     assert captured["json"]["max_tokens"] == 5
+    assert captured["json"]["stop"] == llm.STOP_TOKENS
 
     comp = llm.ask_llm("prompt", mode="completion", model="m1")
     assert comp == "done"
     assert captured["endpoint"] == llm.LLM_COMPLETION_ENDPOINT
     assert captured["json"]["model"] == "m1"
+    assert captured["json"]["stop"] == llm.STOP_TOKENS
 
     def fail_post(*args, **kwargs):
         raise requests.RequestException("x")
     monkeypatch.setattr(requests, "post", fail_post)
     err = llm.ask_llm("p")
     assert err == "[LLM Error]"
+
+
+def test_stop_tokens_and_warn_threshold_defaults():
+    assert llm.STOP_TOKENS == ["</s>"]
+    assert "###" not in llm.STOP_TOKENS
+    assert "---" not in llm.STOP_TOKENS
+    assert llm.PROMPT_LENGTH_WARN_THRESHOLD == 2000
