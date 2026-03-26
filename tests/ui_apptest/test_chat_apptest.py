@@ -63,7 +63,7 @@ def _mock_llm(monkeypatch):
 def _run_query(at, question: str):
     at.run()
     at.text_input[0].input(question).run()
-    at.button[0].click().run()
+    next(btn for btn in at.button if btn.label == "Get Answer").click().run()
 
 
 def _get_sources(at):
@@ -125,3 +125,22 @@ def test_temperature_slider_default_is_low():
 
     assert at.slider[0].label == "Temperature"
     assert at.slider[0].value == 0.1
+
+
+def test_reconnect_button_is_always_available(monkeypatch):
+    monkeypatch.setattr(
+        "core.llm.check_llm_status",
+        lambda: {
+            "active": False,
+            "server_online": False,
+            "model_loaded": False,
+            "status_message": "offline",
+            "current_model": None,
+        },
+    )
+    monkeypatch.setattr("core.llm.get_available_models", lambda: [])
+
+    at = AppTest.from_file("pages/0_chat.py", default_timeout=10)
+    at.run()
+
+    assert any(btn.label == "Reconnect LLM" for btn in at.button)
