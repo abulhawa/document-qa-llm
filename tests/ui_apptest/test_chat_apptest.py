@@ -99,6 +99,35 @@ def test_query_returns_answer_with_dedup_sources(monkeypatch):
     assert list(dict.fromkeys(sources)) == ["- doc (Page 1)", "- other (Page 2)"]
 
 
+def test_query_shows_scores_for_sources(monkeypatch):
+    monkeypatch.setattr(
+        "qa_pipeline.answer_question",
+        lambda **_: AnswerContext(
+            question="question",
+            mode="completion",
+            temperature=0.7,
+            answer="scored answer",
+            retrieval=RetrievalResult(
+                query="question",
+                documents=[
+                    RetrievedDocument(text="doc", path="doc", page=1, score=0.61),
+                    RetrievedDocument(text="doc", path="doc", page=1, score=0.93),
+                    RetrievedDocument(text="other", path="other", page=2, score=0.4),
+                ],
+            ),
+        ),
+    )
+
+    at = AppTest.from_file("pages/0_chat.py", default_timeout=10)
+    _run_query(at, "question")
+
+    sources = _get_sources(at)
+    assert list(dict.fromkeys(sources)) == [
+        "- doc (Page 1) | score: 0.930",
+        "- other (Page 2) | score: 0.400",
+    ]
+
+
 def test_no_results_shows_message(monkeypatch):
     monkeypatch.setattr(
         "qa_pipeline.answer_question",

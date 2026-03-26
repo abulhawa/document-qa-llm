@@ -8,6 +8,47 @@ from config import logger
 from core.llm import get_available_models, load_model, check_llm_status
 from utils.timing import set_run_id, timed_block
 
+
+def _source_label(path: str, page: Optional[int], location_percent: Optional[float]) -> str:
+    if page is not None:
+        return f"{path} (Page {page})"
+    if location_percent is not None:
+        return f"{path} (~{location_percent}%)"
+    return path
+
+
+def _source_rows(result) -> List[str]:
+    documents = getattr(result, "documents", []) or []
+    if not documents:
+        return list(getattr(result, "sources", []) or [])
+
+    ordered_labels: List[str] = []
+    best_score_by_label: dict[str, Optional[float]] = {}
+    for doc in documents:
+        label = _source_label(
+            path=getattr(doc, "path", ""),
+            page=getattr(doc, "page", None),
+            location_percent=getattr(doc, "location_percent", None),
+        )
+        score = getattr(doc, "score", None)
+        if label not in best_score_by_label:
+            ordered_labels.append(label)
+            best_score_by_label[label] = score
+            continue
+        best_score = best_score_by_label[label]
+        if score is not None and (best_score is None or score > best_score):
+            best_score_by_label[label] = score
+
+    rows: List[str] = []
+    for label in ordered_labels:
+        score = best_score_by_label[label]
+        if score is None:
+            rows.append(label)
+        else:
+            rows.append(f"{label} | score: {score:.3f}")
+    return rows
+
+
 st.set_page_config(page_title="Ask Your Documents", layout="wide")
 st.title("Ask Your Documents")
 
@@ -175,9 +216,10 @@ with st.container():
 
             with st.chat_message("assistant"):
                 st.markdown(assistant_message)
-                if result.sources:
+                source_rows = _source_rows(result)
+                if source_rows:
                     st.markdown("#### 📁 Sources:")
-                    for src in result.sources:
+                    for src in source_rows:
                         st.markdown(f"- {src}")
                 if result.error and not result.answer:
                     st.error(result.error)
@@ -227,9 +269,10 @@ with st.container():
             st.markdown(answer_text)
             logger.info(f"LLM Answer:\n{answer_text}")
 
-            if result.sources:
+            source_rows = _source_rows(result)
+            if source_rows:
                 st.markdown("#### 📁 Sources:")
-                for src in result.sources:
+                for src in source_rows:
                     st.markdown(f"- {src}")
             if result.error and not result.answer:
                 st.error(result.error)
