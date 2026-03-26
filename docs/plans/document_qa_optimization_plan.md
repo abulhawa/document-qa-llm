@@ -414,6 +414,7 @@ Status (2026-03-26):
 - Scope is intentionally incremental and deterministic.
 - Migration strategy selected: fulltext-first rechunk (index-only where possible) to reduce operational cost.
 - Step 1 started: dry-run audit script added (`scripts/audit_fulltext_rechunk_candidates.py`).
+- Step 2 started and validated on canary cohort (10 docs) using fulltext-only rechunk script.
 
 Objective:
 
@@ -487,9 +488,24 @@ Fulltext-first migration strategy (selected):
 2. Step 2: Canary rechunk from `text_full` for a small cohort
    - Rebuild chunks from stored `text_full`, using policy-selected chunk profile.
    - Use `location_percent` as the positional anchor (page numbers intentionally not required in this path).
+   - Commands executed:
+     - Dry-run: `python scripts/rechunk_from_fulltext.py --prefix "C:/Users/ali_a/My Drive" --limit 20`
+     - Apply canary: `python scripts/rechunk_from_fulltext.py --prefix "C:/Users/ali_a/My Drive" --limit 10 --apply`
+   - Apply snapshot:
+     - `selected_docs=10`, `rebuilt_docs=10`, `failed_docs=0`
+     - `total_new_chunks=161`, `deleted_old_chunks=333`, `indexed_new_chunks=161`
+   - Post-check:
+     - Re-running dry-run on the same 10-doc cohort now shows `old_os_chunks == new_chunks` and `old_qdrant_chunks == new_chunks` for all 10 docs.
 3. Step 3: Expand rechunk to all eligible non-empty `text_full` docs
    - Delete old vectors/chunks by checksum, then re-embed/re-index.
    - Keep full-text docs as source-of-truth metadata and text payload.
+   - Command executed:
+     - `python scripts/rechunk_from_fulltext.py --prefix "C:/Users/ali_a/My Drive" --limit 1979 --apply --sample-limit 20`
+   - Apply snapshot:
+     - `scanned_docs=2139`, `selected_docs=1979`, `rebuilt_docs=1979`, `failed_docs=0`
+     - `total_new_chunks=84516`, `deleted_old_chunks=166692`, `indexed_new_chunks=84516`
+   - Post-check:
+     - Re-running dry-run after rollout on a 20-doc sample shows `old_os_chunks == new_chunks` and `old_qdrant_chunks == new_chunks` per sampled doc.
 4. Step 4: Handle non-eligible docs separately
    - `text_full` empty docs (e.g., scanned/image-heavy) are deferred to OCR ingestion flow.
 5. Step 5: Validate and close
