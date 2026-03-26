@@ -1,0 +1,419 @@
+{
+  "meta": {
+    "version": "v3",
+    "created_on": "2026-03-26",
+    "source_scope": "user_drive_corpus",
+    "survey_snapshot": {
+      "scanned_docs": 2139,
+      "eligible_docs": 1979,
+      "empty_text_docs": 160,
+      "doc_type_counts": {
+        "cv": 95,
+        "cover_letter": 11,
+        "reference_letter": 14,
+        "__missing__": 1859
+      }
+    }
+  },
+  "queries": [
+    {
+      "id": "Q01",
+      "mode": "positive",
+      "priority": "high",
+      "query": "Where did Ali do his PhD studies?",
+      "target_areas": [
+        "career_cv_docs"
+      ],
+      "expected_doc_types": [
+        "cv",
+        "resume"
+      ],
+      "notes": "Profile and education fact; should prefer the newest relevant CV version.",
+      "expected_checksums": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+      ]
+    },
+    {
+      "id": "Q02",
+      "mode": "positive",
+      "priority": "high",
+      "query": "In Ali's latest CV, what is his most recent job title?",
+      "target_areas": [
+        "career_cv_docs",
+        "employment_history_docs"
+      ],
+      "expected_doc_types": [
+        "cv",
+        "resume",
+        "cover_letter"
+      ],
+      "notes": "Recency-sensitive profile fact.",
+      "expected_checksums": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ]
+    },
+    {
+      "id": "Q03",
+      "mode": "positive",
+      "priority": "high",
+      "query": "From Ali's latest CV, list the main technical skills.",
+      "target_areas": [
+        "career_cv_docs"
+      ],
+      "expected_doc_types": [
+        "cv",
+        "resume"
+      ],
+      "notes": "Checks profile intent and CV family handling.",
+      "expected_checksums": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ]
+    },
+    {
+      "id": "Q04",
+      "mode": "positive",
+      "priority": "high",
+      "query": "In Ali's most recent CV contact section, which city is listed?",
+      "target_areas": [
+        "career_cv_docs"
+      ],
+      "expected_doc_types": [
+        "cv",
+        "resume"
+      ],
+      "notes": "Short factual extraction from profile docs.",
+      "expected_checksums": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ]
+    },
+    {
+      "id": "Q05",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "From Ali's cover letters, what role is he applying for?",
+      "target_areas": [
+        "career_cv_docs",
+        "admin_correspondence_docs"
+      ],
+      "expected_doc_types": [
+        "cover_letter"
+      ],
+      "notes": "Ensures cover letters can still surface.",
+      "expected_checksums": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ]
+    },
+    {
+      "id": "Q06",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+      "target_areas": [
+        "technical_project_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Dense technical report retrieval with topic anchor.",
+      "expected_checksums": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ]
+    },
+    {
+      "id": "Q07",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+      "target_areas": [
+        "technical_course_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Course and code disambiguation.",
+      "expected_checksums": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ]
+    },
+    {
+      "id": "Q08",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+      "target_areas": [
+        "technical_project_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Named entity extraction from technical project docs.",
+      "expected_checksums": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ]
+    },
+    {
+      "id": "Q09",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+      "target_areas": [
+        "technical_course_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Technical education content retrieval.",
+      "expected_checksums": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ]
+    },
+    {
+      "id": "Q10",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+      "target_areas": [
+        "research_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Research title grounding.",
+      "expected_checksums": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ]
+    },
+    {
+      "id": "Q11",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+      "target_areas": [
+        "research_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Paper retrieval precision.",
+      "expected_checksums": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ]
+    },
+    {
+      "id": "Q12",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+      "target_areas": [
+        "training_material_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Topic lookup in training materials.",
+      "expected_checksums": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ]
+    },
+    {
+      "id": "Q13",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+      "target_areas": [
+        "government_benefits_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__",
+        "cover_letter"
+      ],
+      "notes": "Administrative document retrieval.",
+      "expected_checksums": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ]
+    },
+    {
+      "id": "Q14",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+      "target_areas": [
+        "government_benefits_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "German query handling and numeric extraction.",
+      "expected_checksums": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ]
+    },
+    {
+      "id": "Q15",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+      "target_areas": [
+        "government_benefits_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Form purpose retrieval with stronger anchor.",
+      "expected_checksums": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ]
+    },
+    {
+      "id": "Q16",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+      "target_areas": [
+        "insurance_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Provider name extraction from insurance documents.",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ]
+    },
+    {
+      "id": "Q17",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In insurer correspondence letters, what customer service phone number is listed?",
+      "target_areas": [
+        "insurance_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Field extraction with repeated boilerplate content.",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ]
+    },
+    {
+      "id": "Q18",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the annual tax statement document for 2023, what date range is covered?",
+      "target_areas": [
+        "tax_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Date range extraction.",
+      "expected_checksums": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ]
+    },
+    {
+      "id": "Q19",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the tax-related invoice PDF, who is the issuing company?",
+      "target_areas": [
+        "tax_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Invoice issuer extraction.",
+      "expected_checksums": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ]
+    },
+    {
+      "id": "Q20",
+      "mode": "positive",
+      "priority": "medium",
+      "query": "In the remittance receipt from 2020, what payment amount is shown?",
+      "target_areas": [
+        "tax_docs",
+        "finance_docs"
+      ],
+      "expected_doc_types": [
+        "__missing__"
+      ],
+      "notes": "Numeric extraction from payment receipt.",
+      "expected_checksums": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ]
+    },
+    {
+      "id": "Q21",
+      "mode": "control",
+      "priority": "high",
+      "query": "What is Bitcoin price today?",
+      "target_areas": [],
+      "expected_doc_types": [],
+      "notes": "Out-of-corpus control; should avoid confident fabricated answer.",
+      "expected_checksums": []
+    },
+    {
+      "id": "Q22",
+      "mode": "control",
+      "priority": "high",
+      "query": "Who won yesterday's Bundesliga match?",
+      "target_areas": [],
+      "expected_doc_types": [],
+      "notes": "Out-of-corpus control with recency language.",
+      "expected_checksums": []
+    },
+    {
+      "id": "Q23",
+      "mode": "control",
+      "priority": "high",
+      "query": "What is the weather in Berlin tomorrow?",
+      "target_areas": [],
+      "expected_doc_types": [],
+      "notes": "Out-of-corpus control; tests abstention quality.",
+      "expected_checksums": []
+    }
+  ]
+}
