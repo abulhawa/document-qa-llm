@@ -49,6 +49,9 @@ def retrieve_context(
                 score=retrieval_score if retrieval_score is not None else result.get("score"),
                 page=result.get("page"),
                 location_percent=result.get("location_percent"),
+                doc_type=result.get("doc_type"),
+                person_name=result.get("person_name"),
+                authority_rank=result.get("authority_rank"),
             )
         )
 

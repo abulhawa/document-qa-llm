@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional, Protocol, Sequence
 
 from config import logger
 from ingestion import io_loader, preprocess, storage
+from ingestion.doc_classifier import classify_document
 from utils.ingest_logging import IngestLogEmitter
 from utils.file_utils import choose_canonical_path
 from utils.timing import timed_block
@@ -78,6 +79,13 @@ def default_log_factory(path: str, op: str, source: str) -> IngestLogger:
     return IngestLogAdapter(IngestLogEmitter(path=path, op=op, source=source))
 
 
+def _merge_identity_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    for key in ("doc_type", "person_name", "authority_rank"):
+        value = metadata.get(key)
+        if value is not None:
+            target[key] = value
+
+
 def ingest_one(
     path: str,
     *,
@@ -103,6 +111,7 @@ def ingest_one(
     log_factory = log_factory or default_log_factory
     inventory_writer = inventory_writer or DefaultInventoryWriter()
     log = log_factory(normalized_path, op, source)
+    doc_metadata: Dict[str, Any] = {}
 
     with log:
         checksum, size_bytes, timestamps = io_loader.file_fingerprint(io_path)
@@ -228,6 +237,11 @@ def ingest_one(
 
             logger.info("📝 Indexing full document text")
             full_text = preprocess.build_full_text(docs_list)
+            doc_metadata = classify_document(
+                path=canonical_path,
+                filetype=ext,
+                full_text=full_text,
+            )
             if not full_text:
                 full_doc_id = checksum
                 if existing_fulltext and existing_fulltext.get("id"):
@@ -248,6 +262,7 @@ def ingest_one(
                         "text_full": "",
                     }
                 )
+                _merge_identity_metadata(full_doc, doc_metadata)
                 try:
                     storage.index_fulltext(full_doc)
                 except Exception as e:  # noqa: BLE001
@@ -287,6 +302,7 @@ def ingest_one(
                     "text_full": full_text,
                 }
             )
+            _merge_identity_metadata(full_doc, doc_metadata)
 
             logger.info("✂️ Splitting document into chunks")
             try:
@@ -327,6 +343,7 @@ def ingest_one(
         chunk["size"] = io_loader.format_file_size(size_bytes)
         chunk["page"] = chunk.get("page", None)
         chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)
+        _merge_identity_metadata(chunk, doc_metadata)
 
     if force and replace:
         storage.replace_existing_artifacts(canonical_path)

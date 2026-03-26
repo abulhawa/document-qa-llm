@@ -59,6 +59,40 @@ def _dedup_bm25_by_id_keep_best_score(hits: Sequence[DocHit]) -> List[DocHit]:
     return deduped
 
 
+def _to_clamped_float(value: object, *, min_value: float, max_value: float) -> float | None:
+    try:
+        numeric = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if numeric < min_value:
+        return min_value
+    if numeric > max_value:
+        return max_value
+    return numeric
+
+
+def _apply_authority_boost(docs: Sequence[DocHit], cfg: RetrievalConfig) -> None:
+    if not cfg.authority_boost_enabled or cfg.authority_boost_weight <= 0:
+        return
+
+    for doc in docs:
+        base_score = float(doc.get("retrieval_score", 0.0) or 0.0)
+        if base_score <= 0:
+            continue
+
+        rank = _to_clamped_float(doc.get("authority_rank"), min_value=0.0, max_value=1.0)
+        if rank is None:
+            continue
+
+        raw_boost = cfg.authority_boost_weight * rank
+        max_boost = base_score * max(cfg.authority_boost_max_fraction, 0.0)
+        boost = min(raw_boost, max_boost)
+        if boost <= 0:
+            continue
+
+        doc["retrieval_score"] = base_score + boost
+
+
 def retrieve(
     query: str,
     *,
@@ -117,6 +151,7 @@ def retrieve(
         d["retrieval_score"] = cfg.fusion_weight_vector * d.get("score_vector", 0.0) + cfg.fusion_weight_bm25 * (
             d.get("score_bm25", 0.0) * w
         )
+    _apply_authority_boost(fused, cfg)
 
     fused_sorted: List[DocHit] = sorted(
         fused,
