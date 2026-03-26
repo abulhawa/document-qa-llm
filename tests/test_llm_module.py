@@ -3,6 +3,13 @@ import requests
 import pytest
 from core import llm
 
+
+@pytest.fixture(autouse=True)
+def _force_local_llm_mode(monkeypatch):
+    monkeypatch.setattr(llm, "USE_GROQ", False)
+    monkeypatch.setattr(llm, "GROQ_API_KEY", "")
+
+
 class DummyResponse:
     def __init__(self, data, status_code=200):
         self._data = data
@@ -34,14 +41,14 @@ def test_ask_llm_chat_and_completion(monkeypatch):
             return DummyResponse({"choices": [{"message": {"content": "hi</s>"}}]})
         return DummyResponse({"choices": [{"text": "hello"}]})
     monkeypatch.setattr(requests, "post", fake_post)
-    chat = llm.ask_llm([{"role": "user", "content": "hi"}], mode="chat")
+    chat = llm.ask_llm([{"role": "user", "content": "hi"}], mode="chat", use_cache=False)
     assert chat.startswith("hi")
-    comp = llm.ask_llm("test prompt", mode="completion")
+    comp = llm.ask_llm("test prompt", mode="completion", use_cache=False)
     assert comp == "hello"
 
 def test_ask_llm_error(monkeypatch):
     def fake_post(*args, **kwargs):
         raise requests.RequestException("fail")
     monkeypatch.setattr(requests, "post", fake_post)
-    result = llm.ask_llm("prompt")
+    result = llm.ask_llm("prompt", use_cache=False)
     assert result == "[LLM Error]"

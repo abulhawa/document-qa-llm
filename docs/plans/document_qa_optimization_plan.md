@@ -46,6 +46,15 @@ Milestone is successful when:
 
 ## 5. Implementation plan (phased, low blast radius)
 
+### Current execution order (updated 2026-03-26)
+
+- P0 is complete in code.
+- P4 is moved ahead of P1-P3 for this environment so manual QA can run without the local TGW setup.
+- Active sequence: `P0 -> P4 -> manual QA -> P1 -> P2 -> P3 -> P5`.
+- Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
+
+---
+
 ### Phase P0: Hallucination guardrails (highest impact, low risk)
 
 Scope:
@@ -285,12 +294,12 @@ Exit gate:
 ## 6. PR slicing proposal
 
 1. PR-01: P0 hallucination guardrails.
-2. PR-02: P1 duplicate suppression.
-3. PR-03: P2 metadata pass-through + source labeling.
-4. PR-04: P2 ingest classifier integration.
-5. PR-05: P2 authority weighting.
-6. PR-06: P3 grounding (flagged).
-7. PR-07: P4 Groq migration.
+2. PR-02: P4 Groq migration.
+3. PR-03: P1 duplicate suppression.
+4. PR-04: P2 metadata pass-through + source labeling.
+5. PR-05: P2 ingest classifier integration.
+6. PR-06: P2 authority weighting.
+7. PR-07: P3 grounding (flagged).
 8. PR-08: P5 chunk migration + re-ingest runbook.
 
 Each PR should include:
