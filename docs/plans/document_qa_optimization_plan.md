@@ -1,6 +1,6 @@
 # document_qa Optimization Plan (v2)
 
-Last updated: 2026-03-26
+Last updated: 2026-03-26 (post-P3 implementation + P5 defaults/runbook)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -49,9 +49,14 @@ Milestone is successful when:
 ### Current execution order (updated 2026-03-26)
 
 - P0 is complete in code.
-- P4 is moved ahead of P1-P3 for this environment so manual QA can run without the local TGW setup.
+- P4 is complete in code.
 - P1 is complete in code with targeted regression tests passing.
-- Active sequence: `P0 -> P4 -> P1 -> manual QA (P1 exit gate) -> P2 -> P3 -> P5`.
+- P2 is complete in code; one-time metadata backfill has been executed on the existing corpus.
+- P3 is complete in code with targeted regression tests passing.
+- P5 code changes are complete (`800/100` defaults + migration runbook); full operational re-ingest rollout is pending.
+- Manual QA gates for P1 and P2 have passed.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout)`.
+- Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
 ---
@@ -106,7 +111,7 @@ Status (2026-03-26):
 
 - Code changes complete.
 - Targeted automated tests passing.
-- Manual QA exit gate still pending.
+- Manual QA exit gate passed.
 
 Scope:
 
@@ -145,6 +150,7 @@ pytest tests/test_retrieval_pipeline.py tests/test_search_dedup.py tests/test_qu
 Validation snapshot (2026-03-26):
 
 - `pytest tests/test_retrieval_pipeline.py tests/test_search_dedup.py tests/test_query.py -q` -> `12 passed`.
+- Manual QA gate: passed.
 
 Exit gate:
 
@@ -155,11 +161,19 @@ Exit gate:
 
 ### Phase P2: Identity disambiguation via metadata (incremental)
 
+Status (2026-03-26):
+
+- Code changes complete.
+- Backfill path implemented with non-destructive mapping checks (`put_mapping` only).
+- One-time backfill run completed on existing indexed data with `errors=0`.
+- Manual QA exit gate passed.
+
 Scope:
 
 - Add metadata plumbing end-to-end first.
 - Add classification at ingest in a controlled manner.
 - Add small authority boost only after metadata is present.
+- Add bounded recency boost using existing `modified_at` metadata.
 
 Files:
 
@@ -169,6 +183,9 @@ Files:
 - `ingestion/orchestrator.py`
 - `ingestion/doc_classifier.py` (new)
 - `core/retrieval/pipeline.py`
+- `core/retrieval/types.py`
+- `utils/opensearch_utils.py`
+- `scripts/backfill_identity_metadata.py` (new)
 
 Changes (recommended order):
 
@@ -184,6 +201,11 @@ Changes (recommended order):
 4. Retrieval re-weighting:
    - Apply small authority boost in `core/retrieval/pipeline.py` only when metadata exists.
    - Keep boost bounded to avoid reordering unrelated results.
+   - Apply bounded recency boost from `modified_at` in `core/retrieval/pipeline.py` (decay + cap).
+5. Mapping safety + migration:
+   - Ensure explicit identity field mappings exist in OpenSearch (`utils/opensearch_utils.py`).
+   - Fail fast on incompatible field types to avoid risky writes.
+   - Run one-time metadata backfill via `scripts/backfill_identity_metadata.py`.
 
 One-time migration for already indexed docs:
 
@@ -196,13 +218,22 @@ One-time migration for already indexed docs:
 Tests:
 
 - Add ingestion tests for classifier integration and metadata persistence.
-- Add retrieval tests confirming metadata pass-through and bounded authority boost.
+- Add retrieval tests confirming metadata pass-through, bounded authority boost, and bounded recency boost.
+- Add migration tests for mapping safety checks and backfill behavior.
 
 Suggested run:
 
 ```powershell
-pytest tests/test_ingestion_extra.py tests/test_ingest_fulltext.py tests/test_retrieval_pipeline.py tests/test_query.py -q
+pytest tests/test_ingestion_extra.py tests/test_ingest_fulltext.py tests/test_retrieval_pipeline.py tests/test_query.py tests/test_prompt_builder.py -q
+pytest tests/test_backfill_identity_metadata.py tests/test_opensearch_identity_mappings.py tests/test_retrieval_pipeline.py tests/test_query.py -q
 ```
+
+Validation snapshot (2026-03-26):
+
+- `pytest tests/test_ingestion_extra.py tests/test_ingest_fulltext.py tests/test_retrieval_pipeline.py tests/test_query.py tests/test_prompt_builder.py -q` -> `26 passed`.
+- `pytest tests/test_backfill_identity_metadata.py tests/test_opensearch_identity_mappings.py tests/test_retrieval_pipeline.py tests/test_query.py -q` -> `21 passed`.
+- One-time run: `python scripts/backfill_identity_metadata.py` -> `scanned_fulltext_docs=2142`, `classified_docs=122`, `chunk_docs_updated=1327`, `errors=0`.
+- Manual QA gate: passed.
 
 Exit gate:
 
@@ -212,6 +243,12 @@ Exit gate:
 ---
 
 ### Phase P3: Optional grounding check (feature-flagged)
+
+Status (2026-03-26):
+
+- Code changes complete.
+- Targeted automated tests passing.
+- Feature-flagged behavior validated: default off, deterministic metadata when enabled.
 
 Scope:
 
@@ -239,6 +276,10 @@ Suggested run:
 ```powershell
 pytest tests/test_query.py tests/test_llm_module.py tests/test_retrieval_pipeline.py -q
 ```
+
+Validation snapshot (2026-03-26):
+
+- `pytest tests/test_grounding.py tests/test_query.py tests/test_llm_module.py tests/test_retrieval_pipeline.py -q` -> `25 passed`.
 
 Exit gate:
 
@@ -284,7 +325,13 @@ Exit gate:
 
 ---
 
-### Phase P5: Chunk-size migration (deferred until after P0-P2 validation)
+### Phase P5: Chunk-size migration (in progress: code complete, rollout pending)
+
+Status (2026-03-26):
+
+- Runtime default chunking updated to `800/100` in config and `.env.example`.
+- Operational runbook for staged migration added.
+- Full re-ingest rollout and post-migration quality comparison are pending.
 
 Scope:
 
@@ -299,6 +346,11 @@ Changes:
 
 - Update defaults only with explicit migration decision.
 - Re-ingest corpus in a controlled window.
+
+Validation snapshot (2026-03-26):
+
+- `pytest tests/test_config_utils.py tests/test_ingestion_extra.py tests/test_ingest_fulltext.py -q` -> `12 passed`.
+- Runbook added: `docs/runbooks/chunk_size_migration.md`.
 
 Risks:
 
@@ -318,8 +370,10 @@ Exit gate:
 4. PR-04: P2 metadata pass-through + source labeling.
 5. PR-05: P2 ingest classifier integration.
 6. PR-06: P2 authority weighting.
-7. PR-07: P3 grounding (flagged).
-8. PR-08: P5 chunk migration + re-ingest runbook.
+7. PR-07: P2 recency weighting.
+8. PR-08: P2 mapping safety + one-time backfill.
+9. PR-09: P3 grounding (flagged).
+10. PR-10: P5 chunk migration + re-ingest runbook.
 
 Each PR should include:
 
