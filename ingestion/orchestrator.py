@@ -80,7 +80,13 @@ def default_log_factory(path: str, op: str, source: str) -> IngestLogger:
 
 
 def _merge_identity_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -> None:
-    for key in ("doc_type", "person_name", "authority_rank"):
+    for key in (
+        "doc_type",
+        "doc_type_confidence",
+        "doc_type_source",
+        "person_name",
+        "authority_rank",
+    ):
         value = metadata.get(key)
         if value is not None:
             target[key] = value

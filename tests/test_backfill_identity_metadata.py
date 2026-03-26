@@ -94,6 +94,8 @@ def test_backfill_identity_metadata_updates_fulltext_and_chunks(monkeypatch):
         "classify_document",
         lambda path, filetype, full_text: {
             "doc_type": "cv",
+            "doc_type_confidence": 0.97,
+            "doc_type_source": "rule",
             "person_name": "Jane Doe",
             "authority_rank": 1.0,
         },
@@ -113,6 +115,8 @@ def test_backfill_identity_metadata_updates_fulltext_and_chunks(monkeypatch):
     assert fake_client.updated_docs[0]["id"] == "doc-1"
     assert fake_client.updated_docs[0]["body"]["doc"] == {
         "doc_type": "cv",
+        "doc_type_confidence": 0.97,
+        "doc_type_source": "rule",
         "person_name": "Jane Doe",
         "authority_rank": 1.0,
     }
@@ -146,6 +150,8 @@ def test_backfill_identity_metadata_dry_run_skips_writes(monkeypatch):
         "classify_document",
         lambda path, filetype, full_text: {
             "doc_type": "cv",
+            "doc_type_confidence": 0.97,
+            "doc_type_source": "rule",
             "person_name": "John Doe",
             "authority_rank": 1.0,
         },
@@ -163,3 +169,59 @@ def test_backfill_identity_metadata_dry_run_skips_writes(monkeypatch):
     assert stats["chunk_would_update_calls"] == 1
     assert fake_client.updated_docs == []
     assert fake_client.chunk_updates == []
+
+
+def test_backfill_identity_metadata_respects_target_doc_type_cohort(monkeypatch):
+    hits = [
+        {
+            "_id": "doc-1",
+            "_source": {
+                "checksum": "abc123",
+                "path": "C:/docs/keep.pdf",
+                "filetype": "pdf",
+                "doc_type": "__missing__",
+                "text_full": "document one",
+            },
+        },
+        {
+            "_id": "doc-2",
+            "_source": {
+                "checksum": "xyz999",
+                "path": "C:/docs/skip.pdf",
+                "filetype": "pdf",
+                "doc_type": "cv",
+                "text_full": "document two",
+            },
+        },
+    ]
+    fake_client = _FakeOpenSearchClient(hits)
+    monkeypatch.setattr(
+        backfill_identity_metadata,
+        "ensure_identity_metadata_mappings",
+        lambda: None,
+    )
+    monkeypatch.setattr(backfill_identity_metadata, "get_client", lambda: fake_client)
+    monkeypatch.setattr(
+        backfill_identity_metadata,
+        "classify_document",
+        lambda path, filetype, full_text: {
+            "doc_type": "contract",
+            "doc_type_confidence": 0.95,
+            "doc_type_source": "rule",
+            "person_name": None,
+            "authority_rank": None,
+        },
+    )
+
+    stats = backfill_identity_metadata.backfill_identity_metadata(
+        batch_size=10,
+        dry_run=False,
+        overwrite=False,
+        target_doc_types=("__missing__", "other"),
+    )
+
+    assert stats["scanned_fulltext_docs"] == 2
+    assert stats["skipped_not_in_target_cohort"] == 1
+    assert stats["classified_docs"] == 1
+    assert stats["fulltext_updates"] == 1
+    assert stats["chunk_update_calls"] == 1

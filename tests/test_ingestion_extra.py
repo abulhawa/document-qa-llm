@@ -36,6 +36,8 @@ def test_classify_document_detects_cv_metadata_from_filename():
     )
 
     assert metadata["doc_type"] == "cv"
+    assert metadata["doc_type_source"] == "rule"
+    assert metadata["doc_type_confidence"] == pytest.approx(0.97)
     assert metadata["person_name"] == "Jane Doe"
     assert metadata["authority_rank"] == pytest.approx(1.0)
 
@@ -48,8 +50,38 @@ def test_classify_document_uses_text_name_when_filename_is_generic():
     )
 
     assert metadata["doc_type"] == "cv"
+    assert metadata["doc_type_source"] == "rule"
+    assert metadata["doc_type_confidence"] == pytest.approx(0.97)
     assert metadata["person_name"] == "John Doe"
     assert metadata["authority_rank"] == pytest.approx(1.0)
+
+
+def test_classify_document_detects_non_identity_doc_type_from_filename():
+    metadata = classify_document(
+        "C:/docs/insurance_premium_adjustment_2025.pdf",
+        "pdf",
+        "Dear policyholder, your premium changes next month.",
+    )
+
+    assert metadata["doc_type"] == "insurance_letter"
+    assert metadata["doc_type_source"] == "rule"
+    assert metadata["doc_type_confidence"] == pytest.approx(0.95)
+    assert metadata["person_name"] is None
+    assert metadata["authority_rank"] is None
+
+
+def test_classify_document_falls_back_to_other_when_unmatched():
+    metadata = classify_document(
+        "C:/docs/random_notes_blob.txt",
+        "txt",
+        "Quick scratch notes without any known document structure.",
+    )
+
+    assert metadata["doc_type"] == "other"
+    assert metadata["doc_type_source"] == "fallback"
+    assert metadata["doc_type_confidence"] == pytest.approx(0.25)
+    assert metadata["person_name"] is None
+    assert metadata["authority_rank"] is None
 
 
 # Test 21: idempotent skip when file unchanged
@@ -200,6 +232,8 @@ def test_ingest_one_persists_classifier_metadata(tmp_path, monkeypatch):
         "ingestion.orchestrator.classify_document",
         lambda path, filetype, full_text: {
             "doc_type": "cv",
+            "doc_type_confidence": 0.97,
+            "doc_type_source": "rule",
             "person_name": "John Doe",
             "authority_rank": 1.0,
         },
@@ -242,8 +276,12 @@ def test_ingest_one_persists_classifier_metadata(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert captured["chunk"]["doc_type"] == "cv"
+    assert captured["chunk"]["doc_type_confidence"] == pytest.approx(0.97)
+    assert captured["chunk"]["doc_type_source"] == "rule"
     assert captured["chunk"]["person_name"] == "John Doe"
     assert captured["chunk"]["authority_rank"] == pytest.approx(1.0)
     assert captured["fulltext"]["doc_type"] == "cv"
+    assert captured["fulltext"]["doc_type_confidence"] == pytest.approx(0.97)
+    assert captured["fulltext"]["doc_type_source"] == "rule"
     assert captured["fulltext"]["person_name"] == "John Doe"
     assert captured["fulltext"]["authority_rank"] == pytest.approx(1.0)

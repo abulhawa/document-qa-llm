@@ -38,6 +38,8 @@ def test_ensure_identity_metadata_mappings_adds_missing_fields(monkeypatch):
     for call in fake_client.indices.put_calls:
         props = call["body"]["properties"]
         assert props["doc_type"]["type"] == "keyword"
+        assert props["doc_type_confidence"]["type"] == "float"
+        assert props["doc_type_source"]["type"] == "keyword"
         assert props["person_name"]["type"] == "text"
         assert props["authority_rank"]["type"] == "float"
 

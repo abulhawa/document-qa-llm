@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+import time
 from core.opensearch_client import get_client
 from utils.qdrant_utils import ensure_collection_exists
 from qdrant_client import QdrantClient
@@ -27,12 +28,18 @@ from utils.timing import timed_block
 
 # Initialize Qdrant client
 client = QdrantClient(url=QDRANT_URL)
+_CHUNK_TEXT_FETCH_BACKOFF_SECONDS = 120
+_chunk_text_fetch_backoff_until = 0.0
 
 
 def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
     """Fetch chunk text from OpenSearch given chunk IDs stored in Qdrant payloads."""
+    global _chunk_text_fetch_backoff_until
 
     if not chunk_ids:
+        return {}
+    now = time.time()
+    if now < _chunk_text_fetch_backoff_until:
         return {}
 
     try:
@@ -44,11 +51,15 @@ def _fetch_chunk_texts(chunk_ids: set[str]) -> Dict[str, str]:
         ):
             response = os_client.mget(
                 index=CHUNKS_INDEX,
-                body={"ids": list(chunk_ids), "_source": ["text"]},
+                body={"ids": list(chunk_ids)},
+                params={"_source_includes": "text"},
             )
+        _chunk_text_fetch_backoff_until = 0.0
     except Exception as e:
+        _chunk_text_fetch_backoff_until = now + _CHUNK_TEXT_FETCH_BACKOFF_SECONDS
         logger.warning(
-            "❌ OpenSearch unavailable while fetching chunk text; proceeding with Qdrant payloads."
+            "OpenSearch unavailable while fetching chunk text; using Qdrant payloads for %ss.",
+            _CHUNK_TEXT_FETCH_BACKOFF_SECONDS,
         )
         logger.debug(e, exc_info=True)
         return {}
@@ -145,3 +156,4 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
             logger.error(f"Search error: {e}")
             record_span_error(span, e)
             return []
+

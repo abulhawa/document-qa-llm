@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Tuple, Dict, Any
 from config import logger
-from core.query_rewriter import rewrite_query
+from core.query_rewriter import rewrite_query, has_strong_query_anchors
 
 Variant = Tuple[str, float | None]  # (query_text, bm25_weight)
 
@@ -14,6 +14,10 @@ def generate_variants(original: str, *, rewrite_temp: float = 0.15) -> Dict[str,
     """
     result = rewrite_query(original, temperature=rewrite_temp)
     if "clarify" in result:
+        if has_strong_query_anchors(original):
+            exact = original.strip()
+            logger.info("Variant clarify bypassed due to strong anchors; using exact query.")
+            return {"variants": [(exact, 1.0)], "rewritten": exact}
         return {"clarify": result["clarify"]}
 
     rewritten = result.get("rewritten", "").strip()

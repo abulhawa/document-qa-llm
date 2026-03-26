@@ -260,6 +260,55 @@ def test_answer_question_uses_low_default_temperature(monkeypatch):
     assert result.temperature == 0.1
 
 
+def test_answer_question_bypasses_clarify_for_anchored_query(monkeypatch):
+    calls = {"retrieved": 0}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        calls["retrieved"] += 1
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="doc", path="path", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(clarify="Who are you referring to?")
+
+    def mock_generate(*args, **kwargs):
+        return "answer"
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+
+    result = answer_question("In Ali's latest CV, what is his most recent role?")
+
+    assert calls["retrieved"] == 1
+    assert result.clarification is None
+    assert result.rewritten_question == "In Ali's latest CV, what is his most recent role?"
+    assert result.answer == "answer"
+
+
+def test_answer_question_returns_clarify_for_unanchored_query(monkeypatch):
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(clarify="Could you provide more detail?")
+
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.retrieve_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("retrieve should not run")),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.generate_answer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("llm should not run")),
+    )
+
+    result = answer_question("what about it")
+
+    assert result.clarification == "Could you provide more detail?"
+    assert result.answer is not None
+    assert "Clarify" in result.answer
+
+
 def test_retrieve_context_prefers_normalized_retrieval_score(monkeypatch):
     fake_output = types.SimpleNamespace(
         clarify=None,

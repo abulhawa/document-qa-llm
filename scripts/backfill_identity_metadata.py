@@ -17,16 +17,39 @@ from ingestion.doc_classifier import classify_document  # noqa: E402
 from utils.opensearch_utils import ensure_identity_metadata_mappings  # noqa: E402
 
 
-_IDENTITY_FIELDS = ("doc_type", "person_name", "authority_rank")
+_CLASSIFICATION_FIELDS = (
+    "doc_type",
+    "doc_type_confidence",
+    "doc_type_source",
+    "person_name",
+    "authority_rank",
+)
 
 
 def _non_null_identity_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     cleaned: Dict[str, Any] = {}
-    for field in _IDENTITY_FIELDS:
+    for field in _CLASSIFICATION_FIELDS:
         value = metadata.get(field)
         if value is not None:
             cleaned[field] = value
     return cleaned
+
+
+def _normalize_doc_type_for_target(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized else "__missing__"
+
+
+def _normalize_target_doc_types(raw_values: tuple[str, ...] | None) -> set[str] | None:
+    if not raw_values:
+        return None
+    normalized: set[str] = set()
+    for item in raw_values:
+        for piece in str(item).split(","):
+            token = _normalize_doc_type_for_target(piece)
+            if token:
+                normalized.add(token)
+    return normalized or None
 
 
 def _build_fulltext_patch(
@@ -82,6 +105,7 @@ def backfill_identity_metadata(
     dry_run: bool = False,
     overwrite: bool = False,
     ensure_mappings: bool = True,
+    target_doc_types: tuple[str, ...] | None = None,
 ) -> Dict[str, int]:
     if ensure_mappings:
         ensure_identity_metadata_mappings()
@@ -89,6 +113,7 @@ def backfill_identity_metadata(
     client = get_client()
     stats: Dict[str, int] = {
         "scanned_fulltext_docs": 0,
+        "skipped_not_in_target_cohort": 0,
         "classified_docs": 0,
         "skipped_no_identity_metadata": 0,
         "skipped_unchanged_fulltext": 0,
@@ -102,6 +127,7 @@ def backfill_identity_metadata(
 
     processed = 0
     scroll_id = ""
+    normalized_targets = _normalize_target_doc_types(target_doc_types)
 
     try:
         response = client.search(
@@ -115,6 +141,8 @@ def backfill_identity_metadata(
                     "checksum",
                     "text_full",
                     "doc_type",
+                    "doc_type_confidence",
+                    "doc_type_source",
                     "person_name",
                     "authority_rank",
                 ],
@@ -142,9 +170,13 @@ def backfill_identity_metadata(
                 path = str(source.get("path") or "")
                 filetype = str(source.get("filetype") or "")
                 text_full = str(source.get("text_full") or "")
+                existing_doc_type = _normalize_doc_type_for_target(source.get("doc_type"))
 
                 if not doc_id or not checksum:
                     stats["errors"] += 1
+                    continue
+                if normalized_targets and existing_doc_type not in normalized_targets:
+                    stats["skipped_not_in_target_cohort"] += 1
                     continue
 
                 classified = classify_document(path, filetype, text_full)
@@ -241,6 +273,15 @@ def main() -> None:
         action="store_true",
         help="Skip non-destructive mapping checks/additions before running backfill.",
     )
+    parser.add_argument(
+        "--target-doc-types",
+        nargs="*",
+        default=None,
+        help=(
+            "Optional doc_type cohort filter (for example: __missing__ other). "
+            "When set, only fulltext docs in the cohort are classified/backfilled."
+        ),
+    )
     args = parser.parse_args()
 
     stats = backfill_identity_metadata(
@@ -249,10 +290,12 @@ def main() -> None:
         dry_run=args.dry_run,
         overwrite=args.overwrite,
         ensure_mappings=not args.skip_ensure_mappings,
+        target_doc_types=tuple(args.target_doc_types) if args.target_doc_types else None,
     )
     print(
         "Backfill complete: "
         "scanned_fulltext_docs={scanned_fulltext_docs} "
+        "skipped_not_in_target_cohort={skipped_not_in_target_cohort} "
         "classified_docs={classified_docs} "
         "skipped_no_identity_metadata={skipped_no_identity_metadata} "
         "skipped_unchanged_fulltext={skipped_unchanged_fulltext} "
