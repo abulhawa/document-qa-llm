@@ -54,6 +54,8 @@ CHUNKS_INDEX_SETTINGS = {
             "page": {"type": "integer"},
             "location_percent": {"type": "float"},
             "doc_type": {"type": "keyword"},
+            "doc_type_confidence": {"type": "float"},
+            "doc_type_source": {"type": "keyword"},
             "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
             "authority_rank": {"type": "float"},
         }
@@ -119,6 +121,8 @@ FULLTEXT_INDEX_SETTINGS = {
             "size_bytes": {"type": "long"},
             "checksum": {"type": "keyword"},
             "doc_type": {"type": "keyword"},
+            "doc_type_confidence": {"type": "float"},
+            "doc_type_source": {"type": "keyword"},
             "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
             "authority_rank": {"type": "float"},
         }
@@ -183,6 +187,8 @@ def ensure_chunk_char_len_mapping() -> None:
 
 _IDENTITY_MAPPINGS: Dict[str, Dict[str, Any]] = {
     "doc_type": {"type": "keyword"},
+    "doc_type_confidence": {"type": "float"},
+    "doc_type_source": {"type": "keyword"},
     "person_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
     "authority_rank": {"type": "float"},
 }
@@ -198,6 +204,11 @@ def _extract_properties_from_mapping_response(mapping: Dict[str, Any]) -> Dict[s
 def _is_identity_mapping_compatible(field: str, existing: Dict[str, Any]) -> bool:
     existing_type = existing.get("type")
     if field == "doc_type":
+        # Accept either keyword or text for legacy dynamic mappings.
+        return existing_type in {"keyword", "text"}
+    if field == "doc_type_confidence":
+        return existing_type in {"float", "half_float", "double", "scaled_float", "long", "integer"}
+    if field == "doc_type_source":
         # Accept either keyword or text for legacy dynamic mappings.
         return existing_type in {"keyword", "text"}
     if field == "person_name":

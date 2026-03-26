@@ -623,6 +623,83 @@ def test_profile_intent_boost_prioritizes_profile_docs_for_profile_query():
     assert result.documents[1].get("_profile_intent_adjustment", 0.0) < 0
 
 
+def test_retrieval_abstains_for_out_of_corpus_style_query_with_low_overlap():
+    vector_hits = [
+        {
+            "id": "v1",
+            "text": "Ali curriculum vitae and project details",
+            "path": "C:/docs/ali_cv.pdf",
+            "score": 1.0,
+            "checksum": "o1",
+        },
+        {
+            "id": "v2",
+            "text": "Insurance statement for annual premium",
+            "path": "C:/docs/insurance.pdf",
+            "score": 0.95,
+            "checksum": "o2",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+    )
+    result = pipeline.retrieve("What is Bitcoin price today?", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert result.documents == []
+    assert result.clarify is None
+
+
+def test_retrieval_does_not_abstain_for_domain_anchored_live_query():
+    vector_hits = [
+        {
+            "id": "cv1",
+            "text": "Ali latest CV includes Senior Engineer role",
+            "path": "C:/docs/ali_latest_cv.pdf",
+            "score": 1.0,
+            "checksum": "d1",
+        }
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+    )
+    result = pipeline.retrieve("In Ali latest CV today, what is his role?", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("id") == "cv1"
+
+
+def test_retrieval_abstains_for_live_out_of_corpus_query_even_with_partial_overlap():
+    vector_hits = [
+        {
+            "id": "w1",
+            "text": "weather forecast for tomorrow in training example text",
+            "path": "C:/docs/ml_notes.pdf",
+            "score": 1.0,
+            "checksum": "w1",
+        }
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+    )
+    result = pipeline.retrieve(
+        "What is the weather in Berlin tomorrow?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+    )
+
+    assert result.documents == []
+    assert result.clarify is None
+
+
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
     cfg = RetrievalConfig()
@@ -632,3 +709,5 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.cv_family_relevance_margin == pytest.approx(0.10)
     assert cfg.profile_intent_boost_enabled is True
     assert cfg.profile_intent_boost_weight == pytest.approx(0.10)
+    assert cfg.abstention_enabled is True
+    assert cfg.abstention_min_overlap_terms == 2

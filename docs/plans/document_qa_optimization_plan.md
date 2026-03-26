@@ -72,11 +72,13 @@ Baseline snapshot (2026-03-26, checksum fixture run):
 - P5 code changes are complete (`800/100` defaults + migration runbook); full operational re-ingest rollout is pending.
 - P6 dynamic chunking policy is proposed (not yet implemented).
 - Retrieval evaluation fixture and checksum-based scoring template are committed.
-- P7 doc-type coverage expansion is proposed (not yet implemented).
+- P7 doc-type coverage expansion is complete in code with targeted `__missing__/other` cohort backfill executed.
+- Query-rewriter anchor fallback, bounded abstention gate, and OpenSearch chunk-text fetch request fix are complete in code.
+- Post-fix checksum baseline rerun is complete and archived.
 - P8 OCR quality/cost track is proposed (not yet implemented).
 - P9 full retrieval investigation + RAG revision decision gate is proposed (not yet implemented).
 - Manual QA gates for P1 and P2 have passed.
-- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> eval baseline -> P9 -> P7 -> P8`.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> P7 -> post-fix eval baseline -> P9 -> P8`.
 - Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
@@ -102,6 +104,26 @@ Next actions (short-horizon, before OCR rollout):
 4. Investigate and fix the recurrent OpenSearch chunk-text warning path.
 5. Re-run the same checksum baseline and compare deltas.
 6. Start P8 OCR canary only after post-fix baseline shows measurable retrieval gains.
+
+Execution update (2026-03-26, post-fix run):
+
+- Completed:
+  - P7 deterministic classifier expansion + targeted backfill on `doc_type in {__missing__, other}`.
+  - Query-rewriter tightening with anchored-clarify fallback.
+  - Bounded abstention gate for out-of-corpus/live-intent controls.
+  - OpenSearch chunk-text fetch fix (`mget` payload corrected; warning-noise path removed at source).
+  - Post-fix checksum baseline rerun.
+- Post-fix retrieval snapshot (`top_k=3`, `enable_variants=true`, `enable_mmr=true`):
+  - `positive_hit_at_1=2/20` (`0.10`)
+  - `positive_hit_at_3=8/20` (`0.40`)
+  - `positive_clarify_count=0`
+  - `control_with_results=0/3`
+  - `control_clarify_count=0/3`
+- Artifacts:
+  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.json`
+  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.csv`
+- Decision for next step:
+  - Proceed to P9 full retrieval investigation before OCR canary, since control behavior is corrected but positive `hit@1` remains low.
 
 ---
 

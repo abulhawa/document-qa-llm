@@ -36,6 +36,8 @@ class RetrievalConfig:
     profile_intent_boost_enabled: bool = True
     profile_intent_boost_weight: float = 0.10
     profile_intent_boost_max_fraction: float = 0.20
+    abstention_enabled: bool = True
+    abstention_min_overlap_terms: int = 2
 
     def with_top_k(self, top_k: int) -> "RetrievalConfig":
         return replace(self, top_k=top_k)

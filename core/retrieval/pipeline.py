@@ -48,6 +48,74 @@ _PROFILE_QUERY_PERSON_TERMS: Set[str] = {
     "candidate",
 }
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_OUT_OF_CORPUS_CUE_TERMS: Set[str] = {
+    "bitcoin",
+    "crypto",
+    "price",
+    "weather",
+    "forecast",
+    "bundesliga",
+    "match",
+    "score",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "stock",
+    "news",
+}
+_LIVE_RECENCY_TERMS: Set[str] = {
+    "today",
+    "tomorrow",
+    "yesterday",
+    "current",
+    "latest",
+    "now",
+}
+_CORPUS_DOMAIN_ANCHOR_TERMS: Set[str] = {
+    "cv",
+    "resume",
+    "cover",
+    "letter",
+    "reference",
+    "report",
+    "paper",
+    "course",
+    "lecture",
+    "project",
+    "contract",
+    "policy",
+    "invoice",
+    "payroll",
+    "insurance",
+    "government",
+    "jobcenter",
+    "form",
+    "tax",
+    "receipt",
+    "academic",
+}
+_QUERY_STOPWORDS: Set[str] = {
+    "a",
+    "an",
+    "the",
+    "is",
+    "are",
+    "was",
+    "were",
+    "what",
+    "who",
+    "where",
+    "when",
+    "why",
+    "how",
+    "in",
+    "on",
+    "for",
+    "of",
+    "to",
+    "and",
+    "or",
+}
 
 
 def _default_deps() -> RetrievalDeps:
@@ -185,6 +253,14 @@ def _tokenize_lower(text: str) -> Set[str]:
     return set(_TOKEN_RE.findall((text or "").lower()))
 
 
+def _query_content_tokens(query: str) -> Set[str]:
+    return {
+        tok
+        for tok in _tokenize_lower(query)
+        if (len(tok) >= 3 or tok == "cv") and tok not in _QUERY_STOPWORDS
+    }
+
+
 def _is_profile_intent_query(query: str) -> bool:
     tokens = _tokenize_lower(query)
     if not tokens:
@@ -313,6 +389,39 @@ def _collapse_cv_families(docs: Sequence[DocHit], cfg: RetrievalConfig) -> List[
     )
 
 
+def _should_abstain_for_out_of_corpus_query(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+) -> bool:
+    if not cfg.abstention_enabled or not docs:
+        return False
+
+    query_terms = _query_content_tokens(query)
+    if not query_terms:
+        return False
+
+    if not (query_terms & _OUT_OF_CORPUS_CUE_TERMS):
+        return False
+    if query_terms & _CORPUS_DOMAIN_ANCHOR_TERMS:
+        return False
+    if query_terms & _LIVE_RECENCY_TERMS:
+        return True
+
+    max_overlap_terms = 0
+    top_docs = docs[: min(len(docs), 3)]
+    for doc in top_docs:
+        doc_text = " ".join(
+            str(doc.get(field) or "")
+            for field in ("text", "path", "filename", "doc_type", "person_name")
+        )
+        overlap_terms = len(query_terms & _tokenize_lower(doc_text))
+        if overlap_terms > max_overlap_terms:
+            max_overlap_terms = overlap_terms
+
+    return max_overlap_terms < max(cfg.abstention_min_overlap_terms, 1)
+
+
 def retrieve(
     query: str,
     *,
@@ -429,6 +538,12 @@ def retrieve(
         docs_for_answer = deps.cross_encoder.rerank(
             query, docs_for_answer, top_n=min(cfg.rerank_top_n, len(docs_for_answer))
         )
+
+    if _should_abstain_for_out_of_corpus_query(query, docs_for_answer, cfg):
+        logger.info(
+            "Abstention gate triggered: suppressing low-overlap results for out-of-corpus style query."
+        )
+        return RetrievalOutput(documents=[], clarify=None)
 
     logger.info(
         "Retrieval returned %s results after fusion/rewrites/MMR",

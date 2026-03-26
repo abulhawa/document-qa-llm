@@ -67,7 +67,12 @@ def setup_fake_qdrant(monkeypatch):
             self.vector = vector
             self.payload = payload
 
+    class PointIds:
+        def __init__(self, points):
+            self.points = points
+
     monkeypatch.setattr(qdrant_utils, "PointStruct", P)
+    monkeypatch.setattr(qdrant_utils, "PointIdsList", PointIds)
 
     mapping = {
         "a": (1.0, 0.0),
@@ -176,3 +181,51 @@ def test_vector_search_exception(monkeypatch, setup_fake_qdrant):
     monkeypatch.setattr(vector_store, "client", boom)
     results = vector_store.retrieve_top_k("q", top_k=5)
     assert results == []
+
+
+def test_fetch_chunk_texts_uses_backoff_after_opensearch_failure(monkeypatch):
+    calls = {"count": 0}
+
+    def boom_client():
+        calls["count"] += 1
+        raise RuntimeError("opensearch unavailable")
+
+    timestamps = [1000.0, 1001.0]
+    monkeypatch.setattr(vector_store, "get_client", boom_client)
+    monkeypatch.setattr(
+        vector_store.time,
+        "time",
+        lambda: timestamps.pop(0) if timestamps else 1001.0,
+    )
+    vector_store._chunk_text_fetch_backoff_until = 0.0
+    try:
+        assert vector_store._fetch_chunk_texts({"id1"}) == {}
+        assert vector_store._fetch_chunk_texts({"id1"}) == {}
+        assert calls["count"] == 1
+        assert vector_store._chunk_text_fetch_backoff_until == pytest.approx(1120.0)
+    finally:
+        vector_store._chunk_text_fetch_backoff_until = 0.0
+
+
+def test_fetch_chunk_texts_requests_source_includes(monkeypatch):
+    class FakeOpenSearch:
+        def __init__(self):
+            self.kwargs = None
+
+        def mget(self, **kwargs):
+            self.kwargs = kwargs
+            return {"docs": [{"_id": "id1", "found": True, "_source": {"text": "hello"}}]}
+
+    fake_client = FakeOpenSearch()
+    monkeypatch.setattr(vector_store, "get_client", lambda: fake_client)
+    monkeypatch.setattr(vector_store.time, "time", lambda: 1000.0)
+    vector_store._chunk_text_fetch_backoff_until = 0.0
+    try:
+        texts = vector_store._fetch_chunk_texts({"id1"})
+    finally:
+        vector_store._chunk_text_fetch_backoff_until = 0.0
+
+    assert texts == {"id1": "hello"}
+    assert fake_client.kwargs is not None
+    assert fake_client.kwargs["body"] == {"ids": ["id1"]}
+    assert fake_client.kwargs["params"] == {"_source_includes": "text"}

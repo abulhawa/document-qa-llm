@@ -1,6 +1,7 @@
 from typing import Any, List, Optional
 
 from config import logger, QA_GROUNDING_ENABLED, QA_GROUNDING_THRESHOLD
+from core.query_rewriter import has_strong_query_anchors
 from core.retrieval.types import RetrievalConfig
 from tracing import (
     start_span,
@@ -84,6 +85,13 @@ def answer_question(
                     OUTPUT_VALUE, _as_span_value(rewrite_result.raw)
                 )
                 rewrite_span.set_status(STATUS_OK)
+
+            if context.clarification and has_strong_query_anchors(question):
+                logger.info(
+                    "Rewrite requested clarification but query has strong anchors; continuing with exact query."
+                )
+                context.rewritten_question = question
+                context.clarification = None
 
             if context.clarification:
                 context.answer = (

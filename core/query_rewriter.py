@@ -1,7 +1,65 @@
 from typing import Any
+import re
 from config import logger
 from core.llm import ask_llm
 import json
+
+
+_ANCHOR_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]*")
+_QUOTE_RE = re.compile(r"['\"][^'\"]{3,}['\"]")
+_AMBIGUOUS_PRONOUNS = {"he", "she", "they", "it", "him", "her", "them"}
+_STRONG_ANCHOR_TERMS = {
+    "cv",
+    "resume",
+    "cover",
+    "letter",
+    "reference",
+    "report",
+    "paper",
+    "course",
+    "lecture",
+    "contract",
+    "policy",
+    "invoice",
+    "receipt",
+    "jobcenter",
+    "form",
+    "formular",
+    "insurance",
+    "tax",
+    "phd",
+    "msc",
+    "bsc",
+}
+
+
+def has_strong_query_anchors(original_query: str) -> bool:
+    query = (original_query or "").strip()
+    if not query:
+        return False
+
+    if _QUOTE_RE.search(query):
+        return True
+
+    lowered_tokens = [tok.lower() for tok in _ANCHOR_TOKEN_RE.findall(query)]
+    if any(tok.isdigit() and len(tok) >= 4 for tok in lowered_tokens):
+        return True
+    if any(tok in _STRONG_ANCHOR_TERMS for tok in lowered_tokens):
+        if not any(tok in _AMBIGUOUS_PRONOUNS for tok in lowered_tokens):
+            return True
+
+    # Possessive or hyphenated anchors often indicate concrete entities/titles.
+    if re.search(r"\b[a-z]{2,}'s\b", query, flags=re.IGNORECASE):
+        return True
+    if re.search(r"\b[a-z0-9]+-[a-z0-9]+\b", query, flags=re.IGNORECASE):
+        return True
+
+    # Require stronger lexical signal when unresolved pronouns are present.
+    if any(tok in _AMBIGUOUS_PRONOUNS for tok in lowered_tokens):
+        return False
+
+    long_tokens = [tok for tok in lowered_tokens if len(tok) >= 7 and tok.isalpha()]
+    return len(long_tokens) >= 2
 
 
 def rewrite_query(
@@ -33,7 +91,8 @@ def rewrite_query(
     5. Avoid overly formal or robotic expressions.
     6. If there are typos or malformed errors, correct these but do not guess the user intent.
     7. Keep clarification questions brief and user-friendly.
-    8. Output must be valid JSON only.
+    8. If the query has strong anchors (named entity, document type/title, specific year/number), do not ask for clarification; return a rewritten query instead.
+    9. Output must be valid JSON only.
 
     Examples:
     User: where did ali do his bsc studies  
@@ -69,6 +128,11 @@ def rewrite_query(
         ).strip()
 
         rewritten = json.loads(rewritten)
+        if not isinstance(rewritten, dict):
+            raise ValueError("Rewrite output is not a JSON object")
+        if "clarify" in rewritten and has_strong_query_anchors(original_query):
+            logger.info("Rewrite clarification bypassed due to strong query anchors.")
+            return {"rewritten": original_query.strip()}
         return rewritten
 
     except Exception:
