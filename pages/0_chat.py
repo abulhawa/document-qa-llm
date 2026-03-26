@@ -29,6 +29,18 @@ if not llm_status["active"]:
 # 🔸 Sidebar: LLM Settings
 # ───────────────────────────────────────
 with st.sidebar.expander("🧠 LLM Settings", expanded=True):
+    if st.button(
+        "Reconnect LLM",
+        help="Re-check LLM connectivity and model availability.",
+    ):
+        llm_status = check_llm_status()
+        if llm_status["active"]:
+            st.success("LLM connection restored.")
+        else:
+            st.warning(llm_status["status_message"])
+
+    st.markdown("---")
+
     llm_models: List[str] = []
     loaded_llm_model: Optional[str] = None
     if not llm_status["server_online"]:
