@@ -391,3 +391,94 @@ def test_answer_question_populates_grounding_when_flag_enabled(monkeypatch):
     assert observed["threshold"] == pytest.approx(0.55)
     assert result.grounding_score == pytest.approx(0.75)
     assert result.is_grounded is True
+
+
+def test_answer_question_keeps_answer_when_soft_grounding_fails(monkeypatch):
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="alpha source", path="doc-a", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        return "possibly unsupported answer"
+
+    def mock_grounding(answer, context_chunks, threshold):
+        return types.SimpleNamespace(score=0.1, is_grounded=False)
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.evaluate_grounding", mock_grounding)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", True)
+
+    result = answer_question("question")
+
+    assert result.answer == "possibly unsupported answer"
+    assert result.grounding_score == pytest.approx(0.1)
+    assert result.is_grounded is False
+
+
+def test_answer_question_enforces_strict_grounding_when_required(monkeypatch):
+    called = {"count": 0}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="alpha source", path="doc-a", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        return "hallucinated answer"
+
+    def mock_grounding(answer, context_chunks, threshold):
+        called["count"] += 1
+        return types.SimpleNamespace(score=0.2, is_grounded=False)
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.evaluate_grounding", mock_grounding)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
+
+    result = answer_question("question", require_grounding=True)
+
+    assert called["count"] == 1
+    assert result.grounding_score == pytest.approx(0.2)
+    assert result.is_grounded is False
+    assert result.answer == "I don't know."
+
+
+def test_answer_question_keeps_answer_when_strict_grounding_passes(monkeypatch):
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="alpha evidence", path="doc-a", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        return "alpha evidence"
+
+    def mock_grounding(answer, context_chunks, threshold):
+        return types.SimpleNamespace(score=0.95, is_grounded=True)
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.evaluate_grounding", mock_grounding)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
+
+    result = answer_question("question", require_grounding=True)
+
+    assert result.grounding_score == pytest.approx(0.95)
+    assert result.is_grounded is True
+    assert result.answer == "alpha evidence"

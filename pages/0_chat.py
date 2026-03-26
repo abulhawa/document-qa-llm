@@ -49,6 +49,23 @@ def _source_rows(result) -> List[str]:
     return rows
 
 
+def _grounding_warning_message(result) -> Optional[str]:
+    if getattr(result, "is_grounded", None) is not False:
+        return None
+
+    answer_text = (getattr(result, "answer", "") or "").strip()
+    if answer_text == "I don't know.":
+        return None
+
+    score = getattr(result, "grounding_score", None)
+    if isinstance(score, (float, int)):
+        return (
+            "Low confidence: this answer may not be fully supported by your documents "
+            f"(grounding score: {float(score):.2f})."
+        )
+    return "Low confidence: this answer may not be fully supported by your documents."
+
+
 st.set_page_config(page_title="Ask Your Documents", layout="wide")
 st.title("Ask Your Documents")
 
@@ -152,6 +169,16 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
         disabled=not llm_status["active"],
         help=None if llm_status["active"] else llm_status["status_message"],
     )
+    require_grounding = st.checkbox(
+        "Strict mode (document-backed answers only)",
+        value=False,
+        disabled=not llm_status["active"],
+        help=(
+            "When off: Flexible mode (best-effort answers)."
+            if llm_status["active"]
+            else llm_status["status_message"]
+        ),
+    )
 
 with st.container():
     # ───────────────────────────────────────
@@ -206,6 +233,7 @@ with st.container():
                         model=loaded_llm_model,
                         chat_history=st.session_state.chat_history,
                         use_cache=use_cache,
+                        require_grounding=require_grounding,
                     )
                 )
 
@@ -216,6 +244,9 @@ with st.container():
 
             with st.chat_message("assistant"):
                 st.markdown(assistant_message)
+                grounding_warning = _grounding_warning_message(result)
+                if grounding_warning:
+                    st.warning(grounding_warning)
                 source_rows = _source_rows(result)
                 if source_rows:
                     st.markdown("#### 📁 Sources:")
@@ -261,6 +292,7 @@ with st.container():
                             temperature=temperature,
                             model=loaded_llm_model,
                             use_cache=use_cache,
+                            require_grounding=require_grounding,
                         )
                     )
 
@@ -268,6 +300,9 @@ with st.container():
             answer_text = result.answer or result.error or ""
             st.markdown(answer_text)
             logger.info(f"LLM Answer:\n{answer_text}")
+            grounding_warning = _grounding_warning_message(result)
+            if grounding_warning:
+                st.warning(grounding_warning)
 
             source_rows = _source_rows(result)
             if source_rows:

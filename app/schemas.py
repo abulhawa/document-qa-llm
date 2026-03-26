@@ -37,6 +37,7 @@ class QARequest:
     model: Optional[str] = None
     chat_history: List[Dict[str, str]] = field(default_factory=list)
     use_cache: bool = True
+    require_grounding: bool = False
     context: Optional[RequestContext] = None
 
 
@@ -47,6 +48,8 @@ class QAResponse:
     documents: List[DocumentSnippet] = field(default_factory=list)
     rewritten_question: Optional[str] = None
     clarification: Optional[str] = None
+    is_grounded: Optional[bool] = None
+    grounding_score: Optional[float] = None
     error: Optional[str] = None
 
 
