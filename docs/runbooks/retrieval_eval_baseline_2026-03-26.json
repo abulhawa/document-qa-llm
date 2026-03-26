@@ -1,0 +1,471 @@
+{
+  "run_date": "2026-03-26",
+  "config": {
+    "top_k": 3,
+    "enable_variants": true,
+    "enable_mmr": true
+  },
+  "metrics": {
+    "positive_total": 20,
+    "positive_hit_at_1": 2,
+    "positive_hit_at_3": 5,
+    "positive_hit_at_1_rate": 0.1,
+    "positive_hit_at_3_rate": 0.25,
+    "positive_clarify_count": 2,
+    "positive_error_count": 0,
+    "control_total": 3,
+    "control_with_results": 2,
+    "control_clarify_count": 1,
+    "control_error_count": 0
+  },
+  "rows": [
+    {
+      "query_id": "Q01",
+      "mode": "positive",
+      "query": "Where did Ali do his PhD studies?",
+      "expected_checksums": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+      ],
+      "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+      "top2_checksum": "6ce8ea0a7f5a718d6c79e1b631a28f5683d3703e2e2f15b075d86be7ceda85c9",
+      "top3_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+      "top1_score": 1.172285,
+      "top2_score": 0.411433,
+      "top3_score": 0.34213,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q02",
+      "mode": "positive",
+      "query": "In Ali's latest CV, what is his most recent job title?",
+      "expected_checksums": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ],
+      "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+      "top2_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+      "top3_checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+      "top1_score": 0.754897,
+      "top2_score": 0.30005,
+      "top3_score": 0.293412,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q03",
+      "mode": "positive",
+      "query": "From Ali's latest CV, list the main technical skills.",
+      "expected_checksums": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ],
+      "top1_checksum": "0b1313ce6e275e0a27f3ee6e0d9196a3be0acf8b750eb46dba763e7bb0d52cf1",
+      "top2_checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+      "top3_checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+      "top1_score": 0.929844,
+      "top2_score": 0.3,
+      "top3_score": 0.256248,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q04",
+      "mode": "positive",
+      "query": "In Ali's most recent CV contact section, which city is listed?",
+      "expected_checksums": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ],
+      "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+      "top2_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+      "top3_checksum": "bbc78d0c4f121f5b5c1a025aeb0b5cc63ddc85cbf3a8e612ecfd9d5c9c93b8f5",
+      "top1_score": 1.024083,
+      "top2_score": 0.295192,
+      "top3_score": 0.267045,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q05",
+      "mode": "positive",
+      "query": "From Ali's cover letters, what role is he applying for?",
+      "expected_checksums": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+      "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+      "top1_score": 0.76,
+      "top2_score": 0.268441,
+      "top3_score": 0.285348,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q06",
+      "mode": "positive",
+      "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+      "expected_checksums": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "150ba5b943835027333f6e36a6d3f6586ae5964d26788a6320331ebc6c2e1db9",
+      "top3_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+      "top1_score": 1.013596,
+      "top2_score": 0.147874,
+      "top3_score": 0.187743,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q07",
+      "mode": "positive",
+      "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+      "expected_checksums": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ],
+      "top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+      "top2_checksum": "b14a8cf088dd5448e47eb4ec5029a554eb675acc4eb7ee3d66755143acc72487",
+      "top3_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+      "top1_score": 0.977036,
+      "top2_score": 0.3,
+      "top3_score": 0.974188,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q08",
+      "mode": "positive",
+      "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+      "expected_checksums": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ],
+      "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+      "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+      "top3_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+      "top1_score": 1.0,
+      "top2_score": 0.145058,
+      "top3_score": 0.151357,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q09",
+      "mode": "positive",
+      "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+      "expected_checksums": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ],
+      "top1_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+      "top2_checksum": "0966d92cf9b92d6f0fbccb9c2ee19ab8eb8338f06d7f57e221504946c50d7131",
+      "top3_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+      "top1_score": 0.920345,
+      "top2_score": 0.241126,
+      "top3_score": 0.919112,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q10",
+      "mode": "positive",
+      "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+      "expected_checksums": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+      "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+      "top1_score": 0.962999,
+      "top2_score": 0.962995,
+      "top3_score": 0.847813,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q11",
+      "mode": "positive",
+      "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+      "expected_checksums": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ],
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": 0.0,
+      "top2_score": 0.0,
+      "top3_score": 0.0,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": "Which specific paper on solar radiation are you referring to?",
+      "error": null
+    },
+    {
+      "query_id": "Q12",
+      "mode": "positive",
+      "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+      "expected_checksums": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "88c0f7e96bb8c23a3043216a8a021c006189f64120a6440fa747d21a458af895",
+      "top3_checksum": "b02655e80a9ef88b4764c7f6c8fb8f126184fb59064e20524df5871b8955e2a2",
+      "top1_score": 1.005247,
+      "top2_score": 0.304073,
+      "top3_score": 0.282611,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q13",
+      "mode": "positive",
+      "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+      "expected_checksums": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+      "top3_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+      "top1_score": 0.734699,
+      "top2_score": 0.287968,
+      "top3_score": 0.252267,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q14",
+      "mode": "positive",
+      "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+      "expected_checksums": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ],
+      "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+      "top2_checksum": "79aadd0d369543f384254c14d9992d9277bc8a6238569242a4c157f0062638e1",
+      "top3_checksum": "d423c244fb185e314597e3f6d73e2af1bc66360815c85050773b47b45252e4ac",
+      "top1_score": 0.990309,
+      "top2_score": 0.333864,
+      "top3_score": 0.296288,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q15",
+      "mode": "positive",
+      "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+      "expected_checksums": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ],
+      "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+      "top2_checksum": "19d5e4e5ee6fb1ce0f7772ceef578714d0cd0151faf6e6e6b88707d96933e307",
+      "top3_checksum": "de0a6b41c8e545ef964c3d63be2ab4f62d677519d3856e183742e119eab631ae",
+      "top1_score": 0.991688,
+      "top2_score": 0.253831,
+      "top3_score": 0.192268,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q16",
+      "mode": "positive",
+      "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ],
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": 0.0,
+      "top2_score": 0.0,
+      "top3_score": 0.0,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": "Which insurance company or policy are you referring to?",
+      "error": null
+    },
+    {
+      "query_id": "Q17",
+      "mode": "positive",
+      "query": "In insurer correspondence letters, what customer service phone number is listed?",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ],
+      "top1_checksum": "8a77277ec1d73d28e8fdc8b4e737ade5acf08f9f1dd55de13dd24470f38c3285",
+      "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+      "top3_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+      "top1_score": 0.915359,
+      "top2_score": 0.299512,
+      "top3_score": 0.3,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q18",
+      "mode": "positive",
+      "query": "In the annual tax statement document for 2023, what date range is covered?",
+      "expected_checksums": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ],
+      "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+      "top2_checksum": "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+      "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+      "top1_score": 0.743565,
+      "top2_score": 0.336,
+      "top3_score": 0.235306,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q19",
+      "mode": "positive",
+      "query": "In the tax-related invoice PDF, who is the issuing company?",
+      "expected_checksums": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+      "top3_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+      "top1_score": 1.034496,
+      "top2_score": 0.198588,
+      "top3_score": 0.146052,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q20",
+      "mode": "positive",
+      "query": "In the remittance receipt from 2020, what payment amount is shown?",
+      "expected_checksums": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ],
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "344053e565ae19b83c8c54af4f21560859a052eef3248bd484f925b081004b60",
+      "top3_checksum": "9950c328b3908703aa4c6d25bdf72f06998013e3012d55fa628a3553edf9fea7",
+      "top1_score": 1.030289,
+      "top2_score": 0.253346,
+      "top3_score": 0.228512,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q21",
+      "mode": "control",
+      "query": "What is Bitcoin price today?",
+      "expected_checksums": [],
+      "top1_checksum": "139dd328c3b28c58ea9d8b984d846c5acaa08fce33057c42ec4632122b8dc258",
+      "top2_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+      "top3_checksum": "93639d41c169f0034e8f1761d6d2aa49122ff80c0fb2d4025170ea8609326126",
+      "top1_score": 0.744438,
+      "top2_score": 0.252386,
+      "top3_score": 0.224818,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    },
+    {
+      "query_id": "Q22",
+      "mode": "control",
+      "query": "Who won yesterday's Bundesliga match?",
+      "expected_checksums": [],
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": 0.0,
+      "top2_score": 0.0,
+      "top3_score": 0.0,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": "Which specific Bundesliga match are you referring to?",
+      "error": null
+    },
+    {
+      "query_id": "Q23",
+      "mode": "control",
+      "query": "What is the weather in Berlin tomorrow?",
+      "expected_checksums": [],
+      "top1_checksum": "746725649efb1b8dcf2d6198462e54b822439c1b2b8c6ae81bd65619525ea7a4",
+      "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+      "top3_checksum": "525eafe3dc7c17f89886b58770ca661fd8fdd479bff1faef9b176c7a6357c15d",
+      "top1_score": 0.9817,
+      "top2_score": 0.155992,
+      "top3_score": 0.149159,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "clarify": null,
+      "error": null
+    }
+  ]
+}

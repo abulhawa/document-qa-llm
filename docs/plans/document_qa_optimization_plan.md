@@ -1,6 +1,6 @@
-# document_qa Optimization Plan (v2)
+# document_qa Optimization Plan (v3)
 
-Last updated: 2026-03-26 (post-P3 implementation + P5 defaults/runbook)
+Last updated: 2026-03-26 (post-retrieval-eval fixture + P7/P8 planning)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -37,12 +37,28 @@ Define a small manual QA set (5-10 questions) from known docs and record:
 - Grounded answer rate (answer can be traced to retrieved chunks).
 - "Not found" behavior quality for out-of-scope questions.
 - Duplicate-source rate in top-k retrieval.
+- Checksum hit-rate on the standardized fixture:
+  - `tests/fixtures/retrieval_eval_queries.json`
+  - `docs/runbooks/retrieval_eval_scoring_template.csv`
 
 Milestone is successful when:
 
 - Existing targeted tests pass.
 - New regression tests for each changed behavior pass.
 - Manual QA set shows lower hallucination and fewer duplicate sources.
+
+Baseline snapshot (2026-03-26, checksum fixture run):
+
+- Retrieval run mode: `top_k=3`, `enable_variants=true`, `enable_mmr=true`.
+- Source fixture: `tests/fixtures/retrieval_eval_queries.json` (23 queries; 20 positive, 3 control).
+- Results:
+  - `positive_hit_at_1=2/20` (`0.10`)
+  - `positive_hit_at_3=5/20` (`0.25`)
+  - `positive_clarify_count=2`
+  - `control_with_results=2/3` and `control_clarify_count=1/3`
+- Artifacts:
+  - `docs/runbooks/retrieval_eval_baseline_2026-03-26.json`
+  - `docs/runbooks/retrieval_eval_baseline_2026-03-26.csv`
 
 ## 5. Implementation plan (phased, low blast radius)
 
@@ -55,8 +71,11 @@ Milestone is successful when:
 - P3 is complete in code with targeted regression tests passing.
 - P5 code changes are complete (`800/100` defaults + migration runbook); full operational re-ingest rollout is pending.
 - P6 dynamic chunking policy is proposed (not yet implemented).
+- Retrieval evaluation fixture and checksum-based scoring template are committed.
+- P7 doc-type coverage expansion is proposed (not yet implemented).
+- P8 OCR quality/cost track is proposed (not yet implemented).
 - Manual QA gates for P1 and P2 have passed.
-- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6`.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> eval baseline -> P7 -> P8`.
 - Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
@@ -376,6 +395,8 @@ Exit gate:
 9. PR-09: P3 grounding (flagged).
 10. PR-10: P5 chunk migration + re-ingest runbook.
 11. PR-11: P6 dynamic chunking policy + metadata + staged rollout.
+12. PR-12: P7 doc-type expansion + bounded classifier enrichment.
+13. PR-13: P8 OCR pipeline (quality + cost controls) + staged rollout.
 
 Each PR should include:
 
@@ -517,3 +538,123 @@ Exit gate:
 - Retrieval precision improves on identity-style queries without degrading dense-prose QA quality.
 - No regressions when dynamic policy is disabled.
 - Operational runbook validated on at least one staged re-ingest cycle.
+
+## 10. Phase P7: Doc-type coverage expansion (proposed)
+
+Status (2026-03-26):
+
+- Proposed only; no code changes merged yet.
+- Current fulltext snapshot still has high `doc_type=__missing__` share.
+
+Objective:
+
+- Reduce `doc_type=__missing__` substantially so retrieval policy can help non-CV corpora too.
+- Improve routing/chunk-policy behavior for legal/admin/finance/research-style documents.
+
+Scope:
+
+- Expand ingestion taxonomy beyond identity docs.
+- Keep classification deterministic-first.
+- Use optional LLM enrichment only for uncertain cases, with strict budget and confidence gates.
+
+Proposed taxonomy (v1):
+
+- `cv`, `cover_letter`, `reference_letter`
+- `research_paper`, `technical_report`, `course_material`
+- `contract`, `policy`, `invoice`, `payroll`
+- `insurance_letter`, `government_form`, `academic_record`
+- `other` (explicit fallback instead of silent missing)
+
+Implementation slices (low blast radius):
+
+1. Deterministic classifier expansion:
+   - Extend `ingestion/doc_classifier.py` with path/title/text pattern rules for the v1 taxonomy.
+   - Emit explicit `other` when no rule matches.
+2. Confidence + uncertainty handling:
+   - Return `doc_type_confidence` and `doc_type_source` (`rule`, `llm`, `fallback`).
+3. Optional Groq enrichment for uncertain docs:
+   - Add feature flag (default off), only for docs below deterministic confidence threshold.
+   - Cache classifier decisions by checksum to avoid repeat calls.
+4. Backfill/migration:
+   - Add targeted backfill mode for `doc_type in {null,__missing__,other}` cohorts only.
+   - Keep mapping updates non-destructive.
+
+Testing plan:
+
+- Unit tests for rule coverage per new class.
+- Ingestion tests for metadata persistence of `doc_type`, `doc_type_confidence`, and `doc_type_source`.
+- Backfill tests for idempotency and safe overwrite behavior.
+
+Suggested run:
+
+```powershell
+pytest tests/test_ingestion_extra.py tests/test_backfill_identity_metadata.py tests/test_retrieval_pipeline.py -q
+```
+
+Exit gate:
+
+- Relative reduction in `__missing__` doc type by at least 25% on the indexed corpus.
+- No regression on CV/profile retrieval quality.
+- Non-profile fixture queries show improved hit@3 in baseline comparison.
+
+## 11. Phase P8: OCR ingestion (quality-first, cost-bounded) (proposed)
+
+Status (2026-03-26):
+
+- Proposed only; no OCR extraction pipeline merged yet.
+- `text_full` empty docs remain deferred and are the main OCR target cohort.
+
+Objective:
+
+- Extract usable text from scanned/image-heavy documents with high quality while minimizing paid usage.
+
+Scope:
+
+- Native extraction remains first path.
+- OCR only for docs/pages with missing or low-quality native text.
+- Groq usage is optional and bounded; prioritize free/local OCR for bulk processing.
+
+Pipeline policy (v1):
+
+1. Candidate gating:
+   - OCR candidates are docs with empty `text_full` or very low text-density after native extraction.
+2. Tiered OCR:
+   - Tier 1 (default): local OCR engine (no API cost) for all candidate pages.
+   - Tier 2 (optional): Groq-assisted OCR/recovery only for low-confidence pages from tier 1.
+3. Quality controls:
+   - Preprocessing: orientation fix, denoise, deskew, contrast normalization.
+   - Confidence scoring per page and document-level `quality_bucket`.
+4. Cost controls:
+   - Daily/page-level cap for Groq OCR fallback.
+   - Hard stop when budget quota is reached.
+
+Metadata additions:
+
+- `extraction_mode` (`native`, `ocr_local`, `ocr_groq`)
+- `ocr_confidence_mean`, `ocr_confidence_min`
+- `ocr_page_count`, `ocr_fallback_used`
+
+Implementation slices:
+
+1. Add OCR module and orchestrator hook (feature-flagged, default off).
+2. Persist OCR quality/cost metadata into fulltext/chunk docs.
+3. Add runbook for staged OCR rollout by prefix and page budget.
+4. Integrate OCR outputs into dynamic chunking policy inputs (`extraction_mode`, `quality_bucket`).
+
+Testing plan:
+
+- Unit tests for OCR gating and fallback policy.
+- Ingestion tests for OCR metadata persistence.
+- End-to-end canary tests on a small scanned cohort.
+
+Suggested run:
+
+```powershell
+pytest tests/test_ingestion_extra.py tests/test_ingest_fulltext.py tests/test_config_utils.py -q
+```
+
+Exit gate:
+
+- At least 80% of previously empty-text docs in canary yield non-empty text after OCR.
+- OCR-enabled retrieval improves hit@3 on scanned-doc queries vs baseline.
+- Groq OCR usage stays within configured daily limits.
