@@ -2,10 +2,17 @@ import json
 from typing import Any, Dict
 
 import requests
+import pytest
 
 from core import llm
 from core import llm_cache
 from opensearchpy import exceptions
+
+
+@pytest.fixture(autouse=True)
+def _force_local_llm_mode(monkeypatch):
+    monkeypatch.setattr(llm, "USE_GROQ", False)
+    monkeypatch.setattr(llm, "GROQ_API_KEY", "")
 
 
 class DummyResponse:

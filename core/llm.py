@@ -9,6 +9,9 @@ from config import (
     LLM_MODEL_LIST_ENDPOINT,
     LLM_MODEL_LOAD_ENDPOINT,
     LLM_MODEL_INFO_ENDPOINT,
+    USE_GROQ,
+    GROQ_API_KEY,
+    GROQ_MODEL,
 )
 from core import llm_cache
 
@@ -30,25 +33,83 @@ class LLMCallResult(TypedDict):
     prompt_length: int | None
 
 
+def _request_headers() -> Dict[str, str] | None:
+    if not USE_GROQ:
+        return None
+    headers = {"Content-Type": "application/json"}
+    if GROQ_API_KEY:
+        headers["Authorization"] = f"Bearer {GROQ_API_KEY}"
+    return headers
+
+
+def _extract_model_names(payload: Dict[str, Any]) -> List[str]:
+    model_names = payload.get("model_names")
+    if isinstance(model_names, list):
+        return [str(model_name) for model_name in model_names]
+
+    models_data = payload.get("data")
+    if isinstance(models_data, list):
+        names: List[str] = []
+        for item in models_data:
+            if isinstance(item, dict):
+                model_id = item.get("id")
+                if model_id:
+                    names.append(str(model_id))
+        return names
+
+    return []
+
+
+def _resolve_model(requested_model: Optional[str]) -> Optional[str]:
+    if requested_model:
+        return requested_model
+    if USE_GROQ:
+        return GROQ_MODEL or None
+    return None
+
+
+def _is_chat_response(mode: str) -> bool:
+    # Groq compatibility: completion prompts are served through chat completions.
+    return mode == "chat" or (USE_GROQ and mode == "completion")
+
+
 def get_available_models() -> List[str]:
     """Fetch the list of available models from the LLM server."""
     span = get_current_span()
+    if USE_GROQ and not GROQ_API_KEY:
+        logger.warning("Groq mode enabled but GROQ_API_KEY is missing.")
+        return [GROQ_MODEL] if GROQ_MODEL else []
     try:
-        response = requests.get(LLM_MODEL_LIST_ENDPOINT, timeout=5)
+        if USE_GROQ:
+            response = requests.get(
+                LLM_MODEL_LIST_ENDPOINT, timeout=5, headers=_request_headers()
+            )
+        else:
+            response = requests.get(LLM_MODEL_LIST_ENDPOINT, timeout=5)
         span.set_attribute("llm.model_list.requested", True)
         response.raise_for_status()
-        models = response.json().get("model_names", [])
+        models = _extract_model_names(response.json())
+        if USE_GROQ and not models and GROQ_MODEL:
+            models = [GROQ_MODEL]
         span.set_attribute("llm.model_list.count", len(models))
         return models
     except requests.RequestException as e:
         logger.error("Failed to fetch model list: %s", e)
         span.set_attribute("llm.model_list.error", str(e))
+        if USE_GROQ and GROQ_MODEL:
+            return [GROQ_MODEL]
         return []
 
 
 def get_loaded_model_name() -> str | None:
     """Return the name of the currently loaded model, or None."""
     span = get_current_span()
+    if USE_GROQ:
+        if not GROQ_API_KEY:
+            span.set_attribute("llm.model.info_error", "missing_groq_api_key")
+            return None
+        span.set_attribute("llm.model.loaded", GROQ_MODEL or "")
+        return GROQ_MODEL or None
     try:
         response = requests.get(LLM_MODEL_INFO_ENDPOINT, timeout=5)
         if response.status_code == 200:
@@ -72,6 +133,14 @@ def is_model_loaded() -> bool:
 def load_model(model_name: str) -> bool:
     span = get_current_span()
     span.set_attribute("llm.model.load.requested", model_name)
+    if USE_GROQ:
+        if not GROQ_API_KEY:
+            logger.error("Groq mode requires GROQ_API_KEY before calling load_model.")
+            span.set_attribute("llm.model.load.error", "missing_groq_api_key")
+            return False
+        logger.info("Groq mode active; skipping local model load step.")
+        span.set_attribute("llm.model.load.noop", True)
+        return True
     try:
         response = requests.post(
             LLM_MODEL_LOAD_ENDPOINT, json={"model_name": model_name}, timeout=TIMEOUT
@@ -97,6 +166,18 @@ def ask_llm_with_status(
     """Unified LLM query function for chat and completion modes."""
 
     span = get_current_span()
+    if USE_GROQ and not GROQ_API_KEY:
+        summary = "GROQ_API_KEY is required when USE_GROQ=true."
+        logger.error(summary)
+        return {
+            "content": "",
+            "error": {
+                "type": "request_exception",
+                "status_code": None,
+                "summary": summary,
+            },
+            "prompt_length": None,
+        }
     prompt_length = None
     cache_key: str | None = None
     canonical: Dict[str, Any] | None = None
@@ -104,6 +185,7 @@ def ask_llm_with_status(
     prompt_hash: str | None = None
     model_id: str | None = None
     endpoint_id: str | None = None
+    resolved_model = _resolve_model(model)
     try:
         if mode == "chat":
             endpoint = LLM_CHAT_ENDPOINT
@@ -113,12 +195,11 @@ def ask_llm_with_status(
                 "temperature": temperature,
                 "stop": STOP_TOKENS,
             }
-            if model:
-                payload["model"] = model
+            if resolved_model:
+                payload["model"] = resolved_model
             logger.info("🧠 Sending chat prompt (%d messages)", len(prompt))  # type: ignore
             prompt_length = len(str(prompt))
         else:  # mode == "completion"
-            endpoint = LLM_COMPLETION_ENDPOINT
             prompt_words = len(prompt.split())  # type: ignore
             if prompt_words > PROMPT_LENGTH_WARN_THRESHOLD:
                 logger.warning(
@@ -126,20 +207,30 @@ def ask_llm_with_status(
                 )
             logger.info("🧠 Sending completion prompt (%d words)", prompt_words)
             prompt_length = len(prompt)  # type: ignore[arg-type]
-            payload = {
-                "prompt": prompt,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "stop": STOP_TOKENS,
-            }
-            if model:
-                payload["model"] = model
+            if USE_GROQ:
+                endpoint = LLM_CHAT_ENDPOINT
+                payload = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "stop": STOP_TOKENS,
+                }
+            else:
+                endpoint = LLM_COMPLETION_ENDPOINT
+                payload = {
+                    "prompt": prompt,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "stop": STOP_TOKENS,
+                }
+            if resolved_model:
+                payload["model"] = resolved_model
 
         if llm_cache.is_cache_enabled(use_cache):
             decoding_params = {
                 k: v for k, v in payload.items() if k not in {"prompt", "messages", "model"}
             }
-            model_id = model or "default"
+            model_id = resolved_model or "default"
             endpoint_id = f"{LLM_BASE_URL}:{mode}"
             (
                 cache_key,
@@ -160,7 +251,11 @@ def ask_llm_with_status(
                 return {"content": cached, "error": None, "prompt_length": prompt_length}
             logger.info("🧠 LLM cache miss")
 
-        response = requests.post(endpoint, json=payload, timeout=TIMEOUT)
+        request_kwargs: Dict[str, Any] = {"json": payload, "timeout": TIMEOUT}
+        headers = _request_headers()
+        if headers is not None:
+            request_kwargs["headers"] = headers
+        response = requests.post(endpoint, **request_kwargs)
         response.raise_for_status()
         try:
             data = response.json()
@@ -176,12 +271,12 @@ def ask_llm_with_status(
                 "prompt_length": prompt_length,
             }
         span.set_attribute("llm.prompt_length", prompt_length or 0)
-        span.set_attribute("llm.model", model or "default")
+        span.set_attribute("llm.model", resolved_model or "default")
         span.set_attribute("llm.mode", mode)
         span.set_attribute("llm.temperature", temperature)
         span.set_attribute("llm.max_tokens", max_tokens)
 
-        if mode == "chat":
+        if _is_chat_response(mode):
             content = (
                 data.get("choices", [{}])[0]
                 .get("message", {})
@@ -313,6 +408,33 @@ def check_llm_status(timeout: float = 0.3) -> LLMStatus:
         "status_message": "LLM server is offline!",
         "active": False,
     }
+
+    if USE_GROQ:
+        if not GROQ_API_KEY:
+            result["status_message"] = "Groq API key is missing."
+            return result
+        try:
+            resp = requests.get(
+                LLM_MODEL_LIST_ENDPOINT, timeout=timeout, headers=_request_headers()
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            models = _extract_model_names(data)
+            model_name = GROQ_MODEL or (models[0] if models else None)
+
+            result["server_online"] = True
+            result["current_model"] = model_name
+            if model_name:
+                result["model_loaded"] = True
+                result["status_message"] = "LLM is ready!"
+                result["active"] = True
+            else:
+                result["status_message"] = "Groq is reachable but no model is configured."
+        except requests.RequestException as e:
+            logger.warning(f"Groq endpoint unreachable: {e}")
+            result["status_message"] = "Groq endpoint is unreachable."
+        return result
+
     try:
         resp = requests.get(LLM_MODEL_INFO_ENDPOINT, timeout=timeout)
         if resp.status_code == 200:

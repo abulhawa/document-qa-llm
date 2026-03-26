@@ -86,13 +86,28 @@ WATCHLIST_INDEX_BASE = _env_str("WATCHLIST_INDEX_BASE", "watchlists")
 WATCHLIST_INDEX = _namespaced(WATCHLIST_INDEX_BASE)
 
 # ── LLM API (text-generation-webui compatible)
-LLM_BASE_URL            = _env_str("LLM_BASE_URL", "http://localhost:5000").rstrip("/")
+USE_GROQ = _env_bool("USE_GROQ", False)
+GROQ_API_KEY = _env_str("GROQ_API_KEY", "")
+GROQ_BASE_URL = _env_str("GROQ_BASE_URL", "https://api.groq.com/openai").rstrip("/")
+GROQ_MODEL = _env_str("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+_default_llm_base_url = GROQ_BASE_URL if USE_GROQ else "http://localhost:5000"
+LLM_BASE_URL            = _env_str("LLM_BASE_URL", _default_llm_base_url).rstrip("/")
 LLM_GENERATE_ENDPOINT   = _env_str("LLM_GENERATE_ENDPOINT",   f"{LLM_BASE_URL}/api/v1/generate")
 LLM_COMPLETION_ENDPOINT = _env_str("LLM_COMPLETION_ENDPOINT", f"{LLM_BASE_URL}/v1/completions")
 LLM_CHAT_ENDPOINT       = _env_str("LLM_CHAT_ENDPOINT",       f"{LLM_BASE_URL}/v1/chat/completions")
-LLM_MODEL_LIST_ENDPOINT = _env_str("LLM_MODEL_LIST_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/list")
-LLM_MODEL_LOAD_ENDPOINT = _env_str("LLM_MODEL_LOAD_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/load")
-LLM_MODEL_INFO_ENDPOINT = _env_str("LLM_MODEL_INFO_ENDPOINT", f"{LLM_BASE_URL}/v1/internal/model/info")
+_default_model_list_endpoint = (
+    f"{LLM_BASE_URL}/v1/models" if USE_GROQ else f"{LLM_BASE_URL}/v1/internal/model/list"
+)
+_default_model_load_endpoint = (
+    f"{LLM_BASE_URL}/v1/models" if USE_GROQ else f"{LLM_BASE_URL}/v1/internal/model/load"
+)
+_default_model_info_endpoint = (
+    f"{LLM_BASE_URL}/v1/models" if USE_GROQ else f"{LLM_BASE_URL}/v1/internal/model/info"
+)
+LLM_MODEL_LIST_ENDPOINT = _env_str("LLM_MODEL_LIST_ENDPOINT", _default_model_list_endpoint)
+LLM_MODEL_LOAD_ENDPOINT = _env_str("LLM_MODEL_LOAD_ENDPOINT", _default_model_load_endpoint)
+LLM_MODEL_INFO_ENDPOINT = _env_str("LLM_MODEL_INFO_ENDPOINT", _default_model_info_endpoint)
 
 # ── LLM cache
 LLM_CACHE_BACKEND = _env_str("LLM_CACHE_BACKEND", "opensearch")
@@ -124,6 +139,7 @@ def dump_config_for_debug() -> None:
         "INGEST_LOG_INDEX": INGEST_LOG_INDEX, "QDRANT_URL": QDRANT_URL,
         "QDRANT_COLLECTION": QDRANT_COLLECTION, "USE_STUB_EMBEDDER": USE_STUB_EMBEDDER,
         "USE_STUB_LLM": USE_STUB_LLM, "EMBEDDING_SIZE": EMBEDDING_SIZE,
+        "USE_GROQ": USE_GROQ, "GROQ_MODEL": GROQ_MODEL,
         "LLM_CACHE_BACKEND": LLM_CACHE_BACKEND,
         "LLM_CACHE_ENABLED": LLM_CACHE_ENABLED,
         "LLM_CACHE_INDEX": LLM_CACHE_INDEX,
