@@ -1,5 +1,6 @@
+import re
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple, Sequence
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from config import logger
 
@@ -13,6 +14,40 @@ from core.retrieval.mmr import mmr_select
 from core.retrieval.dedup import collapse_near_duplicates
 from core.retrieval.reranker import CrossEncoderReranker
 from core.retrieval.types import RetrievalConfig, RetrievalDeps, RetrievalOutput, DocHit
+
+_CV_FAMILY_DOC_TYPES: Set[str] = {"cv", "resume"}
+_PROFILE_DOC_TYPES: Set[str] = {
+    "cv",
+    "resume",
+    "cover_letter",
+    "reference_letter",
+    "profile",
+}
+_PROFILE_QUERY_FACT_TERMS: Set[str] = {
+    "cv",
+    "resume",
+    "profile",
+    "background",
+    "education",
+    "study",
+    "studies",
+    "degree",
+    "phd",
+    "msc",
+    "bsc",
+    "experience",
+    "university",
+    "college",
+}
+_PROFILE_QUERY_PERSON_TERMS: Set[str] = {
+    "who",
+    "where",
+    "when",
+    "did",
+    "person",
+    "candidate",
+}
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def _default_deps() -> RetrievalDeps:
@@ -146,6 +181,138 @@ def _apply_recency_boost(docs: Sequence[DocHit], cfg: RetrievalConfig) -> None:
         doc["retrieval_score"] = base_score + boost
 
 
+def _tokenize_lower(text: str) -> Set[str]:
+    return set(_TOKEN_RE.findall((text or "").lower()))
+
+
+def _is_profile_intent_query(query: str) -> bool:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False
+    has_fact_signal = bool(tokens & _PROFILE_QUERY_FACT_TERMS)
+    has_person_signal = bool(tokens & _PROFILE_QUERY_PERSON_TERMS)
+    return has_fact_signal and has_person_signal
+
+
+def _is_profile_class_doc(doc: DocHit) -> bool:
+    doc_type = str(doc.get("doc_type") or "").strip().lower()
+    if doc_type in _PROFILE_DOC_TYPES:
+        return True
+    person_name = str(doc.get("person_name") or "").strip()
+    return bool(person_name)
+
+
+def _apply_profile_intent_adjustment(query: str, docs: Sequence[DocHit], cfg: RetrievalConfig) -> None:
+    if not cfg.profile_intent_boost_enabled or cfg.profile_intent_boost_weight <= 0:
+        return
+    if not _is_profile_intent_query(query):
+        return
+
+    max_fraction = max(cfg.profile_intent_boost_max_fraction, 0.0)
+    for doc in docs:
+        base_score = float(doc.get("retrieval_score", 0.0) or 0.0)
+        if base_score <= 0:
+            continue
+
+        doc["_profile_intent_match"] = True
+        if _is_profile_class_doc(doc):
+            raw_adjustment = cfg.profile_intent_boost_weight
+            max_adjustment = base_score * max_fraction
+            adjustment = min(raw_adjustment, max_adjustment)
+            if adjustment <= 0:
+                continue
+            doc["retrieval_score"] = base_score + adjustment
+            doc["_profile_intent_adjustment"] = adjustment
+            doc["_profile_intent_class"] = "profile"
+            continue
+
+        raw_adjustment = cfg.profile_intent_boost_weight * 0.5
+        max_adjustment = base_score * max_fraction * 0.5
+        adjustment = min(raw_adjustment, max_adjustment)
+        if adjustment <= 0:
+            continue
+        doc["retrieval_score"] = max(base_score - adjustment, 0.0)
+        doc["_profile_intent_adjustment"] = -adjustment
+        doc["_profile_intent_class"] = "other"
+
+
+def _cv_family_key(doc: DocHit) -> str | None:
+    doc_type = str(doc.get("doc_type") or "").strip().lower()
+    if doc_type not in _CV_FAMILY_DOC_TYPES:
+        return None
+    person_name = str(doc.get("person_name") or "").strip().lower()
+    person_name = re.sub(r"\s+", " ", person_name)
+    if not person_name:
+        return None
+    return person_name
+
+
+def _collapse_cv_families(docs: Sequence[DocHit], cfg: RetrievalConfig) -> List[DocHit]:
+    if not cfg.cv_family_collapse_enabled:
+        return list(docs)
+
+    grouped: Dict[str, List[DocHit]] = {}
+    for doc in docs:
+        key = _cv_family_key(doc)
+        if key is None:
+            continue
+        grouped.setdefault(key, []).append(doc)
+
+    if not grouped:
+        return list(docs)
+
+    selected_by_family: Dict[str, DocHit] = {}
+    margin = max(cfg.cv_family_relevance_margin, 0.0)
+    for family_key, members in grouped.items():
+        scored_members: List[Tuple[DocHit, float, float | None]] = []
+        for member in members:
+            scored_members.append(
+                (
+                    member,
+                    float(member.get("retrieval_score", 0.0) or 0.0),
+                    _parse_epoch_seconds(member.get("modified_at")),
+                )
+            )
+
+        best_doc, best_score, _ = max(scored_members, key=lambda item: (item[1], item[2] or float("-inf")))
+
+        reason = "highest_relevance"
+        selected = best_doc
+        with_timestamps = [item for item in scored_members if item[2] is not None]
+        if with_timestamps:
+            newest_doc, newest_score, _ = max(with_timestamps, key=lambda item: (item[2], item[1]))
+            if newest_doc is not best_doc:
+                if best_score - newest_score <= margin:
+                    selected = newest_doc
+                    reason = "newest_within_margin"
+                else:
+                    reason = "older_higher_relevance"
+
+        selected["_cv_family_key"] = family_key
+        selected["_cv_family_size"] = len(members)
+        selected["_cv_family_suppressed"] = len(members) - 1
+        selected["_cv_family_choice_reason"] = reason
+        selected_by_family[family_key] = selected
+
+    collapsed: List[DocHit] = []
+    emitted_families: Set[str] = set()
+    for doc in docs:
+        family_key = _cv_family_key(doc)
+        if family_key is None:
+            collapsed.append(doc)
+            continue
+        if family_key in emitted_families:
+            continue
+        collapsed.append(selected_by_family[family_key])
+        emitted_families.add(family_key)
+
+    return sorted(
+        collapsed,
+        key=lambda item: (item.get("retrieval_score", 0.0), item.get("modified_at", "")),
+        reverse=True,
+    )
+
+
 def retrieve(
     query: str,
     *,
@@ -206,6 +373,7 @@ def retrieve(
         )
     _apply_authority_boost(fused, cfg)
     _apply_recency_boost(fused, cfg)
+    _apply_profile_intent_adjustment(query, fused, cfg)
 
     fused_sorted: List[DocHit] = sorted(
         fused,
@@ -213,6 +381,7 @@ def retrieve(
         reverse=True,
     )
     unique_docs = dedup_by_checksum(fused_sorted)
+    unique_docs = _collapse_cv_families(unique_docs, cfg)
 
     # 4) Near-duplicate collapse (keep one rep; stage dups aside)
     kept, dups = (unique_docs, [])

@@ -484,8 +484,151 @@ def test_retrieval_recency_boost_respects_bound():
     assert result.documents[1].get("retrieval_score") == pytest.approx(0.55)
 
 
+def test_retrieval_collapses_cv_family_prefers_newer_when_relevance_close():
+    vector_hits = [
+        {
+            "id": "cv_old",
+            "text": "Ali old CV",
+            "score": 1.0,
+            "checksum": "cv-old",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2017-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "cv_new",
+            "text": "Ali new CV",
+            "score": 0.95,
+            "checksum": "cv-new",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "contract",
+            "text": "contract",
+            "score": 0.8,
+            "checksum": "contract",
+            "doc_type": "contract",
+            "modified_at": "2025-01-01T00:00:00+00:00",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        cv_family_relevance_margin=0.1,
+    )
+    result = pipeline.retrieve("where did ali do his phd studies", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["cv_new", "contract"]
+    assert result.documents[0].get("_cv_family_choice_reason") == "newest_within_margin"
+    assert result.documents[0].get("_cv_family_suppressed") == 1
+
+
+def test_retrieval_cv_family_keeps_older_when_clearly_more_relevant():
+    vector_hits = [
+        {
+            "id": "cv_old",
+            "text": "Ali old CV",
+            "score": 1.0,
+            "checksum": "cv-old",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2017-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "cv_new",
+            "text": "Ali new CV",
+            "score": 0.7,
+            "checksum": "cv-new",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "contract",
+            "text": "contract",
+            "score": 0.8,
+            "checksum": "contract",
+            "doc_type": "contract",
+            "modified_at": "2025-01-01T00:00:00+00:00",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        cv_family_relevance_margin=0.1,
+    )
+    result = pipeline.retrieve("where did ali do his phd studies", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["cv_old", "contract"]
+    assert result.documents[0].get("_cv_family_choice_reason") == "older_higher_relevance"
+
+
+def test_profile_intent_boost_prioritizes_profile_docs_for_profile_query():
+    vector_hits = [
+        {
+            "id": "cv_old",
+            "text": "Ali old CV",
+            "score": 1.0,
+            "checksum": "cv-old",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2017-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "cv_new",
+            "text": "Ali new CV",
+            "score": 0.92,
+            "checksum": "cv-new",
+            "doc_type": "cv",
+            "person_name": "Ali A",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "contract",
+            "text": "contract",
+            "score": 0.99,
+            "checksum": "contract",
+            "doc_type": "contract",
+            "modified_at": "2026-01-01T00:00:00+00:00",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        cv_family_relevance_margin=0.1,
+        profile_intent_boost_enabled=True,
+        profile_intent_boost_weight=0.1,
+        profile_intent_boost_max_fraction=0.2,
+    )
+    result = pipeline.retrieve("where did ali do his phd studies", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["cv_new", "contract"]
+    assert result.documents[0].get("_profile_intent_adjustment", 0.0) > 0
+    assert result.documents[1].get("_profile_intent_adjustment", 0.0) < 0
+
+
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
     cfg = RetrievalConfig()
     assert cfg.recency_boost_enabled is True
     assert cfg.recency_boost_weight == pytest.approx(0.06)
+    assert cfg.cv_family_collapse_enabled is True
+    assert cfg.cv_family_relevance_margin == pytest.approx(0.10)
+    assert cfg.profile_intent_boost_enabled is True
+    assert cfg.profile_intent_boost_weight == pytest.approx(0.10)

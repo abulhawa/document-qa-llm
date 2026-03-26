@@ -31,6 +31,11 @@ class RetrievalConfig:
     recency_boost_weight: float = 0.06
     recency_boost_half_life_days: float = 120.0
     recency_boost_max_fraction: float = 0.12
+    cv_family_collapse_enabled: bool = True
+    cv_family_relevance_margin: float = 0.10
+    profile_intent_boost_enabled: bool = True
+    profile_intent_boost_weight: float = 0.10
+    profile_intent_boost_max_fraction: float = 0.20
 
     def with_top_k(self, top_k: int) -> "RetrievalConfig":
         return replace(self, top_k=top_k)
