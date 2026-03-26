@@ -20,6 +20,13 @@ def _env_int(name: str, default: int) -> int:
     except ValueError:
         return default
 
+def _env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    try:
+        return float(v) if v is not None else default
+    except ValueError:
+        return default
+
 def _env_bool(name: str, default: bool = False) -> bool:
     v = os.getenv(name)
     if v is None: return default
@@ -119,6 +126,8 @@ LLM_CACHE_TTL_DAYS = _env_int("LLM_CACHE_TTL_DAYS", 30)
 # ── CI toggles (handy for e2e)
 USE_STUB_EMBEDDER = _env_bool("USE_STUB_EMBEDDER", CI or TEST_MODE in ("e2e", "ui_only"))
 USE_STUB_LLM      = _env_bool("USE_STUB_LLM",      CI or TEST_MODE in ("e2e", "ui_only"))
+QA_GROUNDING_ENABLED = _env_bool("QA_GROUNDING_ENABLED", False)
+QA_GROUNDING_THRESHOLD = _env_float("QA_GROUNDING_THRESHOLD", 0.30)
 
 # ── Logging
 LOG_LEVEL = _env_str("LOG_LEVEL", "INFO").upper()
@@ -140,6 +149,8 @@ def dump_config_for_debug() -> None:
         "QDRANT_COLLECTION": QDRANT_COLLECTION, "USE_STUB_EMBEDDER": USE_STUB_EMBEDDER,
         "USE_STUB_LLM": USE_STUB_LLM, "EMBEDDING_SIZE": EMBEDDING_SIZE,
         "USE_GROQ": USE_GROQ, "GROQ_MODEL": GROQ_MODEL,
+        "QA_GROUNDING_ENABLED": QA_GROUNDING_ENABLED,
+        "QA_GROUNDING_THRESHOLD": QA_GROUNDING_THRESHOLD,
         "LLM_CACHE_BACKEND": LLM_CACHE_BACKEND,
         "LLM_CACHE_ENABLED": LLM_CACHE_ENABLED,
         "LLM_CACHE_INDEX": LLM_CACHE_INDEX,

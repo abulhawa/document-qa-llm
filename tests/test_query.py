@@ -322,3 +322,72 @@ def test_retrieve_context_passes_identity_metadata(monkeypatch):
     assert doc.doc_type == "cv"
     assert doc.person_name == "Jane Doe"
     assert doc.authority_rank == pytest.approx(0.85)
+
+
+def test_answer_question_skips_grounding_when_flag_disabled(monkeypatch):
+    called = {"count": 0}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="alpha source", path="doc-a", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        return "alpha answer"
+
+    def mock_grounding(*args, **kwargs):
+        called["count"] += 1
+        return types.SimpleNamespace(score=0.9, is_grounded=True)
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.evaluate_grounding", mock_grounding)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
+
+    result = answer_question("question")
+
+    assert called["count"] == 0
+    assert result.grounding_score is None
+    assert result.is_grounded is None
+
+
+def test_answer_question_populates_grounding_when_flag_enabled(monkeypatch):
+    observed = {}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="alpha evidence", path="doc-a", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        return "alpha evidence"
+
+    def mock_grounding(answer, context_chunks, threshold):
+        observed["answer"] = answer
+        observed["context_chunks"] = context_chunks
+        observed["threshold"] = threshold
+        return types.SimpleNamespace(score=0.75, is_grounded=True)
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.evaluate_grounding", mock_grounding)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", True)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_THRESHOLD", 0.55)
+
+    result = answer_question("question")
+
+    assert observed["answer"] == "alpha evidence"
+    assert observed["context_chunks"] == ["alpha evidence"]
+    assert observed["threshold"] == pytest.approx(0.55)
+    assert result.grounding_score == pytest.approx(0.75)
+    assert result.is_grounded is True
