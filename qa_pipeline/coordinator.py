@@ -43,7 +43,7 @@ def answer_question(
     question: str,
     top_k: int = 3,
     mode: str = "completion",
-    temperature: float = 0.7,
+    temperature: float = 0.1,
     model: Optional[str] = None,
     chat_history: Optional[List[dict]] = None,
     retrieval_cfg: RetrievalConfig | None = None,

@@ -75,7 +75,7 @@ def build_chat_tab() -> None:
                     temperature = gr.Slider(
                         0.0,
                         1.5,
-                        value=0.7,
+                        value=0.1,
                         step=0.05,
                         label="Temperature",
                         interactive=bool(llm_status.get("active")),
