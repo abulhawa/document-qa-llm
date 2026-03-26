@@ -185,6 +185,14 @@ Changes (recommended order):
    - Apply small authority boost in `core/retrieval/pipeline.py` only when metadata exists.
    - Keep boost bounded to avoid reordering unrelated results.
 
+One-time migration for already indexed docs:
+
+- Run a one-time backfill after deploying P2 so historical indexed docs get the same metadata:
+  - Dry run: `python scripts/backfill_identity_metadata.py --dry-run`
+  - Apply: `python scripts/backfill_identity_metadata.py`
+- The backfill performs non-destructive mapping checks/additions (`put_mapping` only) before writes.
+- Use `--overwrite` only if you intentionally want to recompute and replace existing identity metadata.
+
 Tests:
 
 - Add ingestion tests for classifier integration and metadata persistence.
