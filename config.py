@@ -62,8 +62,8 @@ EMBEDDING_MODEL_NAME = _env_str("EMBEDDING_MODEL_NAME", "intfloat/multilingual-e
 EMBEDDING_BATCH_SIZE = _env_int("EMBEDDING_BATCH_SIZE", 32)
 EMBEDDING_REQ_MAX_CHUNKS = int(os.getenv("EMBEDDING_REQ_MAX_CHUNKS", "64"))
 EMBEDDING_SIZE       = _env_int("EMBEDDING_SIZE", 768)
-CHUNK_SIZE           = _env_int("CHUNK_SIZE", 400)
-CHUNK_OVERLAP        = _env_int("CHUNK_OVERLAP", 50)
+CHUNK_SIZE           = _env_int("CHUNK_SIZE", 800)
+CHUNK_OVERLAP        = _env_int("CHUNK_OVERLAP", 100)
 
 # ── Qdrant
 QDRANT_URL             = _env_str("QDRANT_URL", "http://localhost:6333")
