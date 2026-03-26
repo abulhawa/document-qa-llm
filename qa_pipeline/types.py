@@ -17,6 +17,9 @@ class RetrievedDocument:
     score: Optional[float] = None
     page: Optional[int] = None
     location_percent: Optional[float] = None
+    doc_type: Optional[str] = None
+    person_name: Optional[str] = None
+    authority_rank: Optional[float] = None
 
     @property
     def source_label(self) -> str:

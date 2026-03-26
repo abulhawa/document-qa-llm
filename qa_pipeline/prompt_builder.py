@@ -12,10 +12,30 @@ STRICT_QA_INSTRUCTIONS = (
 CHAT_SYSTEM_PROMPT = STRICT_QA_INSTRUCTIONS
 
 
+def _format_source_metadata(retrieval: RetrievalResult, index: int) -> str:
+    doc = retrieval.documents[index]
+    parts = [doc.source_label]
+    if doc.doc_type:
+        parts.append(f"type={doc.doc_type}")
+    if doc.person_name:
+        parts.append(f"person={doc.person_name}")
+    if doc.authority_rank is not None:
+        parts.append(f"authority={doc.authority_rank:.2f}")
+    return " | ".join(parts)
+
+
+def _build_context_text(retrieval: RetrievalResult) -> str:
+    sections: List[str] = []
+    for index, doc in enumerate(retrieval.documents, start=1):
+        source_line = _format_source_metadata(retrieval, index - 1)
+        sections.append(f"[{index}] Source: {source_line}\n{doc.text}")
+    return "\n\n".join(sections)
+
+
 def build_prompt(
     retrieval: RetrievalResult, question: str, mode: str = "completion", chat_history: List[Dict[str, str]] | None = None
 ) -> PromptRequest:
-    context_text = "\n\n".join(retrieval.context_chunks)
+    context_text = _build_context_text(retrieval)
 
     if mode == "chat":
         system_msg = CHAT_SYSTEM_PROMPT

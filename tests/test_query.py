@@ -287,3 +287,38 @@ def test_retrieve_context_prefers_normalized_retrieval_score(monkeypatch):
 
     assert len(result.documents) == 1
     assert result.documents[0].score == pytest.approx(0.91)
+
+
+def test_retrieve_context_passes_identity_metadata(monkeypatch):
+    fake_output = types.SimpleNamespace(
+        clarify=None,
+        documents=[
+            {
+                "text": "doc",
+                "path": "path",
+                "score": 10.0,
+                "retrieval_score": 0.91,
+                "doc_type": "cv",
+                "person_name": "Jane Doe",
+                "authority_rank": 0.85,
+            }
+        ],
+    )
+    monkeypatch.setattr("qa_pipeline.retrieve.retrieve", lambda query, cfg, deps: fake_output)
+
+    result = retrieve_context(
+        "question",
+        top_k=1,
+        deps=types.SimpleNamespace(
+            semantic_retriever=lambda q, top_k: [],
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+    )
+
+    assert len(result.documents) == 1
+    doc = result.documents[0]
+    assert doc.doc_type == "cv"
+    assert doc.person_name == "Jane Doe"
+    assert doc.authority_rank == pytest.approx(0.85)

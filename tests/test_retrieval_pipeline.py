@@ -368,5 +368,55 @@ def test_retrieval_tops_up_from_unique_docs_before_duplicates(monkeypatch):
     assert [doc.get("id") for doc in result.documents] == ["v1", "v2", "v3"]
 
 
+def test_retrieval_applies_authority_boost_when_metadata_exists():
+    vector_hits = [
+        {"id": "v1", "text": "doc1", "score": 1.0, "checksum": "a1"},
+        {
+            "id": "v2",
+            "text": "doc2",
+            "score": 0.95,
+            "checksum": "a2",
+            "authority_rank": 1.0,
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_weight=0.08,
+        authority_boost_max_fraction=0.2,
+    )
+    result = pipeline.retrieve("query", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["v2", "v1"]
+    assert result.documents[0].get("retrieval_score") == pytest.approx(1.03)
+
+
+def test_retrieval_authority_boost_respects_bound():
+    vector_hits = [
+        {"id": "v1", "text": "doc1", "score": 1.0, "checksum": "b1"},
+        {
+            "id": "v2",
+            "text": "doc2",
+            "score": 0.5,
+            "checksum": "b2",
+            "authority_rank": 1.0,
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_weight=0.5,
+        authority_boost_max_fraction=0.1,
+    )
+    result = pipeline.retrieve("query", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["v1", "v2"]
+    assert result.documents[1].get("retrieval_score") == pytest.approx(0.55)
+
+
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)

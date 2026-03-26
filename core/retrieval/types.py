@@ -24,6 +24,9 @@ class RetrievalConfig:
     sim_threshold: float = 0.82
     include_dups_if_needed: bool = True
     collapse_keep_limit: int = 64
+    authority_boost_enabled: bool = True
+    authority_boost_weight: float = 0.08
+    authority_boost_max_fraction: float = 0.15
 
     def with_top_k(self, top_k: int) -> "RetrievalConfig":
         return replace(self, top_k=top_k)

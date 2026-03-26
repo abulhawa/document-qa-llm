@@ -4,6 +4,7 @@ import types
 import pytest
 from langchain_core.documents import Document
 
+from ingestion.doc_classifier import classify_document
 from ingestion.orchestrator import ingest_one
 
 
@@ -25,6 +26,30 @@ class DummyLog:
 
     def fail(self, **kwargs):
         pass
+
+
+def test_classify_document_detects_cv_metadata_from_filename():
+    metadata = classify_document(
+        "C:/docs/Jane_Doe_resume.pdf",
+        "pdf",
+        "Work experience\nEducation",
+    )
+
+    assert metadata["doc_type"] == "cv"
+    assert metadata["person_name"] == "Jane Doe"
+    assert metadata["authority_rank"] == pytest.approx(1.0)
+
+
+def test_classify_document_uses_text_name_when_filename_is_generic():
+    metadata = classify_document(
+        "C:/docs/resume.pdf",
+        "pdf",
+        "John Doe\nCurriculum Vitae\nExperience",
+    )
+
+    assert metadata["doc_type"] == "cv"
+    assert metadata["person_name"] == "John Doe"
+    assert metadata["authority_rank"] == pytest.approx(1.0)
 
 
 # Test 21: idempotent skip when file unchanged
@@ -161,3 +186,64 @@ def test_ingest_one_background_many_files(tmp_path, monkeypatch):
 
     result = ingest_one(str(f), total_files=2)
     assert result["success"] is True
+
+
+def test_ingest_one_persists_classifier_metadata(tmp_path, monkeypatch):
+    f = tmp_path / "john_doe_cv.txt"
+    f.write_text("hello")
+
+    monkeypatch.setattr("utils.file_utils.compute_checksum", lambda p: "abc")
+    monkeypatch.setattr("ingestion.storage.is_file_up_to_date", lambda c, p: False)
+    monkeypatch.setattr("ingestion.storage.is_duplicate_checksum", lambda c, p: False)
+    monkeypatch.setattr("ingestion.orchestrator.IngestLogEmitter", DummyLog)
+    monkeypatch.setattr(
+        "ingestion.orchestrator.classify_document",
+        lambda path, filetype, full_text: {
+            "doc_type": "cv",
+            "person_name": "John Doe",
+            "authority_rank": 1.0,
+        },
+    )
+
+    monkeypatch.setattr(
+        "ingestion.io_loader.load_file_documents",
+        lambda p: [Document(page_content="doc", metadata={})],
+    )
+    monkeypatch.setattr(
+        "ingestion.preprocess.preprocess_documents",
+        lambda docs_like, normalized_path, ext: docs_like,
+    )
+    monkeypatch.setattr(
+        "ingestion.preprocess.chunk_documents", lambda docs: [{"text": "hello"}]
+    )
+
+    captured = {}
+
+    def fake_index_documents(chunks):
+        captured["chunk"] = chunks[0]
+        return len(chunks), []
+
+    def fake_index_fulltext(doc):
+        captured["fulltext"] = doc
+
+    monkeypatch.setattr("ingestion.storage.index_chunk_batch", fake_index_documents)
+
+    def fake_index_chunks(chunks, os_index_batch=None):
+        if os_index_batch:
+            os_index_batch(chunks)
+        return True
+
+    monkeypatch.setattr(
+        "utils.qdrant_utils.index_chunks_in_batches", fake_index_chunks
+    )
+    monkeypatch.setattr("ingestion.storage.index_fulltext", fake_index_fulltext)
+
+    result = ingest_one(str(f))
+
+    assert result["success"] is True
+    assert captured["chunk"]["doc_type"] == "cv"
+    assert captured["chunk"]["person_name"] == "John Doe"
+    assert captured["chunk"]["authority_rank"] == pytest.approx(1.0)
+    assert captured["fulltext"]["doc_type"] == "cv"
+    assert captured["fulltext"]["person_name"] == "John Doe"
+    assert captured["fulltext"]["authority_rank"] == pytest.approx(1.0)
