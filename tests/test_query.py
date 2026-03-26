@@ -171,6 +171,7 @@ def _stub_tracing(monkeypatch):
 
 from qa_pipeline.coordinator import answer_question
 from qa_pipeline.types import QueryRewrite, RetrievalResult, RetrievedDocument
+from qa_pipeline.retrieve import retrieve_context
 
 
 def test_retrieval_limit_matches_top_k(monkeypatch):
@@ -257,3 +258,32 @@ def test_answer_question_uses_low_default_temperature(monkeypatch):
 
     assert observed["temperature"] == 0.1
     assert result.temperature == 0.1
+
+
+def test_retrieve_context_prefers_normalized_retrieval_score(monkeypatch):
+    fake_output = types.SimpleNamespace(
+        clarify=None,
+        documents=[
+            {
+                "text": "doc",
+                "path": "path",
+                "score": 10.0,
+                "retrieval_score": 0.91,
+            }
+        ],
+    )
+    monkeypatch.setattr("qa_pipeline.retrieve.retrieve", lambda query, cfg, deps: fake_output)
+
+    result = retrieve_context(
+        "question",
+        top_k=1,
+        deps=types.SimpleNamespace(
+            semantic_retriever=lambda q, top_k: [],
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].score == pytest.approx(0.91)
