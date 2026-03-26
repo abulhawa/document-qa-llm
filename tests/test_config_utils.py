@@ -20,3 +20,11 @@ def test_logger_handler_added(monkeypatch):
     monkeypatch.setattr(logging.Logger, "hasHandlers", lambda self: False)
     importlib.reload(config)
     assert config.logger.handlers
+
+
+def test_chunk_defaults_updated(monkeypatch):
+    monkeypatch.delenv("CHUNK_SIZE", raising=False)
+    monkeypatch.delenv("CHUNK_OVERLAP", raising=False)
+    importlib.reload(config)
+    assert config.CHUNK_SIZE == 800
+    assert config.CHUNK_OVERLAP == 100
