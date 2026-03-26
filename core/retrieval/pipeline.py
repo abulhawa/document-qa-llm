@@ -14,6 +14,7 @@ from core.retrieval.mmr import mmr_select
 from core.retrieval.dedup import collapse_near_duplicates
 from core.retrieval.reranker import CrossEncoderReranker
 from core.retrieval.types import RetrievalConfig, RetrievalDeps, RetrievalOutput, DocHit
+from core.query_rewriter import has_strong_query_anchors
 
 _CV_FAMILY_DOC_TYPES: Set[str] = {"cv", "resume"}
 _PROFILE_DOC_TYPES: Set[str] = {
@@ -439,14 +440,26 @@ def retrieve(
     # 1) Generate variants (keep rewritten + exact) if enabled
     clarify_msg: Optional[str] = None
     variants_with_weights: List[Tuple[str, float]] = []
-    if cfg.enable_variants:
+    exact_query = query.strip()
+    anchored_query = has_strong_query_anchors(exact_query)
+    use_exact_only = (
+        cfg.enable_variants
+        and cfg.anchored_exact_only
+        and anchored_query
+    )
+    if use_exact_only:
+        logger.info(
+            "Skipping rewrite variants for strongly anchored query; using exact query only."
+        )
+        variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
+    elif cfg.enable_variants:
         variants_result = generate_variants(query)
         if "clarify" in variants_result:
             clarify_msg = variants_result["clarify"]
             return RetrievalOutput(documents=[], clarify=clarify_msg)
         variants_with_weights = variants_result.get("variants", [])
     if not variants_with_weights:
-        variants_with_weights = [(query.strip(), cfg.weight_exact_bm25)]
+        variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
 
     if cfg.max_variants > 0:
         variants_with_weights = variants_with_weights[: cfg.max_variants]
@@ -469,15 +482,21 @@ def retrieve(
     bm25_results_all = _dedup_bm25_by_id_keep_best_score(bm25_results_all)
 
     # 3) Fuse with normalization (respect variant weights)
+    fusion_weight_vector = cfg.fusion_weight_vector
+    fusion_weight_bm25 = cfg.fusion_weight_bm25
+    if anchored_query and cfg.anchored_lexical_bias_enabled:
+        fusion_weight_vector = cfg.anchored_fusion_weight_vector
+        fusion_weight_bm25 = cfg.anchored_fusion_weight_bm25
+
     fused = fuse_semantic_and_bm25(
         vector_results_all,
         bm25_results_all,
-        w_vec=cfg.fusion_weight_vector,
-        w_bm25=cfg.fusion_weight_bm25,
+        w_vec=fusion_weight_vector,
+        w_bm25=fusion_weight_bm25,
     )
     for d in fused:
         w = d.get("_bm25_variant_weight", 1.0)
-        d["retrieval_score"] = cfg.fusion_weight_vector * d.get("score_vector", 0.0) + cfg.fusion_weight_bm25 * (
+        d["retrieval_score"] = fusion_weight_vector * d.get("score_vector", 0.0) + fusion_weight_bm25 * (
             d.get("score_bm25", 0.0) * w
         )
     _apply_authority_boost(fused, cfg)

@@ -1,6 +1,6 @@
 # document_qa Optimization Plan (v4)
 
-Last updated: 2026-03-26 (post-baseline pass + P7/P8/P9 planning)
+Last updated: 2026-03-26 (post-P9 completion + Path A retrieval tuning)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -75,10 +75,11 @@ Baseline snapshot (2026-03-26, checksum fixture run):
 - P7 doc-type coverage expansion is complete in code with targeted `__missing__/other` cohort backfill executed.
 - Query-rewriter anchor fallback, bounded abstention gate, and OpenSearch chunk-text fetch request fix are complete in code.
 - Post-fix checksum baseline rerun is complete and archived.
+- P9 full retrieval investigation + RAG revision decision gate is complete and archived.
+- Path A retrieval tuning from the P9 decision memo is complete in code (anchored exact-only variants + anchored lexical-first fusion) with fixture rerun archived.
 - P8 OCR quality/cost track is proposed (not yet implemented).
-- P9 full retrieval investigation + RAG revision decision gate is proposed (not yet implemented).
 - Manual QA gates for P1 and P2 have passed.
-- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> P7 -> post-fix eval baseline -> P9 -> P8`.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> P7 -> post-fix eval baseline -> P9 -> Path A follow-up -> P8`.
 - Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
@@ -123,7 +124,7 @@ Execution update (2026-03-26, post-fix run):
   - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.json`
   - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.csv`
 - Decision for next step:
-  - Proceed to P9 full retrieval investigation before OCR canary, since control behavior is corrected but positive `hit@1` remains low.
+  - Proceed to P8 OCR canary planning and implementation, with retrieval gates monitored against the archived Path A fixture snapshot.
 
 ---
 
@@ -706,12 +707,25 @@ Exit gate:
 - OCR-enabled retrieval improves hit@3 on scanned-doc queries vs baseline.
 - Groq OCR usage stays within configured daily limits.
 
-## 12. Phase P9: Full retrieval investigation and RAG revision decision (proposed)
+## 12. Phase P9: Full retrieval investigation and RAG revision decision (completed)
 
 Status (2026-03-26):
 
-- Proposed only; no code changes merged yet.
-- Triggered by low baseline fixture quality and observed runtime warning patterns.
+- Investigation report and decision memo completed:
+  - `docs/runbooks/retrieval_investigation_p9_2026-03-26.md`
+  - `docs/runbooks/retrieval_investigation_p9_2026-03-26.json`
+- Decision outcome: Path A (targeted incremental fixes) selected first.
+- Path A follow-up iteration completed in code:
+  - Anchored exact-only variant gate.
+  - Anchored lexical-first fusion bias.
+- Post-Path-A fixture rerun:
+  - `positive_hit_at_1=5/20` (`0.25`)
+  - `positive_hit_at_3=12/20` (`0.60`)
+  - `control_with_results=0/3`
+  - Artifacts:
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json`
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.csv`
+- Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
 Objective:
 

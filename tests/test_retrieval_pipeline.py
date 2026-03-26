@@ -231,6 +231,137 @@ def test_retrieval_handles_clarify(monkeypatch):
     assert result.documents == []
 
 
+def test_retrieval_skips_variants_for_anchored_query_when_enabled(monkeypatch):
+    calls = {"variants": 0, "semantic": [], "keyword": []}
+
+    def fake_generate_variants(query):
+        calls["variants"] += 1
+        return {"variants": [("rewritten-query", 0.6)]}
+
+    def fake_semantic_retriever(query, top_k):
+        calls["semantic"].append(query)
+        return []
+
+    def fake_keyword_retriever(query, top_k):
+        calls["keyword"].append(query)
+        return [{"_id": "k1", "path": "a", "text": "a", "score": 1.0, "checksum": "k1"}]
+
+    monkeypatch.setattr(pipeline, "generate_variants", fake_generate_variants)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_mmr=False,
+        anchored_exact_only=True,
+        fusion_weight_vector=0.0,
+        fusion_weight_bm25=1.0,
+    )
+    deps = RetrievalDeps(
+        semantic_retriever=fake_semantic_retriever,
+        keyword_retriever=fake_keyword_retriever,
+        embed_texts=None,
+        cross_encoder=None,
+    )
+    query = "In Ali's latest CV, what is his most recent job title?"
+    result = pipeline.retrieve(query, cfg=cfg, deps=deps)
+
+    assert calls["variants"] == 0
+    assert calls["semantic"] == [query]
+    assert calls["keyword"] == [query]
+    assert len(result.documents) == 1
+
+
+def test_retrieval_uses_variants_for_non_anchored_query(monkeypatch):
+    calls = {"variants": 0, "semantic": [], "keyword": []}
+
+    def fake_generate_variants(query):
+        calls["variants"] += 1
+        return {"variants": [("exact-query", 1.0), ("rewrite-query", 0.6)]}
+
+    def fake_semantic_retriever(query, top_k):
+        calls["semantic"].append(query)
+        return []
+
+    def fake_keyword_retriever(query, top_k):
+        calls["keyword"].append(query)
+        return [{"_id": query, "path": query, "text": query, "score": 1.0, "checksum": query}]
+
+    monkeypatch.setattr(pipeline, "generate_variants", fake_generate_variants)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_mmr=False,
+        anchored_exact_only=True,
+        fusion_weight_vector=0.0,
+        fusion_weight_bm25=1.0,
+    )
+    deps = RetrievalDeps(
+        semantic_retriever=fake_semantic_retriever,
+        keyword_retriever=fake_keyword_retriever,
+        embed_texts=None,
+        cross_encoder=None,
+    )
+    result = pipeline.retrieve("summarize this", cfg=cfg, deps=deps)
+
+    assert calls["variants"] == 1
+    assert calls["semantic"] == ["exact-query", "rewrite-query"]
+    assert calls["keyword"] == ["exact-query", "rewrite-query"]
+    assert len(result.documents) == 1
+
+
+def test_retrieval_prefers_bm25_for_anchored_query_when_lexical_bias_enabled():
+    vector_hits = [{"id": "v1", "text": "vector doc", "score": 1.0, "checksum": "v1"}]
+    bm25_hits = [{"_id": "b1", "text": "keyword doc", "score": 1.0, "checksum": "b1"}]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=0.7,
+        fusion_weight_bm25=0.3,
+        anchored_lexical_bias_enabled=True,
+        anchored_fusion_weight_vector=0.4,
+        anchored_fusion_weight_bm25=0.6,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "In Ali's latest CV, what is his most recent job title?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "b1"
+
+
+def test_retrieval_keeps_default_fusion_for_non_anchored_query():
+    vector_hits = [{"id": "v1", "text": "vector doc", "score": 1.0, "checksum": "v1"}]
+    bm25_hits = [{"_id": "b1", "text": "keyword doc", "score": 1.0, "checksum": "b1"}]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=0.7,
+        fusion_weight_bm25=0.3,
+        anchored_lexical_bias_enabled=True,
+        anchored_fusion_weight_vector=0.4,
+        anchored_fusion_weight_bm25=0.6,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "summarize this",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "v1"
+
+
 def test_retrieval_uses_mmr_when_enabled():
     calls = {"embed": 0}
 
@@ -703,6 +834,10 @@ def test_retrieval_abstains_for_live_out_of_corpus_query_even_with_partial_overl
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
     cfg = RetrievalConfig()
+    assert cfg.anchored_exact_only is True
+    assert cfg.anchored_lexical_bias_enabled is True
+    assert cfg.anchored_fusion_weight_vector == pytest.approx(0.4)
+    assert cfg.anchored_fusion_weight_bm25 == pytest.approx(0.6)
     assert cfg.recency_boost_enabled is True
     assert cfg.recency_boost_weight == pytest.approx(0.06)
     assert cfg.cv_family_collapse_enabled is True
