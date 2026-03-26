@@ -56,6 +56,9 @@ def dedup_by_checksum(sorted_docs: Sequence[DocHit]) -> List[DocHit]:
     seen: set[object] = set()
     for d in sorted_docs:
         cs = d.get("checksum")
+        if cs is None:
+            unique_docs.append(d)
+            continue
         if cs in seen:
             continue
         seen.add(cs)

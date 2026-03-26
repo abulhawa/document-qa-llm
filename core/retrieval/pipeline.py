@@ -37,6 +37,28 @@ def _apply_variant_weights(
     return weighted
 
 
+def _dedup_bm25_by_id_keep_best_score(hits: Sequence[DocHit]) -> List[DocHit]:
+    deduped: List[DocHit] = []
+    index_by_id: dict[str, int] = {}
+    for hit in hits:
+        raw_id = hit.get("_id")
+        if raw_id is None:
+            deduped.append(hit)
+            continue
+
+        key = str(raw_id)
+        existing_idx = index_by_id.get(key)
+        if existing_idx is None:
+            index_by_id[key] = len(deduped)
+            deduped.append(hit)
+            continue
+
+        if hit.get("score", 0.0) > deduped[existing_idx].get("score", 0.0):
+            deduped[existing_idx] = hit
+
+    return deduped
+
+
 def retrieve(
     query: str,
     *,
@@ -81,6 +103,7 @@ def retrieve(
             hit["_bm25_variant_weight"] = weight_override
             hit["_variant_rank"] = idx
         bm25_results_all.extend(b)
+    bm25_results_all = _dedup_bm25_by_id_keep_best_score(bm25_results_all)
 
     # 3) Fuse with normalization (respect variant weights)
     fused = fuse_semantic_and_bm25(
@@ -125,8 +148,21 @@ def retrieve(
     else:
         docs_for_answer = kept[: cfg.top_k]
 
-    # If short, optionally top-up from duplicates
-    if cfg.include_dups_if_needed and len(docs_for_answer) < cfg.top_k and dups:
+    # If short, top-up from remaining non-duplicate kept docs first.
+    if len(docs_for_answer) < cfg.top_k and kept:
+        selected_doc_ids = {id(doc) for doc in docs_for_answer}
+        need = cfg.top_k - len(docs_for_answer)
+        remaining_kept = [doc for doc in kept if id(doc) not in selected_doc_ids]
+        if remaining_kept:
+            docs_for_answer.extend(remaining_kept[:need])
+
+    # Optionally top-up from duplicates only when unique docs are insufficient.
+    if (
+        cfg.include_dups_if_needed
+        and len(kept) < cfg.top_k
+        and len(docs_for_answer) < cfg.top_k
+        and dups
+    ):
         need = cfg.top_k - len(docs_for_answer)
         docs_for_answer.extend(dups[:need])
 

@@ -31,6 +31,7 @@ class _Urllib3RetryModule(ModuleType):
 class _OpenSearchModule(ModuleType):
     OpenSearch: type
     RequestsHttpConnection: type
+    exceptions: object
 
 
 class _QdrantModule(ModuleType):
@@ -71,6 +72,10 @@ sys.modules.setdefault("urllib3.util.retry", urllib3_retry_module)
 opensearch_module = _OpenSearchModule("opensearchpy")
 opensearch_module.OpenSearch = type("OpenSearch", (), {})
 opensearch_module.RequestsHttpConnection = object
+opensearch_module.exceptions = types.SimpleNamespace(
+    OpenSearchException=Exception,
+    NotFoundError=Exception,
+)
 sys.modules.setdefault("opensearchpy", opensearch_module)
 qdrant_module = _QdrantModule("qdrant_client")
 qdrant_module.QdrantClient = type(
@@ -266,3 +271,102 @@ def test_retrieval_supports_rerank_hook():
 
     assert reranker.seen
     assert result.documents[0].get("id") == "v2"
+
+
+def test_retrieval_keeps_docs_when_checksum_missing():
+    vector_hits = [
+        {"id": "v1", "text": "doc1", "score": 1.0},
+        {"id": "v2", "text": "doc2", "score": 0.9},
+    ]
+    cfg = RetrievalConfig(top_k=2, enable_mmr=False)
+    result = pipeline.retrieve("query", cfg=cfg, deps=_build_deps(vector_hits, []))
+
+    assert [doc.get("id") for doc in result.documents] == ["v1", "v2"]
+
+
+def test_retrieval_dedups_bm25_variant_hits_by_id(monkeypatch):
+    monkeypatch.setattr(
+        pipeline,
+        "generate_variants",
+        lambda q: {"variants": [("exact-query", 1.0), ("rewrite-query", 0.1)]},
+    )
+
+    def fake_keyword_retriever(query, top_k):
+        if query == "exact-query":
+            return [
+                {
+                    "_id": "shared-id",
+                    "path": "a",
+                    "text": "doc",
+                    "score": 10.0,
+                    "checksum": "c1",
+                }
+            ]
+        return [
+            {
+                "_id": "shared-id",
+                "path": "a",
+                "text": "doc",
+                "score": 1.0,
+                "checksum": "c1",
+            }
+        ]
+
+    deps = RetrievalDeps(
+        semantic_retriever=lambda q, top_k: [],
+        keyword_retriever=fake_keyword_retriever,
+        embed_texts=None,
+        cross_encoder=None,
+    )
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_mmr=False,
+        fusion_weight_vector=0.0,
+        fusion_weight_bm25=1.0,
+    )
+    result = pipeline.retrieve("query", cfg=cfg, deps=deps)
+
+    assert len(result.documents) == 1
+    doc = result.documents[0]
+    assert doc.get("_variant_rank") == 0
+    assert doc.get("_bm25_variant_weight") == pytest.approx(1.0)
+    assert doc.get("retrieval_score") == pytest.approx(1.0)
+
+
+def test_retrieval_tops_up_from_unique_docs_before_duplicates(monkeypatch):
+    vector_hits = [
+        {"id": "v1", "text": "doc1", "score": 1.0, "checksum": "u1"},
+        {"id": "v2", "text": "doc2", "score": 0.9, "checksum": "u2"},
+        {"id": "v3", "text": "doc3", "score": 0.8, "checksum": "u3"},
+    ]
+    duplicate_pool = [
+        {"id": "d1", "text": "dup1", "score": 0.7, "checksum": "u1"},
+        {"id": "d2", "text": "dup2", "score": 0.6, "checksum": "u2"},
+    ]
+
+    monkeypatch.setattr(
+        pipeline,
+        "collapse_near_duplicates",
+        lambda docs, embed_texts, sim_threshold=0.9, keep_limit=64: (
+            list(docs),
+            list(duplicate_pool),
+        ),
+    )
+
+    cfg = RetrievalConfig(top_k=3, mmr_k=1, enable_mmr=True, include_dups_if_needed=True)
+    result = pipeline.retrieve(
+        "query",
+        cfg=cfg,
+        deps=_build_deps(
+            vector_hits,
+            [],
+            embedder=lambda texts: [[1.0, float(i)] for i, _ in enumerate(texts)],
+        ),
+    )
+
+    assert [doc.get("id") for doc in result.documents] == ["v1", "v2", "v3"]
+
+
+def test_retrieval_config_sim_threshold_default():
+    assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
