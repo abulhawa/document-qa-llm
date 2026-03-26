@@ -1,6 +1,6 @@
-# document_qa Optimization Plan (v3)
+# document_qa Optimization Plan (v4)
 
-Last updated: 2026-03-26 (post-retrieval-eval fixture + P7/P8 planning)
+Last updated: 2026-03-26 (post-baseline pass + P7/P8/P9 planning)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -74,10 +74,34 @@ Baseline snapshot (2026-03-26, checksum fixture run):
 - Retrieval evaluation fixture and checksum-based scoring template are committed.
 - P7 doc-type coverage expansion is proposed (not yet implemented).
 - P8 OCR quality/cost track is proposed (not yet implemented).
+- P9 full retrieval investigation + RAG revision decision gate is proposed (not yet implemented).
 - Manual QA gates for P1 and P2 have passed.
-- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> eval baseline -> P7 -> P8`.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6 -> eval baseline -> P9 -> P7 -> P8`.
 - Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
+
+---
+
+### Immediate actions from baseline (2026-03-26)
+
+Rationale:
+
+- Baseline fixture quality is currently low (`hit@1=0.10`, `hit@3=0.25`).
+- Positive queries still trigger clarifications (`2/20`).
+- Out-of-corpus control queries still return corpus docs (`2/3`).
+- Runtime warning observed repeatedly during retrieval pass:
+  - `OpenSearch unavailable while fetching chunk text; proceeding with Qdrant payloads.`
+
+Next actions (short-horizon, before OCR rollout):
+
+1. P7 deterministic doc-type expansion + targeted backfill (`__missing__`, `other` cohorts).
+2. Query-rewriter tightening:
+   - Reduce over-clarification for anchored queries.
+   - Add fallback path: if rewrite asks for clarification but query has strong anchors, run exact retrieval anyway.
+3. Add bounded abstention gate for out-of-corpus queries so control questions do not surface arbitrary docs.
+4. Investigate and fix the recurrent OpenSearch chunk-text warning path.
+5. Re-run the same checksum baseline and compare deltas.
+6. Start P8 OCR canary only after post-fix baseline shows measurable retrieval gains.
 
 ---
 
@@ -397,6 +421,7 @@ Exit gate:
 11. PR-11: P6 dynamic chunking policy + metadata + staged rollout.
 12. PR-12: P7 doc-type expansion + bounded classifier enrichment.
 13. PR-13: P8 OCR pipeline (quality + cost controls) + staged rollout.
+14. PR-14: P9 full retrieval investigation + RAG revision decision memo.
 
 Each PR should include:
 
@@ -658,3 +683,52 @@ Exit gate:
 - At least 80% of previously empty-text docs in canary yield non-empty text after OCR.
 - OCR-enabled retrieval improves hit@3 on scanned-doc queries vs baseline.
 - Groq OCR usage stays within configured daily limits.
+
+## 12. Phase P9: Full retrieval investigation and RAG revision decision (proposed)
+
+Status (2026-03-26):
+
+- Proposed only; no code changes merged yet.
+- Triggered by low baseline fixture quality and observed runtime warning patterns.
+
+Objective:
+
+- Run a full, evidence-based investigation of why retrieval quality is poor.
+- Decide whether incremental fixes are sufficient or a broader RAG pipeline revision is required.
+
+Investigation scope:
+
+1. Retrieval stage attribution:
+   - Measure per-stage impact (rewrite, semantic, BM25, fusion, dedup, MMR, boosts).
+   - Identify where relevance is being lost for failed queries.
+2. Query rewrite quality:
+   - Quantify clarify over-triggering and rewrite drift on positive fixture queries.
+   - Verify fallback behavior for anchored queries.
+3. Data/metadata quality:
+   - Analyze missing `doc_type`, noisy metadata, and checksum-family effects.
+4. Infrastructure behavior:
+   - Root-cause recurring OpenSearch chunk-text warning during retrieval.
+   - Confirm whether this affects fusion quality or only payload enrichment.
+5. Control-query behavior:
+   - Measure false-positive retrieval on out-of-corpus controls.
+   - Evaluate abstention policy requirements.
+
+Deliverables:
+
+- Investigation report with:
+  - failure taxonomy by query class
+  - stage-level metrics and bottlenecks
+  - prioritized remediation options and estimated impact
+- Decision memo:
+  - Path A: targeted incremental fixes only
+  - Path B: broader RAG revision (retriever architecture/routing/reranking redesign)
+
+Revision policy:
+
+- A broader RAG revision is allowed if investigation evidence shows incremental fixes cannot meet quality targets.
+- If Path B is selected, create a separate phased plan with rollback strategy and explicit acceptance metrics.
+
+Exit gate:
+
+- Investigation report and decision memo completed.
+- Clear go/no-go decision for full RAG revision with measurable success criteria.
