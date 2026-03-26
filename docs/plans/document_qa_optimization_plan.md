@@ -54,8 +54,9 @@ Milestone is successful when:
 - P2 is complete in code; one-time metadata backfill has been executed on the existing corpus.
 - P3 is complete in code with targeted regression tests passing.
 - P5 code changes are complete (`800/100` defaults + migration runbook); full operational re-ingest rollout is pending.
+- P6 dynamic chunking policy is proposed (not yet implemented).
 - Manual QA gates for P1 and P2 have passed.
-- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout)`.
+- Active sequence: `P0 -> P4 -> P1 -> P2 -> P3 -> P5 (rollout) -> P6`.
 - Retrieval scoring now includes bounded authority and bounded recency boosts.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
@@ -374,6 +375,7 @@ Exit gate:
 8. PR-08: P2 mapping safety + one-time backfill.
 9. PR-09: P3 grounding (flagged).
 10. PR-10: P5 chunk migration + re-ingest runbook.
+11. PR-11: P6 dynamic chunking policy + metadata + staged rollout.
 
 Each PR should include:
 
@@ -403,3 +405,99 @@ Each PR should include:
    Rationale: Full rewrites increase blast radius and regression risk for this codebase.
    Recommended disposition: now
    Possible backlog duplicate: oversized file refactors (yes)
+
+## 9. Phase P6: Dynamic chunking policy (proposed)
+
+Status (2026-03-26):
+
+- Proposed only; no code changes merged yet.
+- Scope is intentionally incremental and deterministic.
+- Migration strategy selected: fulltext-first rechunk (index-only where possible) to reduce operational cost.
+- Step 1 started: dry-run audit script added (`scripts/audit_fulltext_rechunk_candidates.py`).
+
+Objective:
+
+- Move from one global chunk profile to a small ruleset driven by document signals.
+- Improve precision on structured identity docs while preserving context on dense prose.
+- Prepare for future OCR ingestion without forcing an OCR implementation in this phase.
+
+Policy inputs (v1):
+
+- `doc_type` from existing classifier (`cv`, `cover_letter`, `reference_letter`, or missing).
+- `extraction_mode` (`native` now; `ocr` reserved for future image/scanned extraction).
+- `quality_bucket` (`high`/`medium`/`low`; default `medium` when unavailable).
+- `length_bucket` from `text_full` character length (example cutoffs: `short <= 3000`, `medium <= 20000`, `long > 20000`).
+
+Policy outputs:
+
+- `chunk_size`
+- `chunk_overlap`
+- `chunk_profile` (named rule key used for audit/debug)
+- `chunk_policy_version` (start at `v1`)
+
+Initial rule table (v1):
+
+- `doc_type in {cv, cover_letter, reference_letter}` and `extraction_mode=native` -> `400/50` (`profile_identity_native`).
+- `doc_type missing` and `extraction_mode=native` and `length_bucket=short` -> `600/80` (`profile_native_short`).
+- `doc_type missing` and `extraction_mode=native` and `length_bucket in {medium,long}` -> `800/100` (`profile_native_default`).
+- `extraction_mode=ocr` and `quality_bucket=high` -> `700/120` (`profile_ocr_high`).
+- `extraction_mode=ocr` and `quality_bucket in {medium,low}` -> `500/120` (`profile_ocr_noisy`).
+
+Implementation slices (low blast radius):
+
+1. Policy resolver:
+   - Add `ingestion/chunk_policy.py` with deterministic `resolve_chunk_policy(...)`.
+2. Ingestion wiring:
+   - In `ingestion/orchestrator.py`, compute policy once per file and pass `chunk_size`/`chunk_overlap` into chunking.
+   - Keep current default behavior when policy data is missing.
+3. Metadata persistence:
+   - Write `chunk_policy_version`, `chunk_profile`, `chunk_size`, `chunk_overlap`, `extraction_mode`, `quality_bucket`, `length_bucket` into chunk docs.
+   - Write the same policy metadata (where relevant) into full-text docs for auditability.
+4. Config safety:
+   - Add feature flag `DYNAMIC_CHUNKING_ENABLED` (default `false`) and retain global `CHUNK_SIZE/CHUNK_OVERLAP` fallback.
+5. Operations:
+   - Add runbook for staged re-ingest by prefix/doc bucket and rollback toggle.
+
+Testing plan:
+
+- Unit tests for `resolve_chunk_policy(...)` covering all rule branches and fallback behavior.
+- Ingestion tests confirming selected policy values are persisted to chunks/full-text metadata.
+- Regression tests ensuring `DYNAMIC_CHUNKING_ENABLED=false` preserves existing chunk behavior.
+
+Suggested run:
+
+```powershell
+pytest tests/test_ingestion_extra.py tests/test_ingest_fulltext.py tests/test_config_utils.py -q
+```
+
+Rollout and migration:
+
+- Treat as versioned migration: all new chunks must carry `chunk_policy_version=v1`.
+- Start with `DYNAMIC_CHUNKING_ENABLED=false` in production-like environments.
+- Enable for a narrow prefix/bucket first (canary), compare QA metrics, then broaden rollout.
+- Avoid untracked mixed states; if policy changes, bump version (`v2`) and re-ingest targeted cohorts.
+
+Fulltext-first migration strategy (selected):
+
+1. Step 1: Audit candidates from `documents_full_text` (started)
+   - Dry-run only; no writes.
+   - Identify `text_full` non-empty docs as index-only rechunk candidates.
+   - Command:
+     - `python scripts/audit_fulltext_rechunk_candidates.py --prefix "C:/Users/ali_a/My Drive"`
+2. Step 2: Canary rechunk from `text_full` for a small cohort
+   - Rebuild chunks from stored `text_full`, using policy-selected chunk profile.
+   - Use `location_percent` as the positional anchor (page numbers intentionally not required in this path).
+3. Step 3: Expand rechunk to all eligible non-empty `text_full` docs
+   - Delete old vectors/chunks by checksum, then re-embed/re-index.
+   - Keep full-text docs as source-of-truth metadata and text payload.
+4. Step 4: Handle non-eligible docs separately
+   - `text_full` empty docs (e.g., scanned/image-heavy) are deferred to OCR ingestion flow.
+5. Step 5: Validate and close
+   - Compare retrieval quality/grounding before vs after for canary and full rollout.
+   - Confirm no regressions in duplicate suppression and identity disambiguation behaviors.
+
+Exit gate:
+
+- Retrieval precision improves on identity-style queries without degrading dense-prose QA quality.
+- No regressions when dynamic policy is disabled.
+- Operational runbook validated on at least one staged re-ingest cycle.
