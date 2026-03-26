@@ -11,11 +11,15 @@ class RetrievalConfig:
     top_k_each: int = 20
     enable_variants: bool = True
     max_variants: int = 2
+    anchored_exact_only: bool = True
     variant_weights: Dict[str, float] = field(default_factory=dict)
     weight_exact_bm25: float = 1.0
     weight_rewrite_bm25: float = 0.5
     fusion_weight_vector: float = 0.7
     fusion_weight_bm25: float = 0.3
+    anchored_lexical_bias_enabled: bool = True
+    anchored_fusion_weight_vector: float = 0.4
+    anchored_fusion_weight_bm25: float = 0.6
     enable_mmr: bool = True
     mmr_lambda: float = 0.6
     mmr_k: Optional[int] = None

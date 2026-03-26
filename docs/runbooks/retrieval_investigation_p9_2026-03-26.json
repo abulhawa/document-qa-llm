@@ -1,0 +1,2417 @@
+{
+  "run_date": "2026-03-26",
+  "fixture": "tests/fixtures/retrieval_eval_queries.json",
+  "runs": [
+    {
+      "name": "full_current",
+      "config": {
+        "top_k": 3,
+        "enable_variants": true,
+        "enable_mmr": true
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 2,
+        "positive_hit_at_3": 8,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.1,
+        "positive_hit_at_3_rate": 0.4
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+          "top3_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "0b1313ce6e275e0a27f3ee6e0d9196a3be0acf8b750eb46dba763e7bb0d52cf1",
+          "top2_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "top3_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5496a756a650734f6ad892c683e7e1819332ba77ddfe6d31f8b88e16ba5c61c1",
+          "top3_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "15439e96999f4959d3ca3d0daf5e109a0d0e47c31588c570b7094a19d4599143",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "a6fd12c4625fdf93255e82260612c22e3bbf7bdc9a0d9cd01a65c92fead294ad",
+          "top3_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+          "top2_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "top3_checksum": "86cee23d21138605270e0d089558f24b9ab82fb2f87b703a12abce9c596218b1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "f1c540368107082ee54546bd19683d6cce678b9cb1684dded3c0f3c8da0da9d5",
+          "top3_checksum": "ba1840332c97ec6561c2ea635bd07cb8932ef286bca10bf5d829a64a5646a2e6",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "top2_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "top3_checksum": "6559f28f6eaa955ea545573cf8489041db6dce6f299bac871578c0675869f59d",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "931089441454e76f93f0d4da5ae92a9731df87c0d7c7da80b00dde05f2ac220c",
+          "top3_checksum": "84286e0f034a3754aa93c075ce15f446a78165178f8b0cc32d6175987ba61fc2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "9299c896b30f37f21033323975f62f29ba05f67b550207f14740ab4fee55d453",
+          "top3_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "e6dde7d2bffd28b31ad36ea599dc343a8df4635d7c48b49507ee347970e90d60",
+          "top3_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "top2_checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+          "top3_checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top2_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "8a77277ec1d73d28e8fdc8b4e737ade5acf08f9f1dd55de13dd24470f38c3285",
+          "top2_checksum": "5207ca9ebd06c84730dd02aaddcab30b984b9233dda61ced91126f37ea446cfe",
+          "top3_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+          "top2_checksum": "c930387c7e24231148433810cc36c9a092662a80069f3c576a587f85b84d00b0",
+          "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "top3_checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "no_variants",
+      "config": {
+        "top_k": 3,
+        "enable_variants": false,
+        "enable_mmr": true
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 1,
+        "positive_hit_at_3": 12,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.05,
+        "positive_hit_at_3_rate": 0.6
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5c5fb5fd78f8c3b4af4dbca46761ef0821c59247c0d296900823e069c633a6a4",
+          "top3_checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top2_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "top3_checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
+          "top2_checksum": "d4c1578aa1155ca4e33eddede363059140267e00d2f28ca5a81ecb26c92d6fef",
+          "top3_checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "top2_checksum": "0893dd07512912f90ffdfa22283e1cddec86c8580fb90e0a9e29333d0aa1f760",
+          "top3_checksum": "f3e2079316b35d9f8ecd358cb06ee114667e75607055b0580045443e19dac89b",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "566d06d3f66a591385cb1d8857fb01bfbc1dff772fead28fc9882754b7d8220e",
+          "top3_checksum": "265da568aae4f2fee061e8e8c623138f3adfef103f07909d93f768578d6593c4",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+          "top2_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "top3_checksum": "994b7c25e7559f12f2d0f7db4719c09e7059e3f1659114b11f0de78fa5f3961b",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "top2_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "top3_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "931089441454e76f93f0d4da5ae92a9731df87c0d7c7da80b00dde05f2ac220c",
+          "top3_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "top3_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "top3_checksum": "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "top2_checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "top3_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top2_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "5207ca9ebd06c84730dd02aaddcab30b984b9233dda61ced91126f37ea446cfe",
+          "top2_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+          "top2_checksum": "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+          "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "top3_checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "no_mmr",
+      "config": {
+        "top_k": 3,
+        "enable_variants": true,
+        "enable_mmr": false
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 2,
+        "positive_hit_at_3": 7,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.1,
+        "positive_hit_at_3_rate": 0.35
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "top3_checksum": "df76f99043c659bde40bddb88083e026b059005a56322839f93c806f6a47ebc1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "top3_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "0b1313ce6e275e0a27f3ee6e0d9196a3be0acf8b750eb46dba763e7bb0d52cf1",
+          "top2_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "top3_checksum": "f3944a11dbe59e7fae69220423817c9bfea9e498b5f2469b60bbc3e3c94dc208",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5496a756a650734f6ad892c683e7e1819332ba77ddfe6d31f8b88e16ba5c61c1",
+          "top3_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "15439e96999f4959d3ca3d0daf5e109a0d0e47c31588c570b7094a19d4599143",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "a6fd12c4625fdf93255e82260612c22e3bbf7bdc9a0d9cd01a65c92fead294ad",
+          "top3_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+          "top2_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "top3_checksum": "86cee23d21138605270e0d089558f24b9ab82fb2f87b703a12abce9c596218b1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "f1c540368107082ee54546bd19683d6cce678b9cb1684dded3c0f3c8da0da9d5",
+          "top3_checksum": "ba1840332c97ec6561c2ea635bd07cb8932ef286bca10bf5d829a64a5646a2e6",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "top2_checksum": "6559f28f6eaa955ea545573cf8489041db6dce6f299bac871578c0675869f59d",
+          "top3_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "84286e0f034a3754aa93c075ce15f446a78165178f8b0cc32d6175987ba61fc2",
+          "top3_checksum": "931089441454e76f93f0d4da5ae92a9731df87c0d7c7da80b00dde05f2ac220c",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "9299c896b30f37f21033323975f62f29ba05f67b550207f14740ab4fee55d453",
+          "top3_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "e6dde7d2bffd28b31ad36ea599dc343a8df4635d7c48b49507ee347970e90d60",
+          "top3_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "top2_checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+          "top3_checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top2_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "8a77277ec1d73d28e8fdc8b4e737ade5acf08f9f1dd55de13dd24470f38c3285",
+          "top2_checksum": "5207ca9ebd06c84730dd02aaddcab30b984b9233dda61ced91126f37ea446cfe",
+          "top3_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+          "top2_checksum": "c930387c7e24231148433810cc36c9a092662a80069f3c576a587f85b84d00b0",
+          "top3_checksum": "90470ce18cea58082a1a286f8a07da2258e71e214c6c08dd8b0c07ddebb86459",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "top3_checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "no_boosts",
+      "config": {
+        "top_k": 3,
+        "enable_variants": true,
+        "enable_mmr": true,
+        "authority_boost_enabled": false,
+        "recency_boost_enabled": false,
+        "profile_intent_boost_enabled": false
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 3,
+        "positive_hit_at_3": 10,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.15,
+        "positive_hit_at_3_rate": 0.5
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "top3_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top2_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+          "top2_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+          "top3_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5496a756a650734f6ad892c683e7e1819332ba77ddfe6d31f8b88e16ba5c61c1",
+          "top3_checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "15439e96999f4959d3ca3d0daf5e109a0d0e47c31588c570b7094a19d4599143",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "top3_checksum": "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+          "top2_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "top3_checksum": "86cee23d21138605270e0d089558f24b9ab82fb2f87b703a12abce9c596218b1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "265da568aae4f2fee061e8e8c623138f3adfef103f07909d93f768578d6593c4",
+          "top3_checksum": "f1c540368107082ee54546bd19683d6cce678b9cb1684dded3c0f3c8da0da9d5",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "top2_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "top3_checksum": "6559f28f6eaa955ea545573cf8489041db6dce6f299bac871578c0675869f59d",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "top2_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "top3_checksum": "343c6ce3cf4df801478f395d877804a3cc766f6ed7cd4a5f18677d77b9dfeeb7",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+          "top2_checksum": "a7e79602daedfc35383d03d70112bc4e61869a47dc26750fbd577c41c98b4d50",
+          "top3_checksum": "93f8972f4f0e74e51dd3817d7665a48954ed971891daf675c68c98d38feaed94",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "9299c896b30f37f21033323975f62f29ba05f67b550207f14740ab4fee55d453",
+          "top3_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "top3_checksum": "e6dde7d2bffd28b31ad36ea599dc343a8df4635d7c48b49507ee347970e90d60",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "top2_checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+          "top3_checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top2_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "8a77277ec1d73d28e8fdc8b4e737ade5acf08f9f1dd55de13dd24470f38c3285",
+          "top2_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "top3_checksum": "f65048fda2d64cd4644409f106e94cfb4ff1024f5be0cdcc5110cf077657d2a0",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "ac5e6ed1e885f5009b9ba0f719f2f2f4d1f8f2f983317344ac74f24e4e4eb4c6",
+          "top2_checksum": "4d878ae1150bb6e3827b923d4486d9b49e8447d7a0b2457fbffecb04f6f5cd6a",
+          "top3_checksum": "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "top3_checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "semantic_only",
+      "config": {
+        "top_k": 3,
+        "enable_variants": false,
+        "enable_mmr": false,
+        "fusion_weight_vector": 1.0,
+        "fusion_weight_bm25": 0.0
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 0,
+        "positive_hit_at_3": 7,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.0,
+        "positive_hit_at_3_rate": 0.35
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "62be8da3c62b241a2559c526c6ea153756513f1f9520fc3421f7f9bc6c2e5e3a",
+          "top2_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "top3_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+          "top3_checksum": "799fb3def0bceb6db6198dbbe0684fce4729fd2834876d353c5460f4810148a7",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5c5fb5fd78f8c3b4af4dbca46761ef0821c59247c0d296900823e069c633a6a4",
+          "top3_checksum": "799fb3def0bceb6db6198dbbe0684fce4729fd2834876d353c5460f4810148a7",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top2_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "top3_checksum": "4c629054f17e67d886e6bfb19de3187c84c651b2836524b024efd9e3e284ff9b",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "1ccfee4f3a045233f3c90e4a12f463cf32f07159228abffb1e138c7adb3ad63e",
+          "top3_checksum": "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "a6fd12c4625fdf93255e82260612c22e3bbf7bdc9a0d9cd01a65c92fead294ad",
+          "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "top3_checksum": "556005bdf9f66c2c7e7588b1cae875ebe9150d23eac419d61b95e25d64ebcc51",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "f3e2079316b35d9f8ecd358cb06ee114667e75607055b0580045443e19dac89b",
+          "top2_checksum": "0b1313ce6e275e0a27f3ee6e0d9196a3be0acf8b750eb46dba763e7bb0d52cf1",
+          "top3_checksum": "9c52c1b2dace129d28fed78907d86db39d3b1c8c47af8de2420e6c2ae991597c",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "566d06d3f66a591385cb1d8857fb01bfbc1dff772fead28fc9882754b7d8220e",
+          "top2_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top3_checksum": "702c8667a52268d1af6108e50d5de9fe17a580e43daf2bc8f86001c44d9451e8",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "6eb70b9964274cde9c78c05af1d36f0bde68fb20483523846bb0aca4313a2421",
+          "top3_checksum": "2d5b8d2f32bb0b86a03658ddc88022bf8d529276be644dcf52893cc4af90eea9",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "b226e586f8ee8b6047247c9ba2b8fbbc1a3af51e82a4fd720d95ff76875b5733",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "931089441454e76f93f0d4da5ae92a9731df87c0d7c7da80b00dde05f2ac220c",
+          "top3_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "top3_checksum": "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "top3_checksum": "39870723493794140eb2fff631edacd3eadf7624c9c7917c8bbf1438d2d44ecb",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "c0f860c96e6d95115b339e4c7f39cdd3320f288191ed9f08f9473d52a410740e",
+          "top3_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top2_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top3_checksum": "25d5678a91a33a907d455722c685789ab7113074b8d1be59d65e2c88a6a1bc18",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "5207ca9ebd06c84730dd02aaddcab30b984b9233dda61ced91126f37ea446cfe",
+          "top2_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+          "top2_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "top3_checksum": "8065be7066d49e20310380444625a6e39ca6f4bf033b4ba523770184a32c1659",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "139dd328c3b28c58ea9d8b984d846c5acaa08fce33057c42ec4632122b8dc258",
+          "top2_checksum": "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "top3_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "bm25_only",
+      "config": {
+        "top_k": 3,
+        "enable_variants": false,
+        "enable_mmr": false,
+        "fusion_weight_vector": 0.0,
+        "fusion_weight_bm25": 1.0
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 6,
+        "positive_hit_at_3": 12,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 0,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.3,
+        "positive_hit_at_3_rate": 0.6
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "top3_checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "top2_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "top3_checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+          "top2_checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+          "top3_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+          "top2_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "top3_checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "top2_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "top3_checksum": "150ba5b943835027333f6e36a6d3f6586ae5964d26788a6320331ebc6c2e1db9",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "b14a8cf088dd5448e47eb4ec5029a554eb675acc4eb7ee3d66755143acc72487",
+          "top2_checksum": "0893dd07512912f90ffdfa22283e1cddec86c8580fb90e0a9e29333d0aa1f760",
+          "top3_checksum": "aaa39cc627c3cbcb36aeb9a2c7150f32d2b98e0d5819640b958bde9afcf4c820",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+          "top3_checksum": "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "994b7c25e7559f12f2d0f7db4719c09e7059e3f1659114b11f0de78fa5f3961b",
+          "top3_checksum": "f9c0d667b8eee851e9d901042bf68be6de2eef5fe738a8ae0a62a42e5ed2fca3",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "top2_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top3_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "b226e586f8ee8b6047247c9ba2b8fbbc1a3af51e82a4fd720d95ff76875b5733",
+          "top2_checksum": "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "top3_checksum": "301902e13350d9c1904217f60b7737fb20e006c0972abf0c888a6200d3852a1b",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "fe4d3d7bfe44aaabaa29b198a6284a54a28f858d7842e6f8ad3c6e121bc22f95",
+          "top2_checksum": "525eafe3dc7c17f89886b58770ca661fd8fdd479bff1faef9b176c7a6357c15d",
+          "top3_checksum": "88c0f7e96bb8c23a3043216a8a021c006189f64120a6440fa747d21a458af895",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "top3_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+          "top2_checksum": "79aadd0d369543f384254c14d9992d9277bc8a6238569242a4c157f0062638e1",
+          "top3_checksum": "d423c244fb185e314597e3f6d73e2af1bc66360815c85050773b47b45252e4ac",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "de0a6b41c8e545ef964c3d63be2ab4f62d677519d3856e183742e119eab631ae",
+          "top3_checksum": "c0f860c96e6d95115b339e4c7f39cdd3320f288191ed9f08f9473d52a410740e",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "top2_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top3_checksum": "67e5aa15aa1608baec2326bc7c6824bcba35453326a2c2ca2d04f16c94494f83",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "top3_checksum": "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+          "top2_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "top3_checksum": "14671c78fc7de99d83bb9e52e2d5b335d4756066925e67df1a25c0e272133aad",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "top3_checksum": "9627535a95431abe3864eb73d057e5fed282da28a103f15d93d493e756515013",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "top3_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "",
+          "top2_checksum": "",
+          "top3_checksum": "",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "name": "no_abstention",
+      "config": {
+        "top_k": 3,
+        "enable_variants": true,
+        "enable_mmr": true,
+        "abstention_enabled": false
+      },
+      "metrics": {
+        "positive_total": 20,
+        "positive_hit_at_1": 2,
+        "positive_hit_at_3": 8,
+        "positive_clarify_count": 0,
+        "control_total": 3,
+        "control_with_results": 3,
+        "control_clarify_count": 0,
+        "error_count": 0,
+        "positive_hit_at_1_rate": 0.1,
+        "positive_hit_at_3_rate": 0.4
+      },
+      "rows": [
+        {
+          "query_id": "Q01",
+          "mode": "positive",
+          "query": "Where did Ali do his PhD studies?",
+          "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "top3_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q02",
+          "mode": "positive",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+          "top3_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q03",
+          "mode": "positive",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "top1_checksum": "0b1313ce6e275e0a27f3ee6e0d9196a3be0acf8b750eb46dba763e7bb0d52cf1",
+          "top2_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "top3_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q04",
+          "mode": "positive",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "top2_checksum": "5496a756a650734f6ad892c683e7e1819332ba77ddfe6d31f8b88e16ba5c61c1",
+          "top3_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q05",
+          "mode": "positive",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "15439e96999f4959d3ca3d0daf5e109a0d0e47c31588c570b7094a19d4599143",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q06",
+          "mode": "positive",
+          "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "a6fd12c4625fdf93255e82260612c22e3bbf7bdc9a0d9cd01a65c92fead294ad",
+          "top3_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q07",
+          "mode": "positive",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+          "top2_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "top3_checksum": "86cee23d21138605270e0d089558f24b9ab82fb2f87b703a12abce9c596218b1",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q08",
+          "mode": "positive",
+          "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+          "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+          "top2_checksum": "f1c540368107082ee54546bd19683d6cce678b9cb1684dded3c0f3c8da0da9d5",
+          "top3_checksum": "ba1840332c97ec6561c2ea635bd07cb8932ef286bca10bf5d829a64a5646a2e6",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q09",
+          "mode": "positive",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "top1_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "top2_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "top3_checksum": "6559f28f6eaa955ea545573cf8489041db6dce6f299bac871578c0675869f59d",
+          "hit_at_1": true,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q10",
+          "mode": "positive",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q11",
+          "mode": "positive",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top3_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q12",
+          "mode": "positive",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "931089441454e76f93f0d4da5ae92a9731df87c0d7c7da80b00dde05f2ac220c",
+          "top3_checksum": "84286e0f034a3754aa93c075ce15f446a78165178f8b0cc32d6175987ba61fc2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q13",
+          "mode": "positive",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "9299c896b30f37f21033323975f62f29ba05f67b550207f14740ab4fee55d453",
+          "top3_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q14",
+          "mode": "positive",
+          "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+          "top1_checksum": "cfbbc6b9e30885690f3dce2100355c968ee31c6880a1f8ea1c1895d1e266b658",
+          "top2_checksum": "e6dde7d2bffd28b31ad36ea599dc343a8df4635d7c48b49507ee347970e90d60",
+          "top3_checksum": "86fa054c28ef813087589e8fbac75ee2ff9e3eae382ef3a504e8948bcd331574",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q15",
+          "mode": "positive",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "top2_checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+          "top3_checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q16",
+          "mode": "positive",
+          "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+          "top1_checksum": "5565ac12c1c8a5c7991b73d78ede8135af3af553232177f0b8343a41173b6a83",
+          "top2_checksum": "fb354c8af183cc006d76bb11e92866921067f777d1e89221cc1b2f1d6cbf6331",
+          "top3_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q17",
+          "mode": "positive",
+          "query": "In insurer correspondence letters, what customer service phone number is listed?",
+          "top1_checksum": "8a77277ec1d73d28e8fdc8b4e737ade5acf08f9f1dd55de13dd24470f38c3285",
+          "top2_checksum": "5207ca9ebd06c84730dd02aaddcab30b984b9233dda61ced91126f37ea446cfe",
+          "top3_checksum": "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q18",
+          "mode": "positive",
+          "query": "In the annual tax statement document for 2023, what date range is covered?",
+          "top1_checksum": "b3bf7c92208be1565675484a17d0d65a53616ada324e6c5fabce26fcbaf1a37a",
+          "top2_checksum": "c930387c7e24231148433810cc36c9a092662a80069f3c576a587f85b84d00b0",
+          "top3_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q19",
+          "mode": "positive",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "top3_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q20",
+          "mode": "positive",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "top3_checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+          "hit_at_1": false,
+          "hit_at_3": true,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q21",
+          "mode": "control",
+          "query": "What is Bitcoin price today?",
+          "top1_checksum": "284534780e78aa9664e6c78cd65fbca5a884741c3115d959ce2991d0f175f81c",
+          "top2_checksum": "139dd328c3b28c58ea9d8b984d846c5acaa08fce33057c42ec4632122b8dc258",
+          "top3_checksum": "9a05f8280804eef6dd63245b370532cbddbf4dde28fdbd91a772ffae2f9440c7",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q22",
+          "mode": "control",
+          "query": "Who won yesterday's Bundesliga match?",
+          "top1_checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "top2_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "top3_checksum": "14671c78fc7de99d83bb9e52e2d5b335d4756066925e67df1a25c0e272133aad",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        },
+        {
+          "query_id": "Q23",
+          "mode": "control",
+          "query": "What is the weather in Berlin tomorrow?",
+          "top1_checksum": "746725649efb1b8dcf2d6198462e54b822439c1b2b8c6ae81bd65619525ea7a4",
+          "top2_checksum": "9be3e65033c9df908c60ca9fdc37248afdaf7c88755f17e4938b88f37226d0c8",
+          "top3_checksum": "28cf062464e8fd74f0cae78f21ae5480475fe95b273cf3e0a1e67630d8b39446",
+          "hit_at_1": false,
+          "hit_at_3": false,
+          "clarify": null,
+          "error": null
+        }
+      ]
+    }
+  ],
+  "rewrite_quality": {
+    "summary": {
+      "total": 23,
+      "clarify_count": 0,
+      "error_count": 0,
+      "anchored_total": 22
+    },
+    "rows": [
+      {
+        "query_id": "Q01",
+        "mode": "positive",
+        "query": "Where did Ali do his PhD studies?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Ali PhD study location"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q02",
+        "mode": "positive",
+        "query": "In Ali's latest CV, what is his most recent job title?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Ali current job title"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q03",
+        "mode": "positive",
+        "query": "From Ali's latest CV, list the main technical skills.",
+        "anchored": true,
+        "result": {
+          "rewritten": "Ali technical skills"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q04",
+        "mode": "positive",
+        "query": "In Ali's most recent CV contact section, which city is listed?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Ali current CV contact city"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q05",
+        "mode": "positive",
+        "query": "From Ali's cover letters, what role is he applying for?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Ali job application role"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q06",
+        "mode": "positive",
+        "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Dubai grid power systems project main objective"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q07",
+        "mode": "positive",
+        "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Electric Circuits 1 course code"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q08",
+        "mode": "positive",
+        "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Modern Ship Steering Control project supervisor"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q09",
+        "mode": "positive",
+        "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Norton theorem electric circuits topic"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q10",
+        "mode": "positive",
+        "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        "anchored": true,
+        "result": {
+          "rewritten": "PEM fuel cell sliding mode control approach"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q11",
+        "mode": "positive",
+        "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+        "anchored": true,
+        "result": {
+          "rewritten": "solar radiation estimation on tilted surfaces"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q12",
+        "mode": "positive",
+        "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+        "anchored": true,
+        "result": {
+          "rewritten": "PCA feature engineering data science training documents"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q13",
+        "mode": "positive",
+        "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+        "anchored": true,
+        "result": {
+          "rewritten": "German Arabic employment office address"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q14",
+        "mode": "positive",
+        "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Kundennummer im Kooperationsplan Jobcenter"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q15",
+        "mode": "positive",
+        "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Jobcenter Anlage KI purpose"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q16",
+        "mode": "positive",
+        "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+        "anchored": true,
+        "result": {
+          "rewritten": "In the 2025 insurance premium-adjustment letter, which insurer issued it?"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q17",
+        "mode": "positive",
+        "query": "In insurer correspondence letters, what customer service phone number is listed?",
+        "anchored": true,
+        "result": {
+          "rewritten": "insurer customer service phone number"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q18",
+        "mode": "positive",
+        "query": "In the annual tax statement document for 2023, what date range is covered?",
+        "anchored": true,
+        "result": {
+          "rewritten": "2023 annual tax statement date range"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q19",
+        "mode": "positive",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "anchored": true,
+        "result": {
+          "rewritten": "In the tax-related invoice PDF, who is the issuing company?"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q20",
+        "mode": "positive",
+        "query": "In the remittance receipt from 2020, what payment amount is shown?",
+        "anchored": true,
+        "result": {
+          "rewritten": "2020 remittance receipt payment amount"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q21",
+        "mode": "control",
+        "query": "What is Bitcoin price today?",
+        "anchored": false,
+        "result": {
+          "rewritten": "Bitcoin current price"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q22",
+        "mode": "control",
+        "query": "Who won yesterday's Bundesliga match?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Who won yesterday's Bundesliga match?"
+        },
+        "is_clarify": false,
+        "is_error": false
+      },
+      {
+        "query_id": "Q23",
+        "mode": "control",
+        "query": "What is the weather in Berlin tomorrow?",
+        "anchored": true,
+        "result": {
+          "rewritten": "Berlin weather forecast tomorrow"
+        },
+        "is_clarify": false,
+        "is_error": false
+      }
+    ]
+  },
+  "metadata_quality": {
+    "total_docs": 2142,
+    "doc_type_counts": {
+      "academic_record": 19,
+      "course_material": 209,
+      "other": 846,
+      "research_paper": 484,
+      "insurance_letter": 106,
+      "government_form": 172,
+      "technical_report": 24,
+      "cv": 100,
+      "payroll": 47,
+      "cover_letter": 41,
+      "invoice": 41,
+      "policy": 23,
+      "contract": 15,
+      "reference_letter": 15
+    },
+    "doc_type_source_counts": {
+      "rule": 1174,
+      "fallback": 846,
+      "__missing__": 122
+    },
+    "doc_type_confidence_stats": {
+      "count": 2020,
+      "min": 0.25,
+      "max": 0.98,
+      "avg": 0.5997772277227722
+    }
+  },
+  "infrastructure_check": {
+    "sample_chunk_id": "f3c289c2-f3d2-5e21-9be9-05b901929e8e",
+    "old_request_error": "RequestError: RequestError(400, 'parsing_exception', 'unknown key [_source] for a START_ARRAY, expected [docs] or [ids]')",
+    "new_request_ok": true,
+    "new_request_error": null
+  },
+  "failure_taxonomy": {
+    "positive_failures_count": 12,
+    "positive_failed_query_ids": [
+      "Q02",
+      "Q03",
+      "Q04",
+      "Q05",
+      "Q06",
+      "Q07",
+      "Q10",
+      "Q12",
+      "Q14",
+      "Q15",
+      "Q17",
+      "Q18"
+    ],
+    "control_false_positive_ids": []
+  }
+}
