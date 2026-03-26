@@ -50,7 +50,8 @@ Milestone is successful when:
 
 - P0 is complete in code.
 - P4 is moved ahead of P1-P3 for this environment so manual QA can run without the local TGW setup.
-- Active sequence: `P0 -> P4 -> manual QA -> P1 -> P2 -> P3 -> P5`.
+- P1 is complete in code with targeted regression tests passing.
+- Active sequence: `P0 -> P4 -> P1 -> manual QA (P1 exit gate) -> P2 -> P3 -> P5`.
 - Guardrail unchanged: keep P4 isolated from retrieval/prompt quality changes.
 
 ---
@@ -101,6 +102,12 @@ Exit gate:
 
 ### Phase P1: Duplicate suppression hardening
 
+Status (2026-03-26):
+
+- Code changes complete.
+- Targeted automated tests passing.
+- Manual QA exit gate still pending.
+
 Scope:
 
 - Fix exact-dedup edge case when checksum is missing.
@@ -134,6 +141,10 @@ Suggested run:
 ```powershell
 pytest tests/test_retrieval_pipeline.py tests/test_search_dedup.py tests/test_query.py -q
 ```
+
+Validation snapshot (2026-03-26):
+
+- `pytest tests/test_retrieval_pipeline.py tests/test_search_dedup.py tests/test_query.py -q` -> `12 passed`.
 
 Exit gate:
 
