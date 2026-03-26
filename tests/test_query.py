@@ -67,6 +67,10 @@ sys.modules.setdefault("urllib3.util.retry", urllib3_retry_module)
 opensearch_module = _OpenSearchModule("opensearchpy")
 opensearch_module.OpenSearch = type("OpenSearch", (), {})
 opensearch_module.RequestsHttpConnection = object
+opensearch_module.exceptions = types.SimpleNamespace(
+    OpenSearchException=Exception,
+    NotFoundError=Exception,
+)
 sys.modules.setdefault("opensearchpy", opensearch_module)
 qdrant_module = _QdrantModule("qdrant_client")
 qdrant_module.QdrantClient = type(
@@ -227,3 +231,29 @@ def test_retrieval_limit_matches_top_k(monkeypatch):
     assert call_args["final_k"] == 4
     assert retrieval_span.attrs["results_found"] == 4
     assert result.retrieval is not None
+
+
+def test_answer_question_uses_low_default_temperature(monkeypatch):
+    observed = {}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="doc", path="path", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        observed["temperature"] = kwargs.get("temperature")
+        return "answer"
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+
+    result = answer_question("question")
+
+    assert observed["temperature"] == 0.1
+    assert result.temperature == 0.1

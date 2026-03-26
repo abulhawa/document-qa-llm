@@ -117,3 +117,11 @@ def test_no_results_shows_message(monkeypatch):
     assert any(
         "No relevant context found" in m.value for m in at.markdown
     )
+
+
+def test_temperature_slider_default_is_low():
+    at = AppTest.from_file("pages/0_chat.py", default_timeout=10)
+    at.run()
+
+    assert at.slider[0].label == "Temperature"
+    assert at.slider[0].value == 0.1

@@ -88,7 +88,7 @@ with st.sidebar.expander("🧠 LLM Settings", expanded=True):
         "Temperature",
         0.0,
         1.5,
-        0.7,
+        0.1,
         step=0.05,
         disabled=not llm_status["active"],
         help=None if llm_status["active"] else llm_status["status_message"],
