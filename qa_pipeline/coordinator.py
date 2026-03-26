@@ -49,6 +49,7 @@ def answer_question(
     chat_history: Optional[List[dict]] = None,
     retrieval_cfg: RetrievalConfig | None = None,
     use_cache: bool = True,
+    require_grounding: bool = False,
 ) -> AnswerContext:
     """Orchestrate the QA pipeline to answer a question."""
 
@@ -66,6 +67,7 @@ def answer_question(
         chain_span.set_attribute("top_k", top_k)
         chain_span.set_attribute("temperature", temperature)
         chain_span.set_attribute("model", model or "unknown")
+        chain_span.set_attribute("require_grounding", require_grounding)
 
         # Step 1: Rewrite query or request clarification
         try:
@@ -158,7 +160,8 @@ def answer_question(
             context.answer = "❌ LLM call failed."
             return context
 
-        if QA_GROUNDING_ENABLED:
+        should_check_grounding = QA_GROUNDING_ENABLED or require_grounding
+        if should_check_grounding:
             try:
                 grounding = evaluate_grounding(
                     answer=context.answer or "",
@@ -169,8 +172,16 @@ def answer_question(
                 context.is_grounded = grounding.is_grounded
                 chain_span.set_attribute("grounding_score", grounding.score)
                 chain_span.set_attribute("is_grounded", grounding.is_grounded)
+                if require_grounding and not grounding.is_grounded:
+                    context.answer = "I don't know."
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Grounding check failed: %s", exc)
+                if require_grounding:
+                    context.grounding_score = 0.0
+                    context.is_grounded = False
+                    chain_span.set_attribute("grounding_score", 0.0)
+                    chain_span.set_attribute("is_grounded", False)
+                    context.answer = "I don't know."
 
         chain_span.set_attribute(OUTPUT_VALUE, context.answer or "")
         chain_span.set_status(STATUS_OK)

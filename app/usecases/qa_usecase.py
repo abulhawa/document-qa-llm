@@ -19,6 +19,7 @@ def answer(req: QARequest) -> QAResponse:
             chat_history=req.chat_history,
             retrieval_cfg=retrieval_cfg,
             use_cache=req.use_cache,
+            require_grounding=req.require_grounding,
         )
     except Exception as exc:  # noqa: BLE001
         return QAResponse(answer="", error=str(exc))
@@ -45,4 +46,6 @@ def answer(req: QARequest) -> QAResponse:
         documents=documents,
         rewritten_question=context.rewritten_question,
         clarification=context.clarification,
+        is_grounded=context.is_grounded,
+        grounding_score=context.grounding_score,
     )

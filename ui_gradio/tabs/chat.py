@@ -31,6 +31,23 @@ def _format_sources(sources: list[str]) -> str:
     return f"#### 📁 Sources:\n{items}"
 
 
+def _format_grounding_warning(
+    is_grounded: bool | None,
+    grounding_score: float | None,
+    answer_text: str,
+) -> str:
+    if is_grounded is not False:
+        return ""
+    if (answer_text or "").strip() == "I don't know.":
+        return ""
+    if isinstance(grounding_score, (float, int)):
+        return (
+            "⚠️ Low confidence: this answer may not be fully supported by your documents "
+            f"(grounding score: {float(grounding_score):.2f})."
+        )
+    return "⚠️ Low confidence: this answer may not be fully supported by your documents."
+
+
 def _sync_llm_state() -> tuple[dict, list[str], str | None]:
     llm_status = check_llm_status()
     llm_models: list[str] = []
@@ -84,6 +101,14 @@ def build_chat_tab() -> None:
                         label="Use LLM cache",
                         value=True,
                         interactive=bool(llm_status.get("active")),
+                    )
+                    require_grounding = gr.Checkbox(
+                        label="Strict mode (document-backed answers only)",
+                        value=False,
+                        interactive=bool(llm_status.get("active")),
+                    )
+                    gr.Markdown(
+                        "When off: Flexible mode (best-effort answers)."
                     )
         with gr.Column(scale=3):
             with gr.Group(elem_classes=["card"]):
@@ -141,6 +166,7 @@ def build_chat_tab() -> None:
             gr.update(interactive=interactive),
             gr.update(interactive=interactive),
             gr.update(interactive=interactive),
+            gr.update(interactive=interactive),
         )
 
     def refresh_llm_state():
@@ -153,6 +179,7 @@ def build_chat_tab() -> None:
             mode_update,
             temperature_update,
             cache_update,
+            grounding_update,
             chat_input_update,
             chat_send_update,
             completion_input_update,
@@ -169,6 +196,7 @@ def build_chat_tab() -> None:
             mode_update,
             temperature_update,
             cache_update,
+            grounding_update,
             chat_input_update,
             chat_send_update,
             completion_input_update,
@@ -200,6 +228,7 @@ def build_chat_tab() -> None:
             mode_update,
             temperature_update,
             cache_update,
+            grounding_update,
             chat_input_update,
             chat_send_update,
             completion_input_update,
@@ -217,6 +246,7 @@ def build_chat_tab() -> None:
             mode_update,
             temperature_update,
             cache_update,
+            grounding_update,
             chat_input_update,
             chat_send_update,
             completion_input_update,
@@ -231,6 +261,7 @@ def build_chat_tab() -> None:
         temperature_value: float,
         model_value: str | None,
         use_cache_value: bool,
+        require_grounding_value: bool,
     ):
         llm_status = check_llm_status()
         status_md = _format_llm_status(llm_status)
@@ -246,10 +277,18 @@ def build_chat_tab() -> None:
             model=model_value,
             chat_history=chat_history,
             use_cache=use_cache_value,
+            require_grounding=require_grounding_value,
         )
         response = qa_usecase.answer(req)
         answer = response.answer or response.error or ""
         display_answer = answer
+        grounding_warning = _format_grounding_warning(
+            response.is_grounded,
+            response.grounding_score,
+            answer,
+        )
+        if grounding_warning:
+            display_answer = f"{display_answer}\n\n{grounding_warning}"
         sources_md = _format_sources(response.sources)
         if sources_md:
             display_answer = f"{display_answer}\n\n{sources_md}"
@@ -265,6 +304,7 @@ def build_chat_tab() -> None:
         temperature_value: float,
         model_value: str | None,
         use_cache_value: bool,
+        require_grounding_value: bool,
     ):
         llm_status = check_llm_status()
         status_md = _format_llm_status(llm_status)
@@ -278,9 +318,17 @@ def build_chat_tab() -> None:
             temperature=temperature_value,
             model=model_value,
             use_cache=use_cache_value,
+            require_grounding=require_grounding_value,
         )
         response = qa_usecase.answer(req)
         answer = response.answer or response.error or ""
+        grounding_warning = _format_grounding_warning(
+            response.is_grounded,
+            response.grounding_score,
+            answer,
+        )
+        if grounding_warning:
+            answer = f"{answer}\n\n{grounding_warning}"
         sources_md = _format_sources(response.sources)
         if sources_md:
             answer = f"{answer}\n\n{sources_md}"
@@ -304,6 +352,7 @@ def build_chat_tab() -> None:
             mode,
             temperature,
             use_cache,
+            require_grounding,
             chat_input,
             chat_send,
             completion_input,
@@ -323,6 +372,7 @@ def build_chat_tab() -> None:
             mode,
             temperature,
             use_cache,
+            require_grounding,
             chat_input,
             chat_send,
             completion_input,
@@ -340,6 +390,7 @@ def build_chat_tab() -> None:
             temperature,
             loaded_llm_model_state,
             use_cache,
+            require_grounding,
         ],
         outputs=[
             chat_input,
@@ -359,6 +410,7 @@ def build_chat_tab() -> None:
             temperature,
             loaded_llm_model_state,
             use_cache,
+            require_grounding,
         ],
         outputs=[
             chat_input,
@@ -373,6 +425,12 @@ def build_chat_tab() -> None:
 
     completion_submit.click(
         respond_completion,
-        inputs=[completion_input, temperature, loaded_llm_model_state, use_cache],
+        inputs=[
+            completion_input,
+            temperature,
+            loaded_llm_model_state,
+            use_cache,
+            require_grounding,
+        ],
         outputs=[completion_output, llm_status_md, model_status_md],
     )
