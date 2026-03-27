@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-03-27T09:11:33.157869+00:00",
+  "generated_at_utc": "2026-03-27T09:36:33.504322+00:00",
   "source_artifacts": {
     "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
     "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
@@ -18,6 +18,13 @@
         "alt_containment_min": 0.75,
         "alt_jaccard_min": 0.5,
         "alt_sequence_ratio_min": 0.65
+      },
+      "review_candidate_policy": {
+        "query_conditioned_containment_min": 0.68,
+        "query_conditioned_sequence_ratio_min": 0.58,
+        "query_conditioned_jaccard_min": 0.3,
+        "query_anchor_coverage_min": 0.5,
+        "review_rank_limit": 5
       }
     },
     "probe_depth": 40,
@@ -2109,6 +2116,1940 @@
         "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
         "filename": "filtered_gdrive_list.txt",
         "doc_type": "insurance_letter"
+      }
+    ]
+  },
+  "answer_support_review_queue": {
+    "scope": "archived hit@1 failures",
+    "summary": {
+      "queries_in_queue": 15,
+      "queries_with_suggested_candidates": 0,
+      "queries_with_suggested_candidates_rate": 0.0,
+      "suggested_candidate_docs_total": 0,
+      "suggested_review_reason_counts": {},
+      "instruction": "Review suggested candidates and fill reviewer_selected_answer_support_checksums for queries where alternate sources should count as answer-support."
+    },
+    "rows": [
+      {
+        "query_id": "Q01",
+        "query": "Where did Ali do his PhD studies?",
+        "query_anchor_tokens": [
+          "ali",
+          "his",
+          "phd",
+          "studies"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+          "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+        ],
+        "answer_support_checksums_probe": [
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+          "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+        ],
+        "expected_rank_probe": 5,
+        "answer_support_rank_probe": 5,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_11.docx",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": null,
+              "retrieval_score": 1.1747541412167464,
+              "score_vector": 0.9868853525479319,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": 0.1,
+              "modified_at": "2016-12-16T12:13:35+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/Cover Letter - AUS.docx",
+              "filename": null,
+              "doc_type": "cover_letter",
+              "person_name": "Ali Abul Hawa",
+              "retrieval_score": 1.0566469172349149,
+              "score_vector": 0.9805974538201607,
+              "score_bm25": 0.8273465595060464,
+              "_bm25_variant_weight": null,
+              "authority_rank": 0.85,
+              "_profile_intent_adjustment": 0.1,
+              "modified_at": "2015-01-03T22:45:14+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "b61fd3e0fedd458307a3a9d806b5c9b309fb04e2404e1310ba565a7e266e33cf",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "b61fd3e0fedd458307a3a9d806b5c9b309fb04e2404e1310ba565a7e266e33cf",
+              "path": "C:/Users/ali_a/My Drive/Ali/recommendation letters/Recommendation Letter (Izzeddin Teeti).docx",
+              "filename": null,
+              "doc_type": "reference_letter",
+              "person_name": "Izzeddin Teeti",
+              "retrieval_score": 0.5592519026214363,
+              "score_vector": 0.0,
+              "score_bm25": 0.6754250031289922,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": 0.8,
+              "_profile_intent_adjustment": 0.09320865043690606,
+              "modified_at": "2015-12-28T05:23:51+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
+              "path": "C:/Users/ali_a/My Drive/Ali/recommendation letters/Recommendation Letter (Mohammad Osta).docx",
+              "filename": null,
+              "doc_type": "reference_letter",
+              "person_name": "Mohammad Osta",
+              "retrieval_score": 0.5465880608953724,
+              "score_vector": 0.0,
+              "score_bm25": 0.6601305081829104,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": 0.8,
+              "_profile_intent_adjustment": 0.09109801014922875,
+              "modified_at": "2016-08-20T13:16:01+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+              "filename": null,
+              "doc_type": "other",
+              "person_name": null,
+              "retrieval_score": 0.43801431225501897,
+              "score_vector": 0.0,
+              "score_bm25": 0.8111366509156145,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": -0.04866825691722433,
+              "modified_at": "2020-09-28T11:21:31+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q02",
+        "query": "In Ali's latest CV, what is his most recent job title?",
+        "query_anchor_tokens": [
+          "ali",
+          "latest",
+          "his",
+          "most",
+          "recent",
+          "job",
+          "title"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "answer_support_checksums_probe": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "expected_rank_probe": 4,
+        "answer_support_rank_probe": 4,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/the-knowledge-graph-cookbook.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.6000008827758498,
+              "score_vector": 0.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2020-12-10T13:29:57+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/CV - Ali-Abul-Hawa.docx",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": "Ali Abul Hawa",
+              "retrieval_score": 0.5770518258252963,
+              "score_vector": 0.0,
+              "score_bm25": 0.7493504722105745,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2026-03-20T20:51:35.668019+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_4.pdf",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": null,
+              "retrieval_score": 0.5685691150620413,
+              "score_vector": 0.0,
+              "score_bm25": 0.8240132101424414,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-06-03T17:49:11+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5607201819496445,
+              "score_vector": 0.0,
+              "score_bm25": 0.9345335947724874,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-04-04T03:41:49.437000+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "ca6117f85e18628bb5ddf12eb2e383d61737c67f575f733ec8f85c2f8550e34f",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "ca6117f85e18628bb5ddf12eb2e383d61737c67f575f733ec8f85c2f8550e34f",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science Retreat/Marek/2016-data-science-salary-survey.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5258308953701429,
+              "score_vector": 0.0,
+              "score_bm25": 0.8763848254107423,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-09-26T11:34:51+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q03",
+        "query": "From Ali's latest CV, list the main technical skills.",
+        "query_anchor_tokens": [
+          "ali",
+          "latest",
+          "list",
+          "main",
+          "technical",
+          "skills"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
+        "answer_support_checksums_probe": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
+        "expected_rank_probe": 11,
+        "answer_support_rank_probe": 11,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2017_3/Fintech startup CV library/AliAbulhawa_Cover_Letter.docx",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": "Ali Abul Hawa",
+              "retrieval_score": 0.8982356932112204,
+              "score_vector": 0.9523327650663747,
+              "score_bm25": 0.7288376447571873,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-03-16T12:57:20+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "46f8e166a6023d9b880d8d264075c591de9ba8513f45a1f6ecf19b4c68adc395",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "46f8e166a6023d9b880d8d264075c591de9ba8513f45a1f6ecf19b4c68adc395",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/Resume - Ali 2017_1_pic.pdf",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": "Ali Pic",
+              "retrieval_score": 0.7698120858371329,
+              "score_vector": 0.9621764762389109,
+              "score_bm25": 0.5082358251136383,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-02-11T18:26:43+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "f008e785a17778a68f6aebe3c6f7bea7f58c2ba27dfe47d429b09d1614d1a050",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "f008e785a17778a68f6aebe3c6f7bea7f58c2ba27dfe47d429b09d1614d1a050",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103200 Introduction to C++/2011-2012 Spring/Assignments/Assignment 2.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.6285782235224011,
+              "score_vector": 0.96271716483012,
+              "score_bm25": 0.40581892931724095,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-03-12T18:40:09+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/AUM Archive/VALUE_Rubrics___a-k_final_version_2.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.6000000000196362,
+              "score_vector": 0.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-11-13T20:18:44+01:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/Cover Letter - AUS.docx",
+              "filename": null,
+              "doc_type": "cover_letter",
+              "person_name": "Ali Abul Hawa",
+              "retrieval_score": 0.501113546078356,
+              "score_vector": 0.0,
+              "score_bm25": 0.7262515160509457,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": 0.85,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-01-03T22:45:14+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q04",
+        "query": "In Ali's most recent CV contact section, which city is listed?",
+        "query_anchor_tokens": [
+          "ali",
+          "most",
+          "recent",
+          "contact",
+          "section",
+          "city",
+          "listed"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
+        "answer_support_checksums_probe": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
+        "expected_rank_probe": 7,
+        "answer_support_rank_probe": 7,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/Improvement Engineer Cover Letter (Banbury).docx",
+              "filename": null,
+              "doc_type": "cover_letter",
+              "person_name": "Improvement Engineer",
+              "retrieval_score": 0.8016604892623547,
+              "score_vector": 0.9890949516078559,
+              "score_bm25": 0.5633708476834167,
+              "_bm25_variant_weight": null,
+              "authority_rank": 0.85,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-04-27T23:41:37+02:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/SWAMBIT/References/O-Reilly_et_al-2014-Cognitive_Science.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5919493737818838,
+              "score_vector": 0.0,
+              "score_bm25": 0.9157402184976033,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-11-14T07:00:23.065181+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103350 Signals and Systems/Signals, Systems, and Transforms, 4th Edition.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5729106493516088,
+              "score_vector": 0.0,
+              "score_bm25": 0.9548510822522298,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2013-08-26T10:41:17+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/The elements of statistical learning  Data mining, inference, and prediction.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.6000000000785651,
+              "score_vector": 0.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-05-04T00:01:31+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "bbc78d0c4f121f5b5c1a025aeb0b5cc63ddc85cbf3a8e612ecfd9d5c9c93b8f5",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "bbc78d0c4f121f5b5c1a025aeb0b5cc63ddc85cbf3a8e612ecfd9d5c9c93b8f5",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/6.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5689018357069676,
+              "score_vector": 0.0,
+              "score_bm25": 0.9481697219998813,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-12-24T11:21:56+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q05",
+        "query": "From Ali's cover letters, what role is he applying for?",
+        "query_anchor_tokens": [
+          "ali",
+          "cover",
+          "letters",
+          "role",
+          "applying"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "answer_support_checksums_probe": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "expected_rank_probe": 5,
+        "answer_support_rank_probe": 5,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/049_25_ABULHAWA_ALI (SWAMBIT).pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.751250742263576,
+              "score_vector": 1.0,
+              "score_bm25": 0.5240423732227011,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-10-20T12:00:40.107143+02:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "e4e0e1329710dd04b1a60c08ec2db7f55642ab6681bdc4d070d4f841048a722f",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "e4e0e1329710dd04b1a60c08ec2db7f55642ab6681bdc4d070d4f841048a722f",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2017_2/Stylight_cover letter_Abulhawa.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.7039466949871618,
+              "score_vector": 0.9621395984240924,
+              "score_bm25": 0.5318180920248374,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-02-10T20:31:43+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.6000000369194161,
+              "score_vector": 0.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-04-04T03:41:49.437000+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/the-fourth-industrial-revolution-2016-21.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5666557039715571,
+              "score_vector": 0.0,
+              "score_bm25": 0.9444261294527557,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-02-04T09:26:56.686000+01:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Think Python.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.57060519699042,
+              "score_vector": 0.0,
+              "score_bm25": 0.9510086614660073,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-07-02T13:05:03+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q06",
+        "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+        "query_anchor_tokens": [
+          "power",
+          "systems",
+          "project",
+          "report",
+          "about",
+          "dubai",
+          "grid",
+          "main",
+          "objective"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
+        "answer_support_checksums_probe": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
+        "expected_rank_probe": 33,
+        "answer_support_rank_probe": 33,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/ABET_Courses_Syllabi.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.7492587169094866,
+              "score_vector": 0.9364453737260671,
+              "score_bm25": 0.624467612364887,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2013-03-21T05:20:43+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "8b7b5349f289ad2597e4cb52b80dde97d21f22bf6a75bd00d3514feba05d2b7e",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "8b7b5349f289ad2597e4cb52b80dde97d21f22bf6a75bd00d3514feba05d2b7e",
+              "path": "C:/Users/ali_a/My Drive/lenovo desktop/pp/Resume - Ali 2021.docx",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": "Ali Abul-Hawa",
+              "retrieval_score": 0.633542782222903,
+              "score_vector": 0.9182641518624155,
+              "score_bm25": 0.31038910561308614,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2021-05-10T21:54:45+02:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "ff1e2431fe9d090a7e85d5d5e77f41e0f7e5329f89b38df95cc7e19a5b720b51",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "ff1e2431fe9d090a7e85d5d5e77f41e0f7e5329f89b38df95cc7e19a5b720b51",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/Manuscripts_2.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.6132130863076012,
+              "score_vector": 0.9332106212891726,
+              "score_bm25": 0.3998813963185338,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-02-04T10:50:40+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "ad0d905aa29119d0ceefa62b7662b5606f14f397dbf3c6b00944b61e0de16149",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "ad0d905aa29119d0ceefa62b7662b5606f14f397dbf3c6b00944b61e0de16149",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/Resume - Ali 20249.pdf",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": null,
+              "retrieval_score": 0.44037321494257076,
+              "score_vector": 0.917099065219579,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-05-26T11:32:59.711000+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "df76f99043c659bde40bddb88083e026b059005a56322839f93c806f6a47ebc1",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "df76f99043c659bde40bddb88083e026b059005a56322839f93c806f6a47ebc1",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/LCA FC/Life Cycle Assessment of Fuel Cell Vehicles - Dealing with Uncertainties.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.37205859850486844,
+              "score_vector": 0.9301464962621191,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-05-10T20:35:50+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q07",
+        "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+        "query_anchor_tokens": [
+          "electric",
+          "circuits",
+          "course",
+          "materials",
+          "code",
+          "shown"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
+        "answer_support_checksums_probe": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
+        "expected_rank_probe": null,
+        "answer_support_rank_probe": null,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Books for EE Courses/Books Combined.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.9455183581701644,
+              "score_vector": 0.9711715933684543,
+              "score_bm25": 0.9284162013695588,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-03-20T12:56:09+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "2c422abcc16c0b7ffefa915bc1f536a73760eafe7d16a190f9a81b0842c1a3f8",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "2c422abcc16c0b7ffefa915bc1f536a73760eafe7d16a190f9a81b0842c1a3f8",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103200 Introduction to C++/2012-2013 Fall/Lecture Notes (1) - 103200.docx",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.4039374758453566,
+              "score_vector": 0.0,
+              "score_bm25": 0.6732291264088454,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-10-07T19:30:22+02:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "f008e785a17778a68f6aebe3c6f7bea7f58c2ba27dfe47d429b09d1614d1a050",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "f008e785a17778a68f6aebe3c6f7bea7f58c2ba27dfe47d429b09d1614d1a050",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103200 Introduction to C++/2011-2012 Spring/Assignments/Assignment 2.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.38215773993004987,
+              "score_vector": 0.9553943498250876,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-03-12T18:40:09+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "8d6014d5721163a027055d51571f0a28c17e383e4dcb6bb00bd651881cf4b530",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "8d6014d5721163a027055d51571f0a28c17e383e4dcb6bb00bd651881cf4b530",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103212 Electric Circuits (1)/2014 Fall/Quiz 1.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.38507747305463225,
+              "score_vector": 0.9626936826283958,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-10-03T21:56:34+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "fee5b77d7c2f92174a8f523f543dd5d4068e344b79c49f9c3fcc92c197d3e8e2",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "fee5b77d7c2f92174a8f523f543dd5d4068e344b79c49f9c3fcc92c197d3e8e2",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Meetings/2015-2016/10-2015-2016 (1).docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3822600735505795,
+              "score_vector": 0.9556501836818104,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-04-04T12:28:32+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q09",
+        "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+        "query_anchor_tokens": [
+          "norton",
+          "theorem",
+          "lecture",
+          "notes",
+          "electric",
+          "circuits",
+          "topic",
+          "discussed"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
+        "answer_support_checksums_probe": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
+        "expected_rank_probe": 19,
+        "answer_support_rank_probe": 19,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103214 Electric Circuits Lab/References/JU - Circuits Lab/exp2.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.8846794084811691,
+              "score_vector": 0.9737270229387762,
+              "score_bm25": 0.8253143321760973,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2010-02-17T11:09:16+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "ea57ce464ef2ab431dc8fb5964d54f9c368373fac6339b75b08638ebde6f1aed",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "ea57ce464ef2ab431dc8fb5964d54f9c368373fac6339b75b08638ebde6f1aed",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103212 Electric Circuits (1)/2012 Fall/Lecture Notes (2) - 103212.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.8083173595000103,
+              "score_vector": 0.9426804818569802,
+              "score_bm25": 0.7187419445952691,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-10-31T16:07:50+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "0893dd07512912f90ffdfa22283e1cddec86c8580fb90e0a9e29333d0aa1f760",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "0893dd07512912f90ffdfa22283e1cddec86c8580fb90e0a9e29333d0aa1f760",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Ali/Faculty annual report - Ali Abul Hawa - 2015.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.6827993373526466,
+              "score_vector": 0.9476944845246864,
+              "score_bm25": 0.5062025725192096,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-10-29T10:12:23+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+              "path": "C:/Users/ali_a/My Drive/Ali/PhD - Paper/PhD Thesis_Ali Abul Hawa_Printed.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3777118837560166,
+              "score_vector": 0.9442797093900397,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2010-10-11T11:35:46+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "205cf27d4d75a40de32b18e65dc9d99897073d6dbdaf52e6571443af332aef71",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "205cf27d4d75a40de32b18e65dc9d99897073d6dbdaf52e6571443af332aef71",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103311 Electrical Machines (1)/2014 Fall/Projects/Machines Project Group 1/Refrence 3.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.38225131311931326,
+              "score_vector": 0.9556282827854544,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-12-20T16:11:31+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q10",
+        "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        "query_anchor_tokens": [
+          "pem",
+          "fuel",
+          "cell",
+          "sliding",
+          "mode",
+          "control",
+          "research",
+          "paper",
+          "approach",
+          "used"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
+        "answer_support_checksums_probe": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
+        "expected_rank_probe": 19,
+        "answer_support_rank_probe": 19,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.9245771414610169,
+              "score_vector": 0.9423317780357333,
+              "score_bm25": 0.8276297751344094,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-12-16T01:27:09+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "98cdcbffacdc036495ab75376d6d513432266dd41bba50ee34364e9b08bb645f",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "98cdcbffacdc036495ab75376d6d513432266dd41bba50ee34364e9b08bb645f",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103410 Control Systems/effects of zeros and poles.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.36698058820161883,
+              "score_vector": 0.9174514705019202,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-03-12T11:12:58+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103411 Power Systems (1)/Power System Analysis & Design SI 5th Edition.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3604183119853252,
+              "score_vector": 0.9010457799491782,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-02-03T08:52:48.640000+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "cae34d7cb5c352e73fdcd151d2978e50c72be9bb6ac866ad6ca6bd3b8a3f4fe5",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "cae34d7cb5c352e73fdcd151d2978e50c72be9bb6ac866ad6ca6bd3b8a3f4fe5",
+              "path": "C:/Users/ali_a/My Drive/Martin thesis_v1_with_comments.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.30491783754420276,
+              "score_vector": 0.0,
+              "score_bm25": 0.4537467820598256,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2026-01-12T23:17:34.487558+01:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "68648666dc83fa501d2d900aa8b85d8c8cc202910384bafbc6e618a5525aca55",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "68648666dc83fa501d2d900aa8b85d8c8cc202910384bafbc6e618a5525aca55",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV LED System/Improving the reliability of solar -powered LED illuminatin systems (Dr Akram).pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.26186816489906073,
+              "score_vector": 0.0,
+              "score_bm25": 0.43644694149736013,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-01-23T10:40:56+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q11",
+        "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+        "query_anchor_tokens": [
+          "paper",
+          "solar",
+          "radiation",
+          "over",
+          "tilted",
+          "surfaces",
+          "quantity",
+          "being",
+          "estimated"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
+        "answer_support_checksums_probe": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
+        "expected_rank_probe": 20,
+        "answer_support_rank_probe": 20,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/Applied Photovoltaics by Stuart R Wenham.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.8294506218882806,
+              "score_vector": 0.9798328032266723,
+              "score_bm25": 0.7291958342874909,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-09-21T15:57:09+02:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "24ee39327307322e661839cb5cc98fc4184b4daa0d1811a9e5933fd3fcea5cd4",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "24ee39327307322e661839cb5cc98fc4184b4daa0d1811a9e5933fd3fcea5cd4",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science Retreat/GIS/geodata/CreatingLoadingSpatialDB.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.37083582440979534,
+              "score_vector": 0.9270895603148288,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-11-14T10:30:37+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/The elements of statistical learning  Data mining, inference, and prediction.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.1903480112688003,
+              "score_vector": 0.0,
+              "score_bm25": 0.31724668529415206,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-05-04T00:01:31+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Final ICEEPIII ENE 185 paper 06252013.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.2087531032275802,
+              "score_vector": 0.0,
+              "score_bm25": 0.3479218387103177,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2014-05-08T13:18:29+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "13ab322fc8ba0a3725d1e3563bfaea2578c086c008906c534f5fd5d85efcd805",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "13ab322fc8ba0a3725d1e3563bfaea2578c086c008906c534f5fd5d85efcd805",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103200 Introduction to C++/2011-2012 Spring/Assignments/Assignment 2.docx",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.17969141633770636,
+              "score_vector": 0.0,
+              "score_bm25": 0.29948569389615265,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-03-12T18:40:54+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q12",
+        "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+        "query_anchor_tokens": [
+          "data",
+          "science",
+          "training",
+          "document",
+          "explicitly",
+          "mentions",
+          "pca",
+          "feature",
+          "engineering"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": false,
+        "strict_expected_checksums_probe": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
+        "answer_support_checksums_probe": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
+        "expected_rank_probe": 4,
+        "answer_support_rank_probe": 4,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science Retreat/DSR-Spark-Class Daniel/DF 3.3.3 - PCA for Feature Engineering.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.9914292052969966,
+              "score_vector": 1.0,
+              "score_bm25": 0.9857153419458209,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-10-04T09:48:46+02:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "9f3059c544956a7fc8354eeb808e01aaaa958535d61820a5d975452376660fb7",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "9f3059c544956a7fc8354eeb808e01aaaa958535d61820a5d975452376660fb7",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/Resume - Ali 2019_piceu_1.docx",
+              "filename": null,
+              "doc_type": "cv",
+              "person_name": "Ali Piceu",
+              "retrieval_score": 0.9355375270453887,
+              "score_vector": 0.9168609610951513,
+              "score_bm25": 0.8146551572201883,
+              "_bm25_variant_weight": null,
+              "authority_rank": 1.0,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-07-26T11:10:49+02:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "3362238d9c7659cd54b12a995c07544240e8c2fe8857fa2221e4060e0abbe2c0",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "3362238d9c7659cd54b12a995c07544240e8c2fe8857fa2221e4060e0abbe2c0",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Papers/Multiclass Emotion Analysis of Social Media Posts.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.825283200705628,
+              "score_vector": 0.943080267105014,
+              "score_bm25": 0.7467518222620573,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-05-28T11:28:49+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/Lit Rev/9783319125794-c2.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.7719496135986212,
+              "score_vector": 0.9335020428807566,
+              "score_bm25": 0.6642478487892718,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-11-05T17:39:10+01:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "525eafe3dc7c17f89886b58770ca661fd8fdd479bff1faef9b176c7a6357c15d",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "525eafe3dc7c17f89886b58770ca661fd8fdd479bff1faef9b176c7a6357c15d",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Mastering Python for Data Science.pdf",
+              "filename": null,
+              "doc_type": "other",
+              "person_name": null,
+              "retrieval_score": 0.5995452336505531,
+              "score_vector": 0.0,
+              "score_bm25": 0.9992420559592214,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-07-01T21:23:46+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q13",
+        "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+        "query_anchor_tokens": [
+          "bilingual",
+          "german",
+          "arabic",
+          "letter",
+          "employment",
+          "office",
+          "addressed"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
+        "answer_support_checksums_probe": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
+        "expected_rank_probe": 3,
+        "answer_support_rank_probe": 3,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "574cf02d40b2325ce21329e9f02c772352c17ee59d42185635f3cf893d5419fb",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "574cf02d40b2325ce21329e9f02c772352c17ee59d42185635f3cf893d5419fb",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Personal Projects/ali_strategy_summary.docx",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.8028534270285336,
+              "score_vector": 0.9487667341608709,
+              "score_bm25": 0.6114126047591408,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2026-03-16T00:07:00.870000+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "1daf6f9821d08cc3a58a64e560f9686e1c5045525b2f16614a24d082d50ae75c",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "1daf6f9821d08cc3a58a64e560f9686e1c5045525b2f16614a24d082d50ae75c",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Receipts/monitor_12_06_2020.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.7686709757723779,
+              "score_vector": 0.9599671332570355,
+              "score_bm25": 0.6411367732758171,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2021-05-11T17:24:04+02:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
+              "filename": null,
+              "doc_type": "government_form",
+              "person_name": null,
+              "retrieval_score": 0.5966521370578697,
+              "score_vector": 0.0,
+              "score_bm25": 0.9944202284297718,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2012-02-01T10:43:50+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+              "path": "C:/Users/ali_a/My Drive/Ali/Other/the-knowledge-graph-cookbook.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5106047880403655,
+              "score_vector": 0.0,
+              "score_bm25": 0.8510065551406704,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2020-12-10T13:29:57+01:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "467044b3bb9939abaa260944f02bd0d5e7fc4afbdd1d63f8024a523d8fb3f220",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "467044b3bb9939abaa260944f02bd0d5e7fc4afbdd1d63f8024a523d8fb3f220",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/AUM Archive/USU-Engineering-Self-Study-2015.pdf",
+              "filename": null,
+              "doc_type": "research_paper",
+              "person_name": null,
+              "retrieval_score": 0.5097065754183016,
+              "score_vector": 0.0,
+              "score_bm25": 0.8495109589982297,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-11-15T22:30:48+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q15",
+        "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+        "query_anchor_tokens": [
+          "jobcenter",
+          "formular",
+          "anlage",
+          "wofur",
+          "ist",
+          "das",
+          "gedacht"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
+        "answer_support_checksums_probe": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
+        "expected_rank_probe": 12,
+        "answer_support_rank_probe": 12,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/VE-Ali.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.9924160773541757,
+              "score_vector": 0.9734458639857727,
+              "score_bm25": 0.9816698296833394,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-07-17T04:13:37.269000+02:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "3c90345f0ac4c22b46ae56b6d04d956f113b2e814464ead43669a3446c8f4430",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "3c90345f0ac4c22b46ae56b6d04d956f113b2e814464ead43669a3446c8f4430",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/B2 Sprachkurs/Resources/9783065213172_Fokus_Deutsch_B2_Arbeitsblaetter_Einheiten_9-12.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.4058037002660186,
+              "score_vector": 0.9419826048927633,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-11-19T19:56:08.067005+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/20250922_095024_Mein_Kooperationsplan.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3980054650998953,
+              "score_vector": 0.9432545702308515,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-09-22T11:14:34.853702+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "33500bfcbb4501e491e3cdf166d5c885e90a56e4e5daa4f39edcd0da8b994482",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "33500bfcbb4501e491e3cdf166d5c885e90a56e4e5daa4f39edcd0da8b994482",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/datev/BruttoNetto-Bezuege 2020 05 Mai.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3801020031154814,
+              "score_vector": 0.9502497817650172,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2021-05-13T14:40:02+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "a462d335908d9f0087b9bfdaa013fd2ecfc7823c751fc7514612699263752fb2",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "a462d335908d9f0087b9bfdaa013fd2ecfc7823c751fc7514612699263752fb2",
+              "path": "C:/Users/ali_a/My Drive/Documents/Pixel 10 Pro contract.pdf",
+              "filename": null,
+              "doc_type": "contract",
+              "person_name": null,
+              "retrieval_score": 0.3210985594071176,
+              "score_vector": 0.0,
+              "score_bm25": 0.48626899138770735,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-11-21T18:26:14.028676+01:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q19",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "query_anchor_tokens": [
+          "tax",
+          "related",
+          "invoice",
+          "pdf",
+          "issuing",
+          "company"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
+        "answer_support_checksums_probe": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
+        "expected_rank_probe": 4,
+        "answer_support_rank_probe": 4,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 1.0337564993359845,
+              "score_vector": 1.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-12-16T01:27:09+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "56e8d13fae1d0b2f1682ad37bc8e503afe2c52931058624769477805b0917190",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "56e8d13fae1d0b2f1682ad37bc8e503afe2c52931058624769477805b0917190",
+              "path": "C:/Users/ali_a/My Drive/1. Health & IDs/Insurance & Benefits/Hallesche/Steuerbescheinigung_23_02_2026.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.4330548480104,
+              "score_vector": 0.9666402857375,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2026-02-23T17:49:33.881000+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/2025/peerberry tax_statement_2025-01-01-2025-12-31_84857.pdf",
+              "filename": null,
+              "doc_type": "other",
+              "person_name": null,
+              "retrieval_score": 0.40434632005485605,
+              "score_vector": 0.0,
+              "score_bm25": 0.6017058334149643,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2026-03-21T21:13:47.236000+01:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+              "path": "C:/Users/ali_a/My Drive/Ali/Online Business/Make-money-with-no-money.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.39351535407151184,
+              "score_vector": 0.9837883850741844,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2016-03-27T13:52:01+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "148a558ef85c4883600d7bb49d667f882668843c25bae422c4e2af1865cdc90d",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "148a558ef85c4883600d7bb49d667f882668843c25bae422c4e2af1865cdc90d",
+              "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/203202 Calculus 3/Resources/thomas calculus 12th solutions Ch13-15.pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.3899696113794464,
+              "score_vector": 0.9749240274311314,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2017-04-25T10:22:22.056000+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q20",
+        "query": "In the remittance receipt from 2020, what payment amount is shown?",
+        "query_anchor_tokens": [
+          "remittance",
+          "receipt",
+          "2020",
+          "payment",
+          "amount",
+          "shown"
+        ],
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "strict_expected_checksums_probe": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
+        "answer_support_checksums_probe": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
+        "expected_rank_probe": 2,
+        "answer_support_rank_probe": 2,
+        "top_docs_probe": [
+          {
+            "rank": 1,
+            "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 1.0337648141188012,
+              "score_vector": 1.0,
+              "score_bm25": 1.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-12-16T01:27:09+01:00"
+            }
+          },
+          {
+            "rank": 2,
+            "checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
+              "filename": null,
+              "doc_type": "invoice",
+              "person_name": null,
+              "retrieval_score": 0.5763414787693464,
+              "score_vector": 0.0,
+              "score_bm25": 0.9605689438545238,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2019-12-24T13:34:13.991000+01:00"
+            }
+          },
+          {
+            "rank": 3,
+            "checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+            "is_support_expected_checksum": true,
+            "features": {
+              "checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+              "path": "C:/Users/ali_a/My Drive/4. Travel & Events/Past Trips/Europe trip/Hotels/03_24 Aug Birmingham Aparthotel Adagio 1.pdf",
+              "filename": null,
+              "doc_type": "invoice",
+              "person_name": null,
+              "retrieval_score": 0.5718251626555144,
+              "score_vector": 0.0,
+              "score_bm25": 0.9530419377399287,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2015-08-17T19:28:45.272000+02:00"
+            }
+          },
+          {
+            "rank": 4,
+            "checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "b15918888230f7c4d7ca986df18ad18657ad77000ec4b2d85068c6f3eb70a917",
+              "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Receipts/Jackie_21_04_2020.pdf",
+              "filename": null,
+              "doc_type": "invoice",
+              "person_name": null,
+              "retrieval_score": 0.5127698286311828,
+              "score_vector": 0.0,
+              "score_bm25": 0.8546129342678049,
+              "_bm25_variant_weight": 1.0,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2021-05-11T17:00:12+02:00"
+            }
+          },
+          {
+            "rank": 5,
+            "checksum": "03c201eca5f5d37c41e44fa0217d246289d72ae54ff03cd7e841dcdf12d9d5e6",
+            "is_support_expected_checksum": false,
+            "features": {
+              "checksum": "03c201eca5f5d37c41e44fa0217d246289d72ae54ff03cd7e841dcdf12d9d5e6",
+              "path": "C:/Users/ali_a/My Drive/Documents/Rentenversicherungsverlauf (03.06.2025).pdf",
+              "filename": null,
+              "doc_type": null,
+              "person_name": null,
+              "retrieval_score": 0.39474271571776015,
+              "score_vector": 0.9595252006315138,
+              "score_bm25": 0.0,
+              "_bm25_variant_weight": null,
+              "authority_rank": null,
+              "_profile_intent_adjustment": null,
+              "modified_at": "2025-06-03T21:02:23.480000+02:00"
+            }
+          }
+        ],
+        "suggested_candidate_docs": [],
+        "reviewer_selected_answer_support_checksums": [],
+        "reviewer_status": "pending",
+        "reviewer_notes": ""
       }
     ]
   }

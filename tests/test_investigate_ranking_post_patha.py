@@ -204,3 +204,74 @@ def test_load_support_label_overrides(tmp_path):
     overrides = ranking_script._load_support_label_overrides(path)
     assert "Q01" in overrides
     assert "Q02" not in overrides
+
+
+def test_query_anchor_tokens_filters_stopwords():
+    tokens = ranking_script.query_anchor_tokens("Where did I do my PhD in Germany?")
+    assert "phd" in tokens
+    assert "germany" in tokens
+    assert "where" not in tokens
+    assert "did" not in tokens
+    assert "my" not in tokens
+
+
+def test_query_conditioned_similarity_candidate_rule():
+    expected = (
+        "Education: Completed PhD at RWTH Aachen University in Germany in 2022. "
+        "Research area: machine learning."
+    )
+    candidate = (
+        "Biography: He completed a PhD at RWTH Aachen University in Germany in 2022, "
+        "focused on machine learning systems."
+    )
+    unrelated = (
+        "Biography: He completed a PhD at Oxford University in 2018 focused on economics."
+    )
+
+    similarity = ranking_script.query_conditioned_similarity_metrics(
+        query="where did i do my phd",
+        candidate_text=candidate,
+        expected_text=expected,
+    )
+    assert similarity is not None
+    assert ranking_script.is_review_candidate_similarity(similarity) is True
+
+    unrelated_similarity = ranking_script.query_conditioned_similarity_metrics(
+        query="where did i do my phd",
+        candidate_text=unrelated,
+        expected_text=expected,
+    )
+    assert unrelated_similarity is not None
+    assert ranking_script.is_review_candidate_similarity(unrelated_similarity) is False
+
+
+def test_build_answer_support_review_candidates_returns_suggestions():
+    docs = [{"checksum": "cand-1"}, {"checksum": "other-1"}]
+    metadata_cache = {
+        "exp-1": {
+            "text_full": "Completed PhD at RWTH Aachen University in Germany in 2022."
+        },
+        "cand-1": {
+            "text_full": (
+                "Profile note: completed a PhD at RWTH Aachen University in Germany in 2022."
+            ),
+            "path": "candidate.txt",
+            "doc_type": "cv",
+        },
+        "other-1": {"text_full": "Completely unrelated content."},
+    }
+
+    candidates = ranking_script.build_answer_support_review_candidates(
+        query_text="where did i do my phd",
+        docs=docs,
+        support_expected_checksums=["exp-1"],
+        metadata_cache=metadata_cache,
+        similarity_cache={},
+        rank_limit=3,
+    )
+    assert len(candidates) == 1
+    assert candidates[0]["checksum"] == "cand-1"
+    assert candidates[0]["review_reason"] in {
+        "equivalent_fulltext_threshold",
+        "query_conditioned_similarity_threshold",
+    }

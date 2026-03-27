@@ -759,6 +759,10 @@ Status (2026-03-26):
       - `tests/fixtures/retrieval_eval_answer_support_labels.json`
       - `scripts/investigate_ranking_post_patha.py --support-labels ...`
     - Interpretation: no override labels are populated yet (`overrides_count=0`), so current deterministic equivalence policy did not capture additional “correct via alternate source” cases.
+  - Next ranking investigation increment (2026-03-27):
+    - Added deterministic `answer_support_review_queue` output (archived hit@1 failures only) with query anchors, top probe docs, and reviewer fields for alternate-source support decisions.
+    - Current queue snapshot: `queries_in_queue=15`, `queries_with_suggested_candidates=0/15`, `suggested_candidate_docs_total=0` under configured thresholds.
+    - Interpretation: remaining misses still look primarily like ranking/ordering failures rather than obvious duplicate/equivalent-source labeling misses.
   - Conclusion: weak metrics remain primarily a ranking policy issue (boost tuning + hard-negative suppression), not OCR.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
