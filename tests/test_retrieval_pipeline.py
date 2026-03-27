@@ -806,6 +806,141 @@ def test_retrieval_keeps_list_artifacts_for_discovery_style_query():
     assert result.documents[0].get("_content_evidence_quality_guard") is None
 
 
+def test_retrieval_anchored_near_tie_prefers_content_over_artifact():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.999995,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+        {
+            "id": "g2",
+            "text": "drive file list includes sliding mode control of PEM fuel cells",
+            "score": 0.999994,
+            "checksum": "g2",
+            "filename": "gdrive-file-list.txt",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        canonical_lexical_rescue_enabled=False,
+        canonical_hard_negative_suppression_enabled=False,
+        content_evidence_guard_enabled=False,
+        anchored_content_near_tie_score_epsilon=1e-5,
+    )
+    result = pipeline.retrieve(
+        "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+    )
+
+    assert len(result.documents) == 3
+    assert result.documents[0].get("checksum") == "p1"
+    g1 = next(doc for doc in result.documents if doc.get("checksum") == "g1")
+    assert g1.get("_anchored_content_near_tie_break") is not None
+    assert g1.get("retrieval_score") < result.documents[0].get("retrieval_score")
+
+
+def test_retrieval_anchored_near_tie_break_does_not_apply_to_discovery_query():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.999995,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        canonical_lexical_rescue_enabled=False,
+        canonical_hard_negative_suppression_enabled=False,
+        content_evidence_guard_enabled=False,
+        anchored_content_near_tie_score_epsilon=1e-5,
+    )
+    result = pipeline.retrieve(
+        "List the files that mention the PEM fuel-cell sliding mode control paper.",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+    )
+
+    assert len(result.documents) == 2
+    assert result.documents[0].get("checksum") == "g1"
+    assert result.documents[0].get("_anchored_content_near_tie_break") is None
+
+
+def test_retrieval_anchored_near_tie_break_does_not_apply_to_non_anchored_query():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.999995,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        canonical_lexical_rescue_enabled=False,
+        canonical_hard_negative_suppression_enabled=False,
+        content_evidence_guard_enabled=False,
+        anchored_content_near_tie_score_epsilon=1e-5,
+    )
+    result = pipeline.retrieve(
+        "What control approach is used in it?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+    )
+
+    assert len(result.documents) == 2
+    assert result.documents[0].get("checksum") == "g1"
+    assert result.documents[0].get("_anchored_content_near_tie_break") is None
+
+
 def test_retrieval_uses_mmr_when_enabled():
     calls = {"embed": 0}
 
@@ -1296,6 +1431,7 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.canonical_hard_negative_min_candidate_title_overlap_count == 1
     assert cfg.content_evidence_guard_enabled is True
     assert cfg.content_evidence_guard_max_score_gap == pytest.approx(0.08)
+    assert cfg.anchored_content_near_tie_score_epsilon == pytest.approx(1e-5)
     assert cfg.recency_boost_enabled is True
     assert cfg.recency_boost_weight == pytest.approx(0.06)
     assert cfg.cv_family_collapse_enabled is True
