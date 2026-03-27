@@ -1,7 +1,7 @@
 {
-  "schema_version": "ranking_investigation.v2",
-  "compatibility_note": "Schema v2 uses nested probe_ranking_metrics.{strict_retrieval,answer_support} blocks and includes by_query_type metrics. Legacy flat probe keys are not emitted.",
-  "generated_at_utc": "2026-03-27T10:33:15.877668+00:00",
+  "schema_version": "ranking_investigation.v3",
+  "compatibility_note": "Schema v3 adds probe_vs_eval_comparison and strict_canonical_ranking_diagnosis blocks. Legacy flat probe keys are not emitted.",
+  "generated_at_utc": "2026-03-27T11:37:36.024797+00:00",
   "source_artifacts": {
     "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
     "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
@@ -60,6 +60,219 @@
     "error_count": 0,
     "positive_hit_at_1_rate": 0.25,
     "positive_hit_at_3_rate": 0.6
+  },
+  "probe_vs_eval_comparison": {
+    "artifact_method_profiles": [
+      {
+        "artifact_path": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
+        "variants_enabled": true,
+        "rewrites_enabled": true,
+        "exact_query_probing": false,
+        "candidate_depth": 3,
+        "top_k_each": null,
+        "fusion_configuration": {
+          "anchored_exact_only": true,
+          "anchored_lexical_bias_enabled": true,
+          "fusion_weight_vector": 0.7,
+          "fusion_weight_bm25": 0.3,
+          "anchored_fusion_weight_vector": 0.4,
+          "anchored_fusion_weight_bm25": 0.6
+        },
+        "chunk_document_collapsing_behavior": {
+          "checksum_dedup_enabled": true,
+          "cv_family_collapse_enabled": true,
+          "near_duplicate_collapse_enabled": true,
+          "near_duplicate_similarity_threshold": 0.82,
+          "mmr_enabled": true,
+          "mmr_effective_k": 3,
+          "duplicate_topup_enabled": true
+        },
+        "metric_interpretation_scope": "Archived strict metrics from runbook summary (positive_hit_at_1/positive_hit_at_3 over mode=positive rows, strict expected-checksum match within top_k window)."
+      },
+      {
+        "artifact_path": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1_ranking_investigation.json",
+        "variants_enabled": false,
+        "rewrites_enabled": false,
+        "exact_query_probing": true,
+        "candidate_depth": 40,
+        "top_k_each": 160,
+        "fusion_configuration": {
+          "anchored_exact_only": true,
+          "anchored_lexical_bias_enabled": true,
+          "fusion_weight_vector": 0.7,
+          "fusion_weight_bm25": 0.3,
+          "anchored_fusion_weight_vector": 0.4,
+          "anchored_fusion_weight_bm25": 0.6
+        },
+        "chunk_document_collapsing_behavior": {
+          "checksum_dedup_enabled": true,
+          "cv_family_collapse_enabled": true,
+          "near_duplicate_collapse_enabled": true,
+          "near_duplicate_similarity_threshold": 0.82,
+          "mmr_enabled": true,
+          "mmr_effective_k": 40,
+          "duplicate_topup_enabled": true
+        },
+        "metric_interpretation_scope": "Deterministic strict probe metrics (strict_retrieval_rank_probe over exact-query deep probe depth)."
+      }
+    ],
+    "strict_metric_comparison": {
+      "archived_eval": {
+        "positive_total": 20,
+        "hit_at_1": 5,
+        "hit_at_1_rate": 0.25,
+        "hit_at_3": 12,
+        "hit_at_3_rate": 0.6
+      },
+      "deterministic_probe": {
+        "positive_total": 20,
+        "hit_at_1": 4,
+        "hit_at_1_rate": 0.2,
+        "hit_at_3": 6,
+        "hit_at_3_rate": 0.3
+      },
+      "delta_probe_minus_archived": {
+        "hit_at_1": -1,
+        "hit_at_3": -6
+      }
+    },
+    "query_disagreement_summary": {
+      "queries_with_any_disagreement": 6,
+      "archived_only_hit_at_1_queries": 1,
+      "archived_only_hit_at_3_queries": 6,
+      "probe_only_hit_at_1_queries": 0,
+      "probe_only_hit_at_3_queries": 0,
+      "archived_only_hit_at_1_query_ids": [
+        "Q14"
+      ],
+      "archived_only_hit_at_3_query_ids": [
+        "Q01",
+        "Q05",
+        "Q11",
+        "Q14",
+        "Q15",
+        "Q19"
+      ],
+      "probe_only_hit_at_1_query_ids": [],
+      "probe_only_hit_at_3_query_ids": []
+    },
+    "query_disagreements": [
+      {
+        "query_id": "Q01",
+        "query": "Where did Ali do his PhD studies?",
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+        ],
+        "probe_top3_checksums": [
+          "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "b61fd3e0fedd458307a3a9d806b5c9b309fb04e2404e1310ba565a7e266e33cf"
+        ],
+        "strict_retrieval_rank_probe": 5
+      },
+      {
+        "query_id": "Q05",
+        "query": "From Ali's cover letters, what role is he applying for?",
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "probe_top3_checksums": [
+          "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "e4e0e1329710dd04b1a60c08ec2db7f55642ab6681bdc4d070d4f841048a722f",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "strict_retrieval_rank_probe": 5
+      },
+      {
+        "query_id": "Q11",
+        "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "9ec11b977b57aefadac77417a879826f09fee02d3ae46452ac639ff00aa72d7e"
+        ],
+        "probe_top3_checksums": [
+          "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "24ee39327307322e661839cb5cc98fc4184b4daa0d1811a9e5933fd3fcea5cd4",
+          "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924"
+        ],
+        "strict_retrieval_rank_probe": 20
+      },
+      {
+        "query_id": "Q14",
+        "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+        "archived_hit_at_1": true,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+          "79aadd0d369543f384254c14d9992d9277bc8a6238569242a4c157f0062638e1",
+          "d423c244fb185e314597e3f6d73e2af1bc66360815c85050773b47b45252e4ac"
+        ],
+        "probe_top3_checksums": [
+          "4738a5baa77cf25fe9fd0c13a7c2b9ae400cc398d7bc4b4d605c6f8db819d15f",
+          "9001aa0ecb639432bbf6ed8cda8ec89fcc42ee9c7599777dd081fc5ffeb9d253",
+          "f6372320e6a1aae6e2202bc6a7c6d7404d612909dcc37cd93dc7c1e55cbc52ac"
+        ],
+        "strict_retrieval_rank_probe": 28
+      },
+      {
+        "query_id": "Q15",
+        "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed"
+        ],
+        "probe_top3_checksums": [
+          "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "3c90345f0ac4c22b46ae56b6d04d956f113b2e814464ead43669a3446c8f4430",
+          "adba8ce8df44bbc580f749f63bd431040730f21d6576e8e4673cfe171768fd6c"
+        ],
+        "strict_retrieval_rank_probe": 12
+      },
+      {
+        "query_id": "Q19",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "archived_hit_at_1": false,
+        "archived_hit_at_3": true,
+        "probe_hit_at_1": false,
+        "probe_hit_at_3": false,
+        "archived_top3_checksums": [
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517"
+        ],
+        "probe_top3_checksums": [
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "56e8d13fae1d0b2f1682ad37bc8e503afe2c52931058624769477805b0917190",
+          "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c"
+        ],
+        "strict_retrieval_rank_probe": 4
+      }
+    ],
+    "deterministic_explanation": "Archived Path A eval uses variants_enabled=True, rewrites_enabled=True, exact_query_probing=False, candidate_depth=3; deterministic ranking probe uses variants_enabled=False, rewrites_enabled=False, exact_query_probing=True, candidate_depth=40. retrieve() binds MMR selection depth to top_k (mmr_k defaults to top_k), so changing candidate_depth changes top-3 ordering. Observed strict discrepancy: archived hit@1=5/20, hit@3=12/20 vs probe hit@1=4/20, hit@3=6/20."
   },
   "benchmark_scope_summary": {
     "query_type_counts": {
@@ -1622,6 +1835,1233 @@
       "reviewer_answer_support_notes": ""
     }
   ],
+  "strict_canonical_ranking_diagnosis": {
+    "scope": "strict canonical ranking misses only (benchmark_query_type=canonical_document_query and strict hit@1 miss)",
+    "failed_query_count": 15,
+    "bucket_counts": {
+      "vector dominance": 5,
+      "title/filename underweighting": 2,
+      "sibling/near-duplicate collision": 0,
+      "chunk aggregation bias": 0,
+      "doc-type prior suppression": 0,
+      "candidate generation miss": 1,
+      "ambiguous/manual review": 7
+    },
+    "largest_bucket": {
+      "bucket": "ambiguous/manual review",
+      "count": 7,
+      "share_of_failed_queries": 0.4667
+    },
+    "rows": [
+      {
+        "query_id": "Q02",
+        "query": "In Ali's latest CV, what is his most recent job title?",
+        "expected_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "actual_top1_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+        "expected_rank_if_retrieved": 4,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.6,
+            "expected": 0.56072,
+            "delta_winner_minus_expected": 0.03928
+          },
+          "vector_score_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "the-knowledge-graph-cookbook.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "redefining-stuttering.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "d25da751-c1fb-54b8-9a7d-313617b978a6",
+              "chunk_index": 603,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "bbbe25b6-c0f9-5f49-905d-bbe5c24728c8",
+              "chunk_index": 701,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.6000008827758498,
+            "expected_retrieval_score": 0.5607201819496445,
+            "delta_winner_minus_expected": 0.039281
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.1391,
+            "containment_min": 0.2449,
+            "sequence_ratio": 0.0074,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q03",
+        "query": "From Ali's latest CV, list the main technical skills.",
+        "expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "actual_top1_checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+        "expected_rank_if_retrieved": 11,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.437303,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.437303
+          },
+          "vector_score_contribution": {
+            "winner": 0.380933,
+            "expected": 0.380726,
+            "delta_winner_minus_expected": 0.000207
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "AliAbulhawa_Cover_Letter.docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Engineering Student Handbook - AUM - 06-03-2012.docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "b807ce2d-964b-5973-ae91-ad7b4a18a2c2",
+              "chunk_index": 5,
+              "cv_family_size": 7,
+              "cv_family_suppressed": 6,
+              "cv_family_choice_reason": "older_higher_relevance"
+            },
+            "expected": {
+              "source_channel": "semantic",
+              "has_vector_signal": true,
+              "has_lexical_signal": false,
+              "bm25_variant_weight": null,
+              "chunk_id": "1c377570-520c-590b-a16a-938c2db09c0c",
+              "chunk_index": 80,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.8982356932112204,
+            "expected_retrieval_score": 0.3807257256882851,
+            "delta_winner_minus_expected": 0.51751
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.058,
+            "containment_min": 0.3631,
+            "sequence_ratio": 0.0088,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q04",
+        "query": "In Ali's most recent CV contact section, which city is listed?",
+        "expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "actual_top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+        "expected_rank_if_retrieved": 7,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.338023,
+            "expected": 0.521795,
+            "delta_winner_minus_expected": -0.183772
+          },
+          "vector_score_contribution": {
+            "winner": 0.395638,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.395638
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "Improvement Engineer Cover Letter (Banbury).docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "knowledge_graph paper.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "aa92bd2d-40b0-597a-af75-5a0849b21d7a",
+              "chunk_index": 6,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "d7f8f8eb-7492-53a1-acab-8b00c14569cf",
+              "chunk_index": 122,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.8016604892623547,
+            "expected_retrieval_score": 0.5217946630808219,
+            "delta_winner_minus_expected": 0.279866
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0485,
+            "containment_min": 0.309,
+            "sequence_ratio": 0.0086,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "vector dominance",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q05",
+        "query": "From Ali's cover letters, what role is he applying for?",
+        "expected_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+        "actual_top1_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+        "expected_rank_if_retrieved": 5,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.314425,
+            "expected": 0.570605,
+            "delta_winner_minus_expected": -0.25618
+          },
+          "vector_score_contribution": {
+            "winner": 0.4,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.4
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "049_25_ABULHAWA_ALI (SWAMBIT).pdf",
+              "overlap_tokens": [
+                "ali"
+              ],
+              "overlap_count": 1,
+              "overlap_ratio": 0.2
+            },
+            "expected": {
+              "title_or_filename": "Think Python.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 1,
+            "delta_overlap_ratio_winner_minus_expected": 0.2
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "7eb1b2d8-9117-55e3-831f-ee04413f5de9",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "7c0f0d59-25c8-5c5f-a1c0-6e428f944f06",
+              "chunk_index": 315,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": true
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.751250742263576,
+            "expected_retrieval_score": 0.57060519699042,
+            "delta_winner_minus_expected": 0.180646
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0826,
+            "containment_min": 0.2199,
+            "sequence_ratio": 0.0078,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "vector dominance",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q06",
+        "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+        "expected_checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "actual_top1_checksum": "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce",
+        "expected_rank_if_retrieved": 33,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.374681,
+            "expected": 0.6,
+            "delta_winner_minus_expected": -0.225319
+          },
+          "vector_score_contribution": {
+            "winner": 0.374578,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.374578
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "ABET_Courses_Syllabi.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Dubai Power Grid System Report.pdf",
+              "overlap_tokens": [
+                "dubai",
+                "grid",
+                "power",
+                "report"
+              ],
+              "overlap_count": 4,
+              "overlap_ratio": 0.4444
+            },
+            "delta_overlap_count_winner_minus_expected": -4,
+            "delta_overlap_ratio_winner_minus_expected": -0.4444
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "426f1a24-e972-5e2c-bb90-7d42d0b4b188",
+              "chunk_index": 45,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "22289a49-5a76-54fc-a8f2-55825829ce99",
+              "chunk_index": 5,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.7492587169094866,
+            "expected_retrieval_score": 0.6000000000131033,
+            "delta_winner_minus_expected": 0.149259
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.1052,
+            "containment_min": 0.2324,
+            "sequence_ratio": 0.0123,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "title/filename underweighting",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q07",
+        "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+        "expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "actual_top1_checksum": "c0e8ac8273a2e93bff2846d6032e13cd99836606504b5d4b11055ca28f1f37d6",
+        "expected_rank_if_retrieved": null,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.55705,
+            "expected": null,
+            "delta_winner_minus_expected": null
+          },
+          "vector_score_contribution": {
+            "winner": 0.388469,
+            "expected": null,
+            "delta_winner_minus_expected": null
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "Books Combined.docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": null,
+            "delta_winner_minus_expected": null
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "5f5a600d-aded-585d-983a-51395cdafbc6",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": null,
+              "has_vector_signal": null,
+              "has_lexical_signal": null,
+              "bm25_variant_weight": null,
+              "chunk_id": null,
+              "chunk_index": null,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.9455183581701644,
+            "expected_retrieval_score": null,
+            "delta_winner_minus_expected": null
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0548,
+            "containment_min": 0.2857,
+            "sequence_ratio": 0.0128,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "candidate generation miss",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q09",
+        "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+        "expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "actual_top1_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+        "expected_rank_if_retrieved": 19,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.495189,
+            "expected": 0.47175,
+            "delta_winner_minus_expected": 0.023439
+          },
+          "vector_score_contribution": {
+            "winner": 0.389491,
+            "expected": 0.386304,
+            "delta_winner_minus_expected": 0.003187
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "exp2.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Chapter 3 Lecture Notes - 103318.docx",
+              "overlap_tokens": [
+                "lecture",
+                "notes"
+              ],
+              "overlap_count": 2,
+              "overlap_ratio": 0.25
+            },
+            "delta_overlap_count_winner_minus_expected": -2,
+            "delta_overlap_ratio_winner_minus_expected": -0.25
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "3f1d00c6-c68e-5bce-ab08-1415cdab6df4",
+              "chunk_index": 5,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "26c132b3-9be5-51aa-b488-364bd5b38dad",
+              "chunk_index": 9,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.8846794084811691,
+            "expected_retrieval_score": 0.8580534986262376,
+            "delta_winner_minus_expected": 0.026626
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.204,
+            "containment_min": 0.4817,
+            "sequence_ratio": 0.0172,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "title/filename underweighting",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q10",
+        "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        "expected_checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
+        "actual_top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+        "expected_rank_if_retrieved": 19,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.496578,
+            "expected": 0.317876,
+            "delta_winner_minus_expected": 0.178702
+          },
+          "vector_score_contribution": {
+            "winner": 0.376933,
+            "expected": 0.365168,
+            "delta_winner_minus_expected": 0.011765
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "filtered_gdrive_list.txt",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Final ICEEPIII ENE 185 paper 06252013.pdf",
+              "overlap_tokens": [
+                "paper"
+              ],
+              "overlap_count": 1,
+              "overlap_ratio": 0.1
+            },
+            "delta_overlap_count_winner_minus_expected": -1,
+            "delta_overlap_ratio_winner_minus_expected": -0.1
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "451b896e-076d-526a-b2e2-1c5c8a88d84c",
+              "chunk_index": 323,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "26510825-deaa-5852-92c5-246c1abec9fd",
+              "chunk_index": 12,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.9245771414610169,
+            "expected_retrieval_score": 0.6830440585214904,
+            "delta_winner_minus_expected": 0.241533
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0516,
+            "containment_min": 0.1453,
+            "sequence_ratio": 0.0073,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q11",
+        "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+        "expected_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+        "actual_top1_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+        "expected_rank_if_retrieved": 20,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.437518,
+            "expected": 0.419928,
+            "delta_winner_minus_expected": 0.01759
+          },
+          "vector_score_contribution": {
+            "winner": 0.391933,
+            "expected": 0.394546,
+            "delta_winner_minus_expected": -0.002613
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "Applied Photovoltaics by Stuart R Wenham.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+              "overlap_tokens": [
+                "solar"
+              ],
+              "overlap_count": 1,
+              "overlap_ratio": 0.1111
+            },
+            "delta_overlap_count_winner_minus_expected": -1,
+            "delta_overlap_ratio_winner_minus_expected": -0.1111
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "ead96fae-23df-531f-a5b1-24b90bdbb90c",
+              "chunk_index": 96,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "cc5d880b-f762-54b1-98fa-1fd3a6c60fee",
+              "chunk_index": 34,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.8294506218882806,
+            "expected_retrieval_score": 0.8144745882633346,
+            "delta_winner_minus_expected": 0.014976
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.1302,
+            "containment_min": 0.2405,
+            "sequence_ratio": 0.0085,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q12",
+        "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+        "expected_checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "actual_top1_checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+        "expected_rank_if_retrieved": 4,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.591429,
+            "expected": 0.398549,
+            "delta_winner_minus_expected": 0.19288
+          },
+          "vector_score_contribution": {
+            "winner": 0.4,
+            "expected": 0.373401,
+            "delta_winner_minus_expected": 0.026599
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "DF 3.3.3 - PCA for Feature Engineering.pdf",
+              "overlap_tokens": [
+                "engineering",
+                "feature",
+                "pca"
+              ],
+              "overlap_count": 3,
+              "overlap_ratio": 0.3333
+            },
+            "expected": {
+              "title_or_filename": "9783319125794-c2.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 3,
+            "delta_overlap_ratio_winner_minus_expected": 0.3333
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "0e4a2606-2366-5a51-8133-457089d7a060",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "f95af57a-9f4f-5105-a280-5b9996e2bbeb",
+              "chunk_index": 38,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.9914292052969966,
+            "expected_retrieval_score": 0.7719496135986212,
+            "delta_winner_minus_expected": 0.21948
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0933,
+            "containment_min": 0.4066,
+            "sequence_ratio": 0.0109,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q13",
+        "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+        "expected_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "actual_top1_checksum": "574cf02d40b2325ce21329e9f02c772352c17ee59d42185635f3cf893d5419fb",
+        "expected_rank_if_retrieved": 3,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.366848,
+            "expected": 0.596652,
+            "delta_winner_minus_expected": -0.229804
+          },
+          "vector_score_contribution": {
+            "winner": 0.379507,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.379507
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "ali_strategy_summary.docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "New Hampshire Application.docx",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "9017afd4-291f-572b-aa61-ee9a6879186b",
+              "chunk_index": 5,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "0584d7b8-59fc-5dc7-bf0e-5988c94a485b",
+              "chunk_index": 187,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.8028534270285336,
+            "expected_retrieval_score": 0.5966521370578697,
+            "delta_winner_minus_expected": 0.206201
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.091,
+            "containment_min": 0.2795,
+            "sequence_ratio": 0.0076,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "vector dominance",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q14",
+        "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+        "expected_checksum": "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "actual_top1_checksum": "4738a5baa77cf25fe9fd0c13a7c2b9ae400cc398d7bc4b4d605c6f8db819d15f",
+        "expected_rank_if_retrieved": 28,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.574882,
+            "expected": 0.6,
+            "delta_winner_minus_expected": -0.025118
+          },
+          "vector_score_contribution": {
+            "winner": 0.386328,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.386328
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "Antragserstellung_Bürgergeld.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Scheidungsbeschluss Protokoll Salma.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "f5002318-6647-5a80-8dbe-114cb99192e2",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "8d131105-7463-5481-b111-433da3a6b61d",
+              "chunk_index": 13,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.970506135681568,
+            "expected_retrieval_score": 0.6108795745161829,
+            "delta_winner_minus_expected": 0.359627
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0872,
+            "containment_min": 0.3827,
+            "sequence_ratio": 0.0086,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "vector dominance",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q15",
+        "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+        "expected_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "actual_top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+        "expected_rank_if_retrieved": 12,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.589002,
+            "expected": 0.464143,
+            "delta_winner_minus_expected": 0.124859
+          },
+          "vector_score_contribution": {
+            "winner": 0.389378,
+            "expected": 0.4,
+            "delta_winner_minus_expected": -0.010622
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "VE-Ali.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "WEP Salma-sent.pdf",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "delta_overlap_count_winner_minus_expected": 0,
+            "delta_overlap_ratio_winner_minus_expected": 0.0
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "29850c92-f0fb-596f-b084-50be42c79978",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "44013a2f-9124-54bd-9963-65600b53ca94",
+              "chunk_index": 0,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 0.9924160773541757,
+            "expected_retrieval_score": 0.87617713608109,
+            "delta_winner_minus_expected": 0.116239
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.2554,
+            "containment_min": 0.8,
+            "sequence_ratio": 0.1799,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q19",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "expected_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "actual_top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+        "expected_rank_if_retrieved": 4,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.6,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.6
+          },
+          "vector_score_contribution": {
+            "winner": 0.4,
+            "expected": 0.393515,
+            "delta_winner_minus_expected": 0.006485
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "filtered_gdrive_list.txt",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "Make-money-with-no-money.pdf",
+              "overlap_tokens": [
+                "pdf"
+              ],
+              "overlap_count": 1,
+              "overlap_ratio": 0.1667
+            },
+            "delta_overlap_count_winner_minus_expected": -1,
+            "delta_overlap_ratio_winner_minus_expected": -0.1667
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "080c55cb-1e81-51fd-9cce-449d9a17dde0",
+              "chunk_index": 77,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "semantic",
+              "has_vector_signal": true,
+              "has_lexical_signal": false,
+              "bm25_variant_weight": null,
+              "chunk_id": "95c122d4-e2d5-59f2-93a8-0bd35cb76f96",
+              "chunk_index": 40,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 1.0337564993359845,
+            "expected_retrieval_score": 0.39351535407151184,
+            "delta_winner_minus_expected": 0.640241
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0521,
+            "containment_min": 0.1411,
+            "sequence_ratio": 0.0074,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "ambiguous/manual review",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      },
+      {
+        "query_id": "Q20",
+        "query": "In the remittance receipt from 2020, what payment amount is shown?",
+        "expected_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "actual_top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+        "expected_rank_if_retrieved": 2,
+        "winner_vs_expected_diagnostics": {
+          "lexical_score_contribution": {
+            "winner": 0.6,
+            "expected": 0.576341,
+            "delta_winner_minus_expected": 0.023659
+          },
+          "vector_score_contribution": {
+            "winner": 0.4,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.4
+          },
+          "title_filename_overlap_features": {
+            "winner": {
+              "title_or_filename": "filtered_gdrive_list.txt",
+              "overlap_tokens": [],
+              "overlap_count": 0,
+              "overlap_ratio": 0.0
+            },
+            "expected": {
+              "title_or_filename": "metlife receipt 20191224.pdf",
+              "overlap_tokens": [
+                "receipt"
+              ],
+              "overlap_count": 1,
+              "overlap_ratio": 0.1667
+            },
+            "delta_overlap_count_winner_minus_expected": -1,
+            "delta_overlap_ratio_winner_minus_expected": -0.1667
+          },
+          "doc_type_prior_contribution": {
+            "winner": 0.0,
+            "expected": 0.0,
+            "delta_winner_minus_expected": 0.0
+          },
+          "chunk_aggregation_signals": {
+            "winner": {
+              "source_channel": "semantic/keyword",
+              "has_vector_signal": true,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": null,
+              "chunk_id": "e7cbda9d-4f89-58ba-ae87-812a5d3bc16a",
+              "chunk_index": 82,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "expected": {
+              "source_channel": "keyword",
+              "has_vector_signal": false,
+              "has_lexical_signal": true,
+              "bm25_variant_weight": 1.0,
+              "chunk_id": "835383d7-dc54-5773-955c-663979993e2d",
+              "chunk_index": 1,
+              "cv_family_size": null,
+              "cv_family_suppressed": null,
+              "cv_family_choice_reason": null
+            },
+            "heuristic_chunk_aggregation_bias": false
+          },
+          "final_score_delta": {
+            "winner_retrieval_score": 1.0337648141188012,
+            "expected_retrieval_score": 0.5763414787693464,
+            "delta_winner_minus_expected": 0.457423
+          },
+          "winner_expected_text_similarity": {
+            "jaccard": 0.0325,
+            "containment_min": 0.1856,
+            "sequence_ratio": 0.002,
+            "near_duplicate": false
+          }
+        },
+        "primary_ranking_cause_bucket": "vector dominance",
+        "reviewer_bucket_override": null,
+        "reviewer_notes": ""
+      }
+    ]
+  },
   "ablation_analysis": {
     "scope": "benchmark-aware ranking failures: strict_retrieval misses for canonical/ambiguous queries, answer_support misses for explicitly multi-source queries",
     "query_count": 14,
