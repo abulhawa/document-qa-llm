@@ -201,6 +201,15 @@ def _build_deps(vector_hits: List[Dict], bm25_hits: List[Dict], embedder=None, r
     )
 
 
+def test_default_deps_uses_configured_reranker(monkeypatch):
+    marker = object()
+    monkeypatch.setattr(pipeline, "build_configured_reranker", lambda: marker)
+
+    deps = pipeline._default_deps()
+
+    assert deps.cross_encoder is marker
+
+
 def test_retrieval_respects_top_k_and_weights():
     vector_hits = [
         {"id": "v1", "path": "a", "text": "a", "score": 1.0, "checksum": "c1"},
@@ -981,6 +990,41 @@ def test_retrieval_supports_rerank_hook():
 
     assert reranker.seen
     assert result.documents[0].get("id") == "v2"
+
+
+def test_retrieval_rerank_candidate_pool_uses_kept_docs():
+    class DummyReranker:
+        def __init__(self):
+            self.seen = []
+
+        def rerank(self, query, docs, top_n=None):  # noqa: D401 - simple stub
+            self.seen.append((query, len(docs), top_n, [doc.get("id") for doc in docs]))
+            reranked = list(reversed(docs))
+            return reranked[:top_n] if top_n else reranked
+
+    vector_hits = [
+        {"id": "v1", "text": "doc1", "score": 0.9, "checksum": "r1"},
+        {"id": "v2", "text": "doc2", "score": 0.8, "checksum": "r2"},
+        {"id": "v3", "text": "doc3", "score": 0.7, "checksum": "r3"},
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_mmr=False,
+        enable_rerank=True,
+        rerank_top_n=2,
+        rerank_candidate_pool=3,
+    )
+    reranker = DummyReranker()
+    result = pipeline.retrieve(
+        "query", cfg=cfg, deps=_build_deps(vector_hits, [], reranker=reranker)
+    )
+
+    assert reranker.seen
+    _, seen_count, seen_top_n, seen_ids = reranker.seen[0]
+    assert seen_count == 3
+    assert seen_top_n == 2
+    assert seen_ids == ["v1", "v2", "v3"]
+    assert [doc.get("id") for doc in result.documents] == ["v3", "v2"]
 
 
 def test_retrieval_keeps_docs_when_checksum_missing():

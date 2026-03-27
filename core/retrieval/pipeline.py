@@ -12,7 +12,7 @@ from core.retrieval.fusion import fuse_semantic_and_bm25, dedup_by_checksum
 from core.retrieval.variants import generate_variants
 from core.retrieval.mmr import mmr_select
 from core.retrieval.dedup import collapse_near_duplicates
-from core.retrieval.reranker import CrossEncoderReranker
+from core.retrieval.reranker import build_configured_reranker
 from core.retrieval.types import RetrievalConfig, RetrievalDeps, RetrievalOutput, DocHit
 from core.query_rewriter import has_strong_query_anchors
 
@@ -265,7 +265,7 @@ def _default_deps() -> RetrievalDeps:
         semantic_retriever=semantic_retriever,
         keyword_retriever=keyword_retriever,
         embed_texts=embed_texts,
-        cross_encoder=None,
+        cross_encoder=build_configured_reranker(),
     )
 
 
@@ -1257,9 +1257,21 @@ def retrieve(
 
     # Optional cross-encoder rerank
     if cfg.enable_rerank and deps.cross_encoder is not None and docs_for_answer:
-        docs_for_answer = deps.cross_encoder.rerank(
-            query, docs_for_answer, top_n=min(cfg.rerank_top_n, len(docs_for_answer))
-        )
+        rerank_input = docs_for_answer
+        if cfg.rerank_candidate_pool > 0 and kept:
+            pool_size = min(len(kept), max(cfg.top_k, cfg.rerank_candidate_pool))
+            rerank_input = kept[:pool_size]
+
+        top_n = min(cfg.rerank_top_n, cfg.top_k, len(rerank_input))
+        if top_n > 0:
+            try:
+                docs_for_answer = deps.cross_encoder.rerank(
+                    query,
+                    rerank_input,
+                    top_n=top_n,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Rerank stage failed; keeping pre-rerank order: %s", exc)
 
     _debug_evidence_quality_ranking(exact_query, "pre_guard_final_candidates", docs_for_answer)
     citation_guard_relevant = _apply_content_evidence_quality_guard(

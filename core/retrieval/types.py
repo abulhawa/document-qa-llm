@@ -40,6 +40,7 @@ class RetrievalConfig:
     mmr_k: Optional[int] = None
     enable_rerank: bool = False
     rerank_top_n: int = 5
+    rerank_candidate_pool: int = 0
     sim_threshold: float = 0.82
     canonical_anchored_sim_threshold: float = 0.94
     include_dups_if_needed: bool = True
