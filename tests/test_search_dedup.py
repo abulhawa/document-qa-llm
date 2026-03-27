@@ -22,3 +22,27 @@ def test_search_deduplicates_by_checksum(monkeypatch):
     assert len(results) == 2
     checksums = [r["checksum"] for r in results]
     assert len(set(checksums)) == len(checksums)
+
+
+def test_search_queries_text_path_and_filename_fields(monkeypatch):
+    captured = {}
+
+    class DummyClient:
+        def search(self, index, body):
+            captured["index"] = index
+            captured["body"] = body
+            return {"hits": {"hits": []}}
+
+    monkeypatch.setattr(opensearch_store, "get_client", lambda: DummyClient())
+    opensearch_store.search("ali cv contact", top_k=3)
+
+    query = captured["body"]["query"]["multi_match"]
+    assert query["query"] == "ali cv contact"
+    assert query["type"] == "best_fields"
+    assert query["operator"] == "or"
+    assert query["fields"] == [
+        "text^1.0",
+        "path^0.35",
+        "filename^0.75",
+        "filename.keyword^1.10",
+    ]

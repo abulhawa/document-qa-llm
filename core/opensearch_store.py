@@ -5,6 +5,13 @@ from config import logger, CHUNKS_INDEX
 from tracing import start_span, INPUT_VALUE, RETRIEVER, STATUS_OK
 
 
+_KEYWORD_QUERY_FIELDS = [
+    "text^1.0",
+    "path^0.35",
+    "filename^0.75",
+    "filename.keyword^1.10",
+]
+
 def search(query: str, top_k: int = 10) -> List[DocHit]:
     with start_span("Keyword retriever", kind=RETRIEVER) as span:
         logger.info(f"Searching OpenSearch for query: '{query}' with top_k={top_k}")
@@ -16,7 +23,14 @@ def search(query: str, top_k: int = 10) -> List[DocHit]:
             index=CHUNKS_INDEX,
             body={
                 "size": top_k * 3,  # fetch extra for dedup
-                "query": {"match": {"text": {"query": query, "operator": "or"}}},
+                "query": {
+                    "multi_match": {
+                        "query": query,
+                        "fields": _KEYWORD_QUERY_FIELDS,
+                        "type": "best_fields",
+                        "operator": "or",
+                    }
+                },
                 "sort": [
                     {"_score": {"order": "desc"}},
                     {"modified_at": {"order": "desc"}},
