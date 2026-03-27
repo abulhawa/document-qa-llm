@@ -43,7 +43,7 @@ def _as_span_value(value: Any) -> SpanAttributeValue:
 
 def answer_question(
     question: str,
-    top_k: int = 3,
+    top_k: int = 5,
     mode: str = "completion",
     temperature: float = 0.1,
     model: Optional[str] = None,
