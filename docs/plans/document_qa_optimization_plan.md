@@ -1,6 +1,6 @@
 # document_qa Optimization Plan (v4)
 
-Last updated: 2026-03-27 (post-Path-A residual + ranking investigation)
+Last updated: 2026-03-27 (post-anchorfix benchmark-cleaned residual triage)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -781,6 +781,31 @@ Status (2026-03-26):
     - Largest actionable bucket: `vector dominance` (`5/15`, `33.33%`).
   - Next tuning target (strict canonical only):
     - Prioritize a low-blast-radius lexical-priority calibration for strict canonical misses that are currently `vector dominance`, while keeping answer-support framing and OCR scope unchanged.
+- Benchmark-cleaning refresh completed (2026-03-27, post-anchorfix rerun):
+  - Artifacts:
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun_ranking_investigation.json`
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun_ranking_investigation_strict_canonical_cleaned_residuals.json`
+  - Schema markers:
+    - main ranking artifact: `schema_version=ranking_investigation.v5`
+    - cleaned strict sidecar: `schema_version=strict_canonical_cleaned_residuals.v1`
+  - Strict canonical benchmark-cleaned split (`strict_canonical_cleaned_residual_split.summary`):
+    - `strict_canonical_benchmark_failures_total=10`
+    - `actionable_ranking_failures=4`
+    - `likely_benchmark_ambiguity_manual_review=6`
+    - `already_addressed_artifact_first_cases=3`
+  - Failure classes considered solved/contained for prioritization:
+    - Artifact-first near-tie cases are now contained under content-over-artifact ordering and excluded from actionable ranking counts (`Q10`, `Q13`, `Q20`).
+    - Benchmark ambiguity/manual-review cases are excluded from actionable ranking counts (`Q02`, `Q03`, `Q11`, `Q12`, `Q15`, `Q19`).
+  - Remaining actionable ranking buckets only (`actionable_ranking_failures.bucket_counts`):
+    - `vector dominance`: `2`
+    - `candidate generation miss`: `1`
+    - `title/filename underweighting`: `1`
+    - all other actionable buckets: `0`
+  - Largest remaining clean bucket:
+    - `vector dominance` (`2/4` actionable)
+    - representative query IDs: `Q04`, `Q05` (only two remain in this bucket after cleaning)
+  - Updated next ranking target:
+    - Focus the next ranking fix on strict-canonical `vector dominance` for `Q04/Q05` first, then re-evaluate `Q07` (`candidate generation miss`) and `Q09` (`title/filename underweighting`) only if vector-dominance calibration does not clear the residual.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
 Objective:
