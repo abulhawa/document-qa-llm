@@ -11,6 +11,19 @@ _KEYWORD_QUERY_FIELDS = [
     "filename^0.75",
     "filename.keyword^1.10",
 ]
+_SIBLING_FETCH_FIELDS = [
+    "text",
+    "path",
+    "filename",
+    "checksum",
+    "chunk_index",
+    "modified_at",
+    "page",
+    "location_percent",
+    "doc_type",
+    "person_name",
+    "authority_rank",
+]
 
 def search(query: str, top_k: int = 10) -> List[DocHit]:
     with start_span("Keyword retriever", kind=RETRIEVER) as span:
@@ -82,3 +95,58 @@ def search(query: str, top_k: int = 10) -> List[DocHit]:
             )
         span.set_status(STATUS_OK)
         return results
+
+
+def fetch_sibling_chunks(doc: DocHit, limit: int = 12) -> List[DocHit]:
+    checksum = str(doc.get("checksum") or "").strip()
+    path = str(doc.get("path") or "").strip()
+    if not checksum and not path:
+        return []
+
+    query = (
+        {"term": {"checksum": {"value": checksum}}}
+        if checksum
+        else {"term": {"path.keyword": path}}
+    )
+
+    try:
+        client = get_client()
+        response = client.search(
+            index=CHUNKS_INDEX,
+            body={
+                "size": max(1, int(limit)),
+                "_source": _SIBLING_FETCH_FIELDS,
+                "query": query,
+                "sort": [
+                    {"chunk_index": {"order": "asc", "missing": "_last"}},
+                    {"_id": {"order": "asc"}},
+                ],
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Sibling chunk fetch failed for checksum=%s path=%s: %s",
+            checksum or "N/A",
+            path or "N/A",
+            exc,
+        )
+        return []
+
+    hits = response.get("hits", {}).get("hits", [])
+    siblings: List[DocHit] = []
+    for hit in hits:
+        src = hit.get("_source", {})
+        score = hit.get("_score")
+        hit_id = hit.get("_id")
+        siblings.append(
+            cast(
+                DocHit,
+                {
+                    **src,
+                    "_id": hit_id,
+                    "id": src.get("id") or hit_id,
+                    "score": float(score) if isinstance(score, (int, float)) else 0.0,
+                },
+            )
+        )
+    return siblings

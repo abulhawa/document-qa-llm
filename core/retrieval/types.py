@@ -57,6 +57,11 @@ class RetrievalConfig:
     profile_intent_boost_enabled: bool = True
     profile_intent_boost_weight: float = 0.10
     profile_intent_boost_max_fraction: float = 0.20
+    sibling_expansion_enabled: bool = True
+    sibling_expansion_max_sources: int = 2
+    sibling_expansion_max_per_source: int = 1
+    sibling_expansion_candidate_limit: int = 12
+    sibling_expansion_max_chunks_per_source: int = 2
     abstention_enabled: bool = True
     abstention_min_overlap_terms: int = 2
 
@@ -70,6 +75,7 @@ class RetrievalDeps:
     keyword_retriever: Callable[[str, int], Sequence[DocHit]]
     embed_texts: Optional[Callable[[List[str]], Any]] = None
     cross_encoder: Any = None
+    sibling_chunk_fetcher: Optional[Callable[[DocHit, int], Sequence[DocHit]]] = None
 
 
 @dataclass
