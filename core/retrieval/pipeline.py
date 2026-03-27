@@ -117,6 +117,51 @@ _QUERY_STOPWORDS: Set[str] = {
     "and",
     "or",
 }
+_CANONICAL_DOC_QUERY_TERMS: Set[str] = {
+    "cv",
+    "resume",
+    "cover",
+    "letter",
+    "reference",
+    "report",
+    "paper",
+    "course",
+    "lecture",
+    "contract",
+    "policy",
+    "invoice",
+    "receipt",
+    "jobcenter",
+    "form",
+    "formular",
+    "insurance",
+    "document",
+    "doc",
+    "file",
+    "pdf",
+}
+_AMBIGUOUS_PRONOUNS: Set[str] = {"he", "she", "they", "it", "him", "her", "them"}
+_GENERIC_LIST_INDEX_TERMS: Set[str] = {
+    "list",
+    "index",
+    "inventory",
+    "catalog",
+    "manifest",
+    "directory",
+    "register",
+    "toc",
+}
+_GENERIC_AGGREGATE_SUMMARY_TERMS: Set[str] = {
+    "summary",
+    "overview",
+    "profile",
+    "profiles",
+    "aggregate",
+    "digest",
+}
+_GENERIC_HARD_NEGATIVE_TITLE_TERMS: Set[str] = (
+    _GENERIC_LIST_INDEX_TERMS | _GENERIC_AGGREGATE_SUMMARY_TERMS
+)
 
 
 def _default_deps() -> RetrievalDeps:
@@ -259,6 +304,247 @@ def _query_content_tokens(query: str) -> Set[str]:
         tok
         for tok in _tokenize_lower(query)
         if (len(tok) >= 3 or tok == "cv") and tok not in _QUERY_STOPWORDS
+    }
+
+
+def _title_or_filename(doc: DocHit) -> str:
+    filename = str(doc.get("filename") or "").strip()
+    if filename:
+        return filename
+    path = str(doc.get("path") or "").strip()
+    if not path:
+        return ""
+    parts = re.split(r"[\\/]+", path)
+    return parts[-1] if parts else path
+
+
+def _title_filename_overlap(
+    query_tokens: Set[str],
+    doc: DocHit,
+) -> tuple[int, float]:
+    if not query_tokens:
+        return 0, 0.0
+    title_tokens = _tokenize_lower(_title_or_filename(doc))
+    if not title_tokens:
+        return 0, 0.0
+    overlap_count = len(query_tokens & title_tokens)
+    denominator = min(len(query_tokens), len(title_tokens))
+    if denominator <= 0:
+        return overlap_count, 0.0
+    overlap_ratio = overlap_count / float(denominator)
+    return overlap_count, overlap_ratio
+
+
+def _generic_hard_negative_title_terms(doc: DocHit) -> Set[str]:
+    title = _title_or_filename(doc)
+    if not title:
+        return set()
+    title_tokens = _tokenize_lower(title)
+    return title_tokens & _GENERIC_HARD_NEGATIVE_TITLE_TERMS
+
+
+def _is_canonical_anchored_or_semi_anchored_query(
+    query: str,
+    *,
+    anchored_query: bool,
+) -> bool:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False
+    has_canonical_doc_anchor = bool(tokens & _CANONICAL_DOC_QUERY_TERMS)
+    if not has_canonical_doc_anchor:
+        return False
+    if anchored_query:
+        return True
+    return bool(tokens & _AMBIGUOUS_PRONOUNS)
+
+
+def _apply_canonical_lexical_rescue(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+    *,
+    anchored_query: bool,
+) -> None:
+    if not cfg.canonical_lexical_rescue_enabled or len(docs) < 2:
+        return
+    if not _is_canonical_anchored_or_semi_anchored_query(
+        query,
+        anchored_query=anchored_query,
+    ):
+        return
+
+    query_tokens = _query_content_tokens(query)
+    if not query_tokens:
+        return
+
+    winner_idx = max(
+        range(len(docs)),
+        key=lambda idx: (
+            float(docs[idx].get("retrieval_score", 0.0) or 0.0),
+            str(docs[idx].get("modified_at", "")),
+        ),
+    )
+    winner = docs[winner_idx]
+    winner_score = float(winner.get("retrieval_score", 0.0) or 0.0)
+    winner_vector = float(winner.get("score_vector", 0.0) or 0.0)
+    winner_bm25 = float(winner.get("score_bm25", 0.0) or 0.0)
+    winner_overlap_count, winner_overlap_ratio = _title_filename_overlap(
+        query_tokens, winner
+    )
+
+    overlap_by_idx: Dict[int, tuple[int, float]] = {
+        idx: _title_filename_overlap(query_tokens, doc)
+        for idx, doc in enumerate(docs)
+    }
+    lexical_idx = max(
+        range(len(docs)),
+        key=lambda idx: (
+            float(docs[idx].get("score_bm25", 0.0) or 0.0),
+            overlap_by_idx[idx][1],
+            overlap_by_idx[idx][0],
+            float(docs[idx].get("retrieval_score", 0.0) or 0.0),
+        ),
+    )
+    if lexical_idx == winner_idx:
+        return
+
+    candidate = docs[lexical_idx]
+    candidate_score = float(candidate.get("retrieval_score", 0.0) or 0.0)
+    if winner_score <= candidate_score:
+        return
+
+    score_gap = winner_score - candidate_score
+    if score_gap > max(cfg.canonical_lexical_rescue_max_score_gap, 0.0):
+        return
+
+    candidate_vector = float(candidate.get("score_vector", 0.0) or 0.0)
+    if winner_vector <= candidate_vector:
+        return
+
+    candidate_bm25 = float(candidate.get("score_bm25", 0.0) or 0.0)
+    bm25_advantage = candidate_bm25 - winner_bm25
+    if candidate_bm25 < max(cfg.canonical_lexical_rescue_min_bm25, 0.0):
+        return
+    if bm25_advantage < max(cfg.canonical_lexical_rescue_min_bm25_advantage, 0.0):
+        return
+
+    candidate_overlap_count, candidate_overlap_ratio = overlap_by_idx[lexical_idx]
+    overlap_floor_count = max(int(cfg.canonical_lexical_rescue_min_title_overlap_count), 0)
+    overlap_floor_ratio = max(float(cfg.canonical_lexical_rescue_min_title_overlap_ratio), 0.0)
+    candidate_overlap_is_strong = (
+        candidate_overlap_count >= overlap_floor_count
+        or candidate_overlap_ratio >= overlap_floor_ratio
+    )
+    title_filename_edge = candidate_overlap_is_strong and (
+        candidate_overlap_count > winner_overlap_count
+        or candidate_overlap_ratio > winner_overlap_ratio
+    )
+    if (
+        not title_filename_edge
+        and bm25_advantage
+        < max(cfg.canonical_lexical_rescue_strong_bm25_advantage, 0.0)
+    ):
+        return
+
+    candidate["retrieval_score"] = winner_score + 1e-6
+    candidate["_canonical_lexical_rescue"] = {
+        "winner_checksum": winner.get("checksum"),
+        "score_gap_closed": round(score_gap, 6),
+        "winner_vector_advantage": round(winner_vector - candidate_vector, 6),
+        "bm25_advantage": round(bm25_advantage, 6),
+        "candidate_title_overlap_count": candidate_overlap_count,
+        "candidate_title_overlap_ratio": round(candidate_overlap_ratio, 4),
+        "winner_title_overlap_count": winner_overlap_count,
+        "winner_title_overlap_ratio": round(winner_overlap_ratio, 4),
+    }
+
+
+def _apply_canonical_hard_negative_suppression(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+    *,
+    anchored_query: bool,
+) -> None:
+    if not cfg.canonical_hard_negative_suppression_enabled or len(docs) < 2:
+        return
+    if not _is_canonical_anchored_or_semi_anchored_query(
+        query,
+        anchored_query=anchored_query,
+    ):
+        return
+
+    query_tokens = _query_content_tokens(query)
+    if not query_tokens:
+        return
+
+    winner_idx = max(
+        range(len(docs)),
+        key=lambda idx: (
+            float(docs[idx].get("retrieval_score", 0.0) or 0.0),
+            str(docs[idx].get("modified_at", "")),
+        ),
+    )
+    winner = docs[winner_idx]
+    winner_score = float(winner.get("retrieval_score", 0.0) or 0.0)
+    winner_vector = float(winner.get("score_vector", 0.0) or 0.0)
+    winner_overlap_count, winner_overlap_ratio = _title_filename_overlap(
+        query_tokens, winner
+    )
+    generic_terms = _generic_hard_negative_title_terms(winner)
+    if not generic_terms:
+        return
+    if winner_vector < max(cfg.canonical_hard_negative_min_winner_vector_score, 0.0):
+        return
+    if (
+        winner_overlap_count
+        > max(int(cfg.canonical_hard_negative_max_winner_title_overlap_count), 0)
+    ):
+        return
+
+    min_candidate_overlap_count = max(
+        int(cfg.canonical_hard_negative_min_candidate_title_overlap_count), 1
+    )
+    max_score_gap = max(cfg.canonical_hard_negative_max_score_gap, 0.0)
+    best_candidate_idx: int | None = None
+    best_candidate_overlap_count = -1
+    best_candidate_score = float("-inf")
+    for idx, candidate in enumerate(docs):
+        if idx == winner_idx:
+            continue
+        if _generic_hard_negative_title_terms(candidate):
+            continue
+        candidate_overlap_count, _ = _title_filename_overlap(query_tokens, candidate)
+        if candidate_overlap_count < min_candidate_overlap_count:
+            continue
+        candidate_score = float(candidate.get("retrieval_score", 0.0) or 0.0)
+        if (winner_score - candidate_score) > max_score_gap:
+            continue
+        if (
+            best_candidate_idx is None
+            or candidate_overlap_count > best_candidate_overlap_count
+            or (
+                candidate_overlap_count == best_candidate_overlap_count
+                and candidate_score > best_candidate_score
+            )
+        ):
+            best_candidate_idx = idx
+            best_candidate_overlap_count = candidate_overlap_count
+            best_candidate_score = candidate_score
+
+    if best_candidate_idx is None:
+        return
+
+    candidate = docs[best_candidate_idx]
+    candidate["retrieval_score"] = winner_score + 1e-6
+    candidate["_canonical_hard_negative_suppression"] = {
+        "suppressed_winner_checksum": winner.get("checksum"),
+        "suppressed_winner_generic_terms": sorted(generic_terms),
+        "winner_score_gap_closed": round(winner_score - best_candidate_score, 6),
+        "winner_title_overlap_count": winner_overlap_count,
+        "winner_title_overlap_ratio": round(winner_overlap_ratio, 4),
+        "candidate_title_overlap_count": best_candidate_overlap_count,
     }
 
 
@@ -502,6 +788,18 @@ def retrieve(
     _apply_authority_boost(fused, cfg)
     _apply_recency_boost(fused, cfg)
     _apply_profile_intent_adjustment(query, fused, cfg)
+    _apply_canonical_lexical_rescue(
+        exact_query,
+        fused,
+        cfg,
+        anchored_query=anchored_query,
+    )
+    _apply_canonical_hard_negative_suppression(
+        exact_query,
+        fused,
+        cfg,
+        anchored_query=anchored_query,
+    )
 
     fused_sorted: List[DocHit] = sorted(
         fused,
