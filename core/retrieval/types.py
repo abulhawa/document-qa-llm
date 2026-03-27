@@ -41,6 +41,7 @@ class RetrievalConfig:
     enable_rerank: bool = False
     rerank_top_n: int = 5
     sim_threshold: float = 0.82
+    canonical_anchored_sim_threshold: float = 0.94
     include_dups_if_needed: bool = True
     collapse_keep_limit: int = 64
     authority_boost_enabled: bool = True
