@@ -755,7 +755,10 @@ Status (2026-03-26):
   - Dual-metric scoring added (strict source-hit vs deterministic equivalent-source answer-support):
     - `source_strict_hit@1_probe=4/20`, `source_strict_hit@3_probe=6/20`.
     - `answer_support_hit@1_probe=4/20`, `answer_support_hit@3_probe=6/20` (no lift under current conservative equivalence thresholds).
-    - Interpretation: current deterministic equivalence policy did not yet capture additional “correct via alternate source” cases; if needed, add curated equivalence/fact-support labels in fixture metadata for broader answer-support scoring.
+    - Support-label infrastructure added for curated overrides:
+      - `tests/fixtures/retrieval_eval_answer_support_labels.json`
+      - `scripts/investigate_ranking_post_patha.py --support-labels ...`
+    - Interpretation: no override labels are populated yet (`overrides_count=0`), so current deterministic equivalence policy did not capture additional “correct via alternate source” cases.
   - Conclusion: weak metrics remain primarily a ranking policy issue (boost tuning + hard-negative suppression), not OCR.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 

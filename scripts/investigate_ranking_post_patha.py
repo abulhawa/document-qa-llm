@@ -42,6 +42,7 @@ EQUIV_SUPPORT_SEQUENCE_MIN = 0.72
 EQUIV_SUPPORT_ALT_CONTAINMENT_MIN = 0.75
 EQUIV_SUPPORT_ALT_JACCARD_MIN = 0.50
 EQUIV_SUPPORT_ALT_SEQUENCE_MIN = 0.65
+DEFAULT_SUPPORT_LABELS_PATH = Path("tests/fixtures/retrieval_eval_answer_support_labels.json")
 
 
 def reciprocal_rank(rank: int | None) -> float:
@@ -140,6 +141,64 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"Expected JSON object in {path}")
     return value
+
+
+def _dedupe_str_checksums(values: Sequence[Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        checksum = value.strip()
+        if not checksum or checksum in seen:
+            continue
+        seen.add(checksum)
+        out.append(checksum)
+    return out
+
+
+def _load_support_label_overrides(path: Path | None) -> dict[str, dict[str, Any]]:
+    if path is None or not path.exists():
+        return {}
+    data = _load_json(path)
+    raw_overrides = data.get("overrides", {})
+    if not isinstance(raw_overrides, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for query_id, override in raw_overrides.items():
+        if not isinstance(query_id, str) or not isinstance(override, dict):
+            continue
+        out[query_id] = override
+    return out
+
+
+def resolve_support_expectations(
+    *,
+    strict_expected_checksums: Sequence[str],
+    label_override: Mapping[str, Any] | None,
+) -> tuple[list[str], str | None]:
+    strict = _dedupe_str_checksums(strict_expected_checksums)
+    if not label_override:
+        preferred = strict[0] if strict else None
+        return strict, preferred
+
+    raw_mode = str(label_override.get("answer_support_mode") or "merge").strip().lower()
+    mode = raw_mode if raw_mode in {"merge", "replace"} else "merge"
+    extra_checksums = _dedupe_str_checksums(
+        label_override.get("answer_support_checksums") or []
+    )
+    if mode == "replace":
+        support = extra_checksums
+    else:
+        support = _dedupe_str_checksums([*strict, *extra_checksums])
+
+    preferred_override = label_override.get("preferred_checksum")
+    preferred_checksum: str | None = None
+    if isinstance(preferred_override, str) and preferred_override.strip():
+        preferred_checksum = preferred_override.strip()
+    if preferred_checksum is None:
+        preferred_checksum = strict[0] if strict else None
+    return support, preferred_checksum
 
 
 def _fetch_fulltext_by_checksum(
@@ -371,9 +430,11 @@ def investigate_ranking_post_patha(
     fixture_path: Path,
     output_path: Path,
     probe_depth: int,
+    support_labels_path: Path | None = DEFAULT_SUPPORT_LABELS_PATH,
 ) -> dict[str, Any]:
     runbook = _load_json(patha_runbook_path)
     _load_json(fixture_path)
+    support_label_overrides = _load_support_label_overrides(support_labels_path)
     rows = [
         row
         for row in runbook.get("rows", [])
@@ -418,13 +479,20 @@ def investigate_ranking_post_patha(
     for row in rows:
         query_id = str(row.get("query_id"))
         query_text = str(row.get("query") or "")
-        expected = list(row.get("expected_checksums") or [])
-        preferred_checksum = expected[0] if expected else None
+        strict_expected = _dedupe_str_checksums(row.get("expected_checksums") or [])
+        label_override = support_label_overrides.get(query_id)
+        support_expected, preferred_checksum = resolve_support_expectations(
+            strict_expected_checksums=strict_expected,
+            label_override=label_override,
+        )
         retrieval = retrieve(query_text, cfg=base_cfg)
         docs = list(retrieval.documents)
         base_probe_docs[query_id] = docs
 
-        for checksum in expected:
+        for checksum in strict_expected:
+            if isinstance(checksum, str) and checksum:
+                cached_fulltext(checksum)
+        for checksum in support_expected:
             if isinstance(checksum, str) and checksum:
                 cached_fulltext(checksum)
         for doc in docs:
@@ -432,7 +500,7 @@ def investigate_ranking_post_patha(
             if isinstance(checksum, str) and checksum:
                 cached_fulltext(checksum)
 
-        rank = _expected_rank(docs, expected)
+        rank = _expected_rank(docs, strict_expected)
         preferred_rank = _expected_rank(docs, [preferred_checksum]) if preferred_checksum else None
         rr = reciprocal_rank(rank)
         rr_values.append(rr)
@@ -445,7 +513,7 @@ def investigate_ranking_post_patha(
 
         first_support = find_first_answer_support(
             docs=docs,
-            expected_checksums=expected,
+            expected_checksums=support_expected,
             metadata_cache=metadata_cache,
             similarity_cache=similarity_cache,
         )
@@ -470,6 +538,9 @@ def investigate_ranking_post_patha(
                 "query": query_text,
                 "archived_hit_at_1": bool(row.get("hit_at_1")),
                 "archived_hit_at_3": bool(row.get("hit_at_3")),
+                "strict_expected_checksums_probe": strict_expected,
+                "answer_support_checksums_probe": support_expected,
+                "support_label_override_applied": bool(label_override),
                 "preferred_expected_checksum": preferred_checksum,
                 "preferred_expected_rank_probe": preferred_rank,
                 "expected_rank_probe": rank,
@@ -506,8 +577,8 @@ def investigate_ranking_post_patha(
     for query_id in failed_query_ids:
         row = row_by_id[query_id]
         query_text = str(row.get("query") or "")
-        expected = list(row.get("expected_checksums") or [])
-        base_rank = _expected_rank(base_probe_docs.get(query_id, []), expected)
+        strict_expected = _dedupe_str_checksums(row.get("expected_checksums") or [])
+        base_rank = _expected_rank(base_probe_docs.get(query_id, []), strict_expected)
         ablation_result = {
             "query_id": query_id,
             "query": query_text,
@@ -521,7 +592,7 @@ def investigate_ranking_post_patha(
             if name == "base":
                 continue
             docs = list(retrieve(query_text, cfg=cfg).documents)
-            rank = _expected_rank(docs, expected)
+            rank = _expected_rank(docs, strict_expected)
             ablation_result["ranks"][name] = rank
             delta = _rank_value_for_delta(rank, probe_depth) - base_rank_value
             ablation_result["rank_delta_vs_base"][name] = delta
@@ -553,7 +624,12 @@ def investigate_ranking_post_patha(
 
     for row in failed_rows:
         query_id = str(row.get("query_id") or "")
-        expected_checksums = list(row.get("expected_checksums") or [])
+        strict_expected = _dedupe_str_checksums(row.get("expected_checksums") or [])
+        label_override = support_label_overrides.get(query_id)
+        support_expected, _ = resolve_support_expectations(
+            strict_expected_checksums=strict_expected,
+            label_override=label_override,
+        )
         top1_checksum = row.get("top1_checksum")
         if not isinstance(top1_checksum, str) or not top1_checksum:
             continue
@@ -563,7 +639,7 @@ def investigate_ranking_post_patha(
 
         expected_text_by_checksum: dict[str, str] = {}
         best_expected_meta: dict[str, Any] | None = None
-        for checksum in expected_checksums:
+        for checksum in support_expected:
             expected_meta = cached_fulltext(checksum)
             if not expected_meta:
                 continue
@@ -574,7 +650,7 @@ def investigate_ranking_post_patha(
         best_expected_checksum, best_similarity = _best_similarity_to_expected(
             doc_checksum=top1_checksum,
             doc_text=top1_text,
-            expected_checksums=expected_checksums,
+            expected_checksums=support_expected,
             expected_text_by_checksum=expected_text_by_checksum,
             similarity_cache=similarity_cache,
         )
@@ -583,12 +659,17 @@ def investigate_ranking_post_patha(
 
         near_duplicate = bool(best_similarity.get("near_duplicate")) if best_similarity else False
         containment = float(best_similarity.get("containment_min", 0.0)) if best_similarity else 0.0
-        expected_rank_probe = _expected_rank(base_probe_docs.get(query_id, []), expected_checksums)
+        expected_rank_probe = _expected_rank(base_probe_docs.get(query_id, []), strict_expected)
+        support_rank_probe_computed = _expected_rank(
+            base_probe_docs.get(query_id, []), support_expected
+        )
         support_probe_row = next(
             (row_diag for row_diag in per_query_rank_rows if row_diag.get("query_id") == query_id),
             {},
         )
         support_rank_probe = support_probe_row.get("answer_support_rank_probe")
+        if support_rank_probe is None:
+            support_rank_probe = support_rank_probe_computed
         support_hit3_probe_row = bool(
             isinstance(support_rank_probe, int) and support_rank_probe <= 3
         )
@@ -612,6 +693,8 @@ def investigate_ranking_post_patha(
                 "top1_checksum": top1_checksum,
                 "top1_path": top1_meta.get("path"),
                 "top1_doc_type": top1_meta.get("doc_type"),
+                "strict_expected_checksums_probe": strict_expected,
+                "answer_support_checksums_probe": support_expected,
                 "best_expected_checksum": best_expected_checksum,
                 "best_expected_path": (best_expected_meta or {}).get("path"),
                 "best_expected_doc_type": (best_expected_meta or {}).get("doc_type"),
@@ -636,6 +719,7 @@ def investigate_ranking_post_patha(
         "source_artifacts": {
             "patha_runbook": str(patha_runbook_path),
             "fixture": str(fixture_path),
+            "support_labels": str(support_labels_path) if support_labels_path else None,
         },
         "methodology": {
             "deterministic_probe": True,
@@ -643,6 +727,7 @@ def investigate_ranking_post_patha(
                 "Deep ranking probe runs retrieval with variants disabled (exact query only) "
                 "to avoid rewrite-model variance while investigating ranking behavior."
             ),
+            "support_labels_overrides_count": len(support_label_overrides),
             "answer_support_policy": {
                 "strict_support": "retrieved checksum in expected_checksums",
                 "equivalent_support": (
@@ -767,6 +852,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("tests/fixtures/retrieval_eval_queries.json"),
     )
+    parser.add_argument(
+        "--support-labels",
+        type=Path,
+        default=DEFAULT_SUPPORT_LABELS_PATH,
+        help=(
+            "Optional JSON file containing per-query answer-support overrides "
+            "(equivalent source checksums, preferred checksum)."
+        ),
+    )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--probe-depth", type=int, default=DEFAULT_PROBE_DEPTH)
     return parser.parse_args()
@@ -780,6 +874,7 @@ def main() -> None:
         fixture_path=args.fixture,
         output_path=output_path,
         probe_depth=max(args.probe_depth, 1),
+        support_labels_path=args.support_labels,
     )
     metrics = output.get("probe_ranking_metrics", {})
     print(f"Wrote: {output_path}")

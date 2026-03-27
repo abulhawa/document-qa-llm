@@ -1,12 +1,14 @@
 {
-  "generated_at_utc": "2026-03-27T08:40:27.516787+00:00",
+  "generated_at_utc": "2026-03-27T09:11:33.157869+00:00",
   "source_artifacts": {
     "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
-    "fixture": "tests\\fixtures\\retrieval_eval_queries.json"
+    "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+    "support_labels": "tests\\fixtures\\retrieval_eval_answer_support_labels.json"
   },
   "methodology": {
     "deterministic_probe": true,
     "note": "Deep ranking probe runs retrieval with variants disabled (exact query only) to avoid rewrite-model variance while investigating ranking behavior.",
+    "support_labels_overrides_count": 0,
     "answer_support_policy": {
       "strict_support": "retrieved checksum in expected_checksums",
       "equivalent_support": "retrieved doc text is near-duplicate or exceeds configured containment/sequence similarity thresholds vs expected docs",
@@ -80,6 +82,17 @@
       "query": "Where did Ali do his PhD studies?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+      ],
+      "answer_support_checksums_probe": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
       "preferred_expected_rank_probe": 7,
       "expected_rank_probe": 5,
@@ -130,6 +143,17 @@
       "query": "In Ali's latest CV, what is his most recent job title?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ],
+      "answer_support_checksums_probe": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
       "preferred_expected_rank_probe": null,
       "expected_rank_probe": 4,
@@ -180,6 +204,17 @@
       "query": "From Ali's latest CV, list the main technical skills.",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ],
+      "answer_support_checksums_probe": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
       "preferred_expected_rank_probe": null,
       "expected_rank_probe": 11,
@@ -230,6 +265,17 @@
       "query": "In Ali's most recent CV contact section, which city is listed?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ],
+      "answer_support_checksums_probe": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
       "preferred_expected_rank_probe": 7,
       "expected_rank_probe": 7,
@@ -280,6 +326,17 @@
       "query": "From Ali's cover letters, what role is he applying for?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ],
+      "answer_support_checksums_probe": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
       "preferred_expected_rank_probe": 15,
       "expected_rank_probe": 5,
@@ -330,6 +387,17 @@
       "query": "In the power systems project report about the Dubai grid, what is the main objective?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ],
+      "answer_support_checksums_probe": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
       "preferred_expected_rank_probe": 33,
       "expected_rank_probe": 33,
@@ -380,6 +448,17 @@
       "query": "In the Electric Circuits (1) course materials, what course code is shown?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ],
+      "answer_support_checksums_probe": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
       "preferred_expected_rank_probe": null,
       "expected_rank_probe": null,
@@ -417,6 +496,17 @@
       "query": "In the modern ship steering control project report, who is listed as the supervisor?",
       "archived_hit_at_1": true,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ],
+      "answer_support_checksums_probe": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
       "preferred_expected_rank_probe": 1,
       "expected_rank_probe": 1,
@@ -467,6 +557,17 @@
       "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ],
+      "answer_support_checksums_probe": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
       "preferred_expected_rank_probe": 19,
       "expected_rank_probe": 19,
@@ -517,6 +618,17 @@
       "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ],
+      "answer_support_checksums_probe": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
       "preferred_expected_rank_probe": 24,
       "expected_rank_probe": 19,
@@ -567,6 +679,17 @@
       "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ],
+      "answer_support_checksums_probe": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
       "preferred_expected_rank_probe": 33,
       "expected_rank_probe": 20,
@@ -617,6 +740,17 @@
       "query": "Which data science training document explicitly mentions PCA for feature engineering?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": false,
+      "strict_expected_checksums_probe": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ],
+      "answer_support_checksums_probe": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
       "preferred_expected_rank_probe": 4,
       "expected_rank_probe": 4,
@@ -667,6 +801,17 @@
       "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ],
+      "answer_support_checksums_probe": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
       "preferred_expected_rank_probe": 3,
       "expected_rank_probe": 3,
@@ -717,6 +862,17 @@
       "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
       "archived_hit_at_1": true,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ],
+      "answer_support_checksums_probe": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
       "preferred_expected_rank_probe": null,
       "expected_rank_probe": 28,
@@ -767,6 +923,17 @@
       "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ],
+      "answer_support_checksums_probe": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
       "preferred_expected_rank_probe": 29,
       "expected_rank_probe": 12,
@@ -817,6 +984,17 @@
       "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
       "archived_hit_at_1": true,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ],
+      "answer_support_checksums_probe": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
       "preferred_expected_rank_probe": 1,
       "expected_rank_probe": 1,
@@ -867,6 +1045,17 @@
       "query": "In insurer correspondence letters, what customer service phone number is listed?",
       "archived_hit_at_1": true,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ],
+      "answer_support_checksums_probe": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
       "preferred_expected_rank_probe": 6,
       "expected_rank_probe": 1,
@@ -917,6 +1106,17 @@
       "query": "In the annual tax statement document for 2023, what date range is covered?",
       "archived_hit_at_1": true,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ],
+      "answer_support_checksums_probe": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
       "preferred_expected_rank_probe": null,
       "expected_rank_probe": 1,
@@ -967,6 +1167,17 @@
       "query": "In the tax-related invoice PDF, who is the issuing company?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ],
+      "answer_support_checksums_probe": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
       "preferred_expected_rank_probe": 4,
       "expected_rank_probe": 4,
@@ -1017,6 +1228,17 @@
       "query": "In the remittance receipt from 2020, what payment amount is shown?",
       "archived_hit_at_1": false,
       "archived_hit_at_3": true,
+      "strict_expected_checksums_probe": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ],
+      "answer_support_checksums_probe": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ],
+      "support_label_override_applied": false,
       "preferred_expected_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
       "preferred_expected_rank_probe": 2,
       "expected_rank_probe": 2,
@@ -1375,6 +1597,16 @@
         "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_11.docx",
         "top1_doc_type": "cv",
+        "strict_expected_checksums_probe": [
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+          "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+        ],
+        "answer_support_checksums_probe": [
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+          "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+        ],
         "best_expected_checksum": "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/2010-30.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1399,6 +1631,16 @@
         "top1_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
         "top1_path": "C:/Users/ali_a/My Drive/Ali/Other/the-knowledge-graph-cookbook.pdf",
         "top1_doc_type": "research_paper",
+        "strict_expected_checksums_probe": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "answer_support_checksums_probe": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
         "best_expected_checksum": "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
         "best_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/Applications/Qonto application questions.docx",
         "best_expected_doc_type": "government_form",
@@ -1423,6 +1665,16 @@
         "top1_checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/AUM Archive/VALUE_Rubrics___a-k_final_version_2.pdf",
         "top1_doc_type": "research_paper",
+        "strict_expected_checksums_probe": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
+        "answer_support_checksums_probe": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
         "best_expected_checksum": "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/preparation of course project reports and presentations.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1447,6 +1699,16 @@
         "top1_checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/The elements of statistical learning  Data mining, inference, and prediction.pdf",
         "top1_doc_type": "research_paper",
+        "strict_expected_checksums_probe": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
+        "answer_support_checksums_probe": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
         "best_expected_checksum": "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Final Report/SIT Edits to report (Jan 22).docx",
         "best_expected_doc_type": "research_paper",
@@ -1471,6 +1733,16 @@
         "top1_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
         "top1_path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
         "top1_doc_type": "research_paper",
+        "strict_expected_checksums_probe": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "answer_support_checksums_probe": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
         "best_expected_checksum": "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
         "best_expected_path": "C:/Users/ali_a/My Drive/Ali/Other/Applied Science Prep Doc[4906]_my notes.docx",
         "best_expected_doc_type": "technical_report",
@@ -1495,6 +1767,16 @@
         "top1_checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
         "top1_path": "C:/Users/ali_a/My Drive/Ali/recommendation letters/Recommendation Letter (Mohammad Osta).docx",
         "top1_doc_type": "reference_letter",
+        "strict_expected_checksums_probe": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
+        "answer_support_checksums_probe": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
         "best_expected_checksum": "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/Graduation Project/AUTONOMOUS TRACKING VEHICLE.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1519,6 +1801,16 @@
         "top1_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Books for EE Courses/Private accreditation form - EE (1).docx",
         "top1_doc_type": "government_form",
+        "strict_expected_checksums_probe": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
+        "answer_support_checksums_probe": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
         "best_expected_checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/messeger_2003_-_photovoltaic_systems_engineering.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1543,6 +1835,16 @@
         "top1_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103214 Electric Circuits Lab/References/JU - Circuits Lab/exp2.pdf",
         "top1_doc_type": "research_paper",
+        "strict_expected_checksums_probe": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
+        "answer_support_checksums_probe": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
         "best_expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103318 Introduction to Electrical Engineering/2012 Spring/Chapter 3 Lecture Notes - 103318.docx",
         "best_expected_doc_type": "research_paper",
@@ -1567,6 +1869,16 @@
         "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
         "top1_path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
         "top1_doc_type": "insurance_letter",
+        "strict_expected_checksums_probe": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
+        "answer_support_checksums_probe": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
         "best_expected_checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
         "best_expected_path": "C:/Users/ali_a/My Drive/Ali/PhD - Paper/PhD Thesis_Ali Abul Hawa_Printed.docx",
         "best_expected_doc_type": "research_paper",
@@ -1591,6 +1903,16 @@
         "top1_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/Applied Photovoltaics by Stuart R Wenham.pdf",
         "top1_doc_type": "other",
+        "strict_expected_checksums_probe": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
+        "answer_support_checksums_probe": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
         "best_expected_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
         "best_expected_doc_type": "research_paper",
@@ -1615,6 +1937,16 @@
         "top1_checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
         "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science Retreat/DSR-Spark-Class Daniel/DF 3.3.3 - PCA for Feature Engineering.pdf",
         "top1_doc_type": "other",
+        "strict_expected_checksums_probe": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
+        "answer_support_checksums_probe": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
         "best_expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1639,6 +1971,16 @@
         "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
         "top1_path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
         "top1_doc_type": "insurance_letter",
+        "strict_expected_checksums_probe": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
+        "answer_support_checksums_probe": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
         "best_expected_checksum": "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86",
         "best_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/papers/RegragiEtAl2016-GWN2016.pdf",
         "best_expected_doc_type": "research_paper",
@@ -1663,6 +2005,16 @@
         "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
         "top1_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/VE-Ali.pdf",
         "top1_doc_type": "government_form",
+        "strict_expected_checksums_probe": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
+        "answer_support_checksums_probe": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
         "best_expected_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
         "best_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Salma-sent.pdf",
         "best_expected_doc_type": "government_form",
@@ -1687,6 +2039,16 @@
         "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
         "top1_path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
         "top1_doc_type": "insurance_letter",
+        "strict_expected_checksums_probe": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
+        "answer_support_checksums_probe": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
         "best_expected_checksum": "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
         "best_expected_path": "C:/Users/ali_a/My Drive/Ali/Berlin/FLIX-Ticket-8022804381 BER-NUR.pdf",
         "best_expected_doc_type": "contract",
@@ -1711,6 +2073,16 @@
         "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
         "top1_path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
         "top1_doc_type": "insurance_letter",
+        "strict_expected_checksums_probe": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
+        "answer_support_checksums_probe": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
         "best_expected_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
         "best_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
         "best_expected_doc_type": "invoice",
