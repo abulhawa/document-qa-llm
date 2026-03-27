@@ -66,7 +66,7 @@ VALID_QUERY_TYPES = {
     QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED,
 }
 DEFAULT_POSITIVE_QUERY_TYPE = QUERY_TYPE_CANONICAL_DOCUMENT
-RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v3"
+RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v4"
 RANKING_CAUSE_VECTOR_DOMINANCE = "vector dominance"
 RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING = "title/filename underweighting"
 RANKING_CAUSE_SIBLING_COLLISION = "sibling/near-duplicate collision"
@@ -118,6 +118,37 @@ COMMON_STOPWORDS = {
     "with",
     "you",
 }
+GENERIC_LIST_INDEX_TERMS = {
+    "list",
+    "index",
+    "inventory",
+    "catalog",
+    "manifest",
+    "directory",
+    "register",
+    "toc",
+}
+GENERIC_AGGREGATE_SUMMARY_TERMS = {
+    "summary",
+    "overview",
+    "profile",
+    "profiles",
+    "aggregate",
+    "digest",
+}
+GENERIC_HARD_NEGATIVE_TERMS = GENERIC_LIST_INDEX_TERMS | GENERIC_AGGREGATE_SUMMARY_TERMS
+HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX = "generic_list_index_file"
+HARD_NEGATIVE_CLASS_AGGREGATE_SUMMARY = "aggregate_or_profile_summary_file"
+HARD_NEGATIVE_CLASS_SIBLING_FAMILY_COLLISION = "sibling_family_collision"
+HARD_NEGATIVE_CLASS_WEAK_TITLE_VECTOR = "weak_title_alignment_vector_driven"
+HARD_NEGATIVE_CLASS_ORDER: tuple[str, ...] = (
+    HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX,
+    HARD_NEGATIVE_CLASS_AGGREGATE_SUMMARY,
+    HARD_NEGATIVE_CLASS_SIBLING_FAMILY_COLLISION,
+    HARD_NEGATIVE_CLASS_WEAK_TITLE_VECTOR,
+)
+LIKELY_RANKING_FIX_CANDIDATE = "likely_ranking_fix_candidate"
+LIKELY_BENCHMARK_AMBIGUITY = "likely_benchmark_ambiguity_manual_review"
 
 
 def reciprocal_rank(rank: int | None) -> float:
@@ -757,6 +788,323 @@ def assign_primary_ranking_cause(
     if chunk_aggregation_bias:
         return RANKING_CAUSE_CHUNK_AGGREGATION_BIAS
     return RANKING_CAUSE_AMBIGUOUS
+
+
+def _metadata_title_or_filename(metadata: Mapping[str, Any] | None) -> str:
+    if not metadata:
+        return ""
+    filename = metadata.get("filename")
+    if isinstance(filename, str) and filename.strip():
+        return filename.strip()
+    path = metadata.get("path")
+    if isinstance(path, str) and path.strip():
+        return Path(path).name
+    return ""
+
+
+def _doc_family_key(
+    metadata: Mapping[str, Any] | None,
+    fallback_checksum: str | None,
+) -> str | None:
+    title = _metadata_title_or_filename(metadata)
+    stem = Path(title).stem if title else ""
+    tokens = [
+        token
+        for token in TOKEN_RE.findall(stem.lower())
+        if len(token) >= 3 and not token.isdigit() and token not in GENERIC_HARD_NEGATIVE_TERMS
+    ]
+    if tokens:
+        return "_".join(tokens[:4])
+    if stem:
+        compact = re.sub(r"[^a-z0-9]+", "_", stem.lower()).strip("_")
+        if compact:
+            return compact
+    if isinstance(fallback_checksum, str) and fallback_checksum:
+        return fallback_checksum
+    return None
+
+
+def _hard_negative_pattern_context(row: Mapping[str, Any]) -> dict[str, Any]:
+    diagnostics_raw = row.get("winner_vs_expected_diagnostics")
+    diagnostics = diagnostics_raw if isinstance(diagnostics_raw, Mapping) else {}
+    title_diag_raw = diagnostics.get("title_filename_overlap_features")
+    title_diag = title_diag_raw if isinstance(title_diag_raw, Mapping) else {}
+    winner_title_diag_raw = title_diag.get("winner")
+    winner_title_diag = (
+        winner_title_diag_raw if isinstance(winner_title_diag_raw, Mapping) else {}
+    )
+    expected_title_diag_raw = title_diag.get("expected")
+    expected_title_diag = (
+        expected_title_diag_raw if isinstance(expected_title_diag_raw, Mapping) else {}
+    )
+
+    winner_metadata_raw = row.get("winner_doc_metadata")
+    winner_metadata = (
+        winner_metadata_raw if isinstance(winner_metadata_raw, Mapping) else {}
+    )
+    expected_metadata_raw = row.get("expected_doc_metadata")
+    expected_metadata = (
+        expected_metadata_raw if isinstance(expected_metadata_raw, Mapping) else {}
+    )
+    winner_title = _metadata_title_or_filename(winner_metadata) or str(
+        winner_title_diag.get("title_or_filename") or ""
+    )
+    expected_title = _metadata_title_or_filename(expected_metadata) or str(
+        expected_title_diag.get("title_or_filename") or ""
+    )
+    winner_tokens = set(TOKEN_RE.findall(winner_title.lower()))
+    generic_list_terms = sorted(winner_tokens & GENERIC_LIST_INDEX_TERMS)
+    aggregate_summary_terms = sorted(winner_tokens & GENERIC_AGGREGATE_SUMMARY_TERMS)
+
+    vector_diag_raw = diagnostics.get("vector_score_contribution")
+    vector_diag = vector_diag_raw if isinstance(vector_diag_raw, Mapping) else {}
+    lexical_diag_raw = diagnostics.get("lexical_score_contribution")
+    lexical_diag = lexical_diag_raw if isinstance(lexical_diag_raw, Mapping) else {}
+    vector_delta = _safe_float(vector_diag.get("delta_winner_minus_expected"))
+    lexical_delta = _safe_float(lexical_diag.get("delta_winner_minus_expected"))
+
+    winner_overlap_count = int(winner_title_diag.get("overlap_count") or 0)
+    expected_overlap_count = int(expected_title_diag.get("overlap_count") or 0)
+    weak_title_vector_signal = (
+        winner_overlap_count <= 0
+        and expected_overlap_count >= 1
+        and vector_delta is not None
+        and vector_delta >= 0.05
+        and (lexical_delta is None or lexical_delta <= 0.05)
+    )
+
+    winner_checksum = (
+        str(row.get("actual_top1_checksum"))
+        if isinstance(row.get("actual_top1_checksum"), str)
+        else None
+    )
+    expected_checksum = (
+        str(row.get("expected_checksum"))
+        if isinstance(row.get("expected_checksum"), str)
+        else None
+    )
+    winner_family_key = _doc_family_key(winner_metadata, winner_checksum)
+    expected_family_key = _doc_family_key(expected_metadata, expected_checksum)
+
+    similarity_raw = diagnostics.get("winner_expected_text_similarity")
+    similarity = similarity_raw if isinstance(similarity_raw, Mapping) else {}
+    near_duplicate_collision = bool(similarity.get("near_duplicate"))
+    family_collision = bool(
+        winner_family_key
+        and expected_family_key
+        and winner_family_key == expected_family_key
+        and winner_checksum
+        and expected_checksum
+        and winner_checksum != expected_checksum
+    )
+    sibling_collision = near_duplicate_collision or family_collision
+
+    pattern_classes: list[str] = []
+    if generic_list_terms:
+        pattern_classes.append(HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX)
+    if aggregate_summary_terms:
+        pattern_classes.append(HARD_NEGATIVE_CLASS_AGGREGATE_SUMMARY)
+    if sibling_collision:
+        pattern_classes.append(HARD_NEGATIVE_CLASS_SIBLING_FAMILY_COLLISION)
+    if weak_title_vector_signal:
+        pattern_classes.append(HARD_NEGATIVE_CLASS_WEAK_TITLE_VECTOR)
+
+    return {
+        "pattern_classes": pattern_classes,
+        "winner_family_key": winner_family_key,
+        "expected_family_key": expected_family_key,
+        "winner_generic_list_terms": generic_list_terms,
+        "winner_aggregate_summary_terms": aggregate_summary_terms,
+        "near_duplicate_collision": near_duplicate_collision,
+        "family_collision": family_collision,
+        "weak_title_vector_signal": weak_title_vector_signal,
+    }
+
+
+def analyze_strict_canonical_hard_negatives(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    annotated_rows: list[dict[str, Any]] = []
+    winner_checksum_counter: Counter[str] = Counter()
+    winner_family_counter: Counter[str] = Counter()
+    pattern_counter: Counter[str] = Counter()
+
+    for row in rows:
+        context = _hard_negative_pattern_context(row)
+        winner_checksum = row.get("actual_top1_checksum")
+        if isinstance(winner_checksum, str) and winner_checksum:
+            winner_checksum_counter[winner_checksum] += 1
+        winner_family_key = context.get("winner_family_key")
+        if isinstance(winner_family_key, str) and winner_family_key:
+            winner_family_counter[winner_family_key] += 1
+        for pattern_class in context.get("pattern_classes", []):
+            if isinstance(pattern_class, str):
+                pattern_counter[pattern_class] += 1
+
+        winner_metadata_raw = row.get("winner_doc_metadata")
+        winner_metadata = (
+            winner_metadata_raw if isinstance(winner_metadata_raw, Mapping) else {}
+        )
+        annotated_rows.append(
+            {
+                "query_id": row.get("query_id"),
+                "query": row.get("query"),
+                "primary_ranking_cause_bucket": row.get("primary_ranking_cause_bucket"),
+                "actual_top1_checksum": winner_checksum,
+                "expected_checksum": row.get("expected_checksum"),
+                "winner_path": winner_metadata.get("path"),
+                "winner_filename": winner_metadata.get("filename"),
+                "winner_doc_type": winner_metadata.get("doc_type"),
+                "winner_family_key": context.get("winner_family_key"),
+                "hard_negative_pattern_classes": context.get("pattern_classes", []),
+                "winner_generic_list_terms": context.get("winner_generic_list_terms", []),
+                "winner_aggregate_summary_terms": context.get(
+                    "winner_aggregate_summary_terms", []
+                ),
+                "weak_title_vector_signal": bool(
+                    context.get("weak_title_vector_signal")
+                ),
+                "sibling_family_collision": bool(
+                    context.get("family_collision")
+                    or context.get("near_duplicate_collision")
+                ),
+            }
+        )
+
+    repeated_wrong_winner_docs: list[dict[str, Any]] = []
+    for row in annotated_rows:
+        checksum = row.get("actual_top1_checksum")
+        if not isinstance(checksum, str) or winner_checksum_counter.get(checksum, 0) < 2:
+            continue
+        repeated_wrong_winner_docs.append(
+            {
+                "checksum": checksum,
+                "count": winner_checksum_counter[checksum],
+                "path": row.get("winner_path"),
+                "filename": row.get("winner_filename"),
+                "doc_type": row.get("winner_doc_type"),
+            }
+        )
+    repeated_wrong_winner_docs = sorted(
+        {
+            (record["checksum"], record["count"]): record
+            for record in repeated_wrong_winner_docs
+        }.values(),
+        key=lambda item: (-int(item.get("count", 0)), str(item.get("checksum") or "")),
+    )
+
+    repeated_wrong_winner_families: list[dict[str, Any]] = []
+    for family_key, count in winner_family_counter.items():
+        if count < 2:
+            continue
+        repeated_wrong_winner_families.append(
+            {
+                "family_key": family_key,
+                "count": count,
+            }
+        )
+    repeated_wrong_winner_families.sort(
+        key=lambda item: (-int(item.get("count", 0)), str(item.get("family_key") or ""))
+    )
+
+    likely_ranking_fix_candidates: list[dict[str, Any]] = []
+    likely_benchmark_ambiguity_candidates: list[dict[str, Any]] = []
+    for row in annotated_rows:
+        cause_bucket = str(row.get("primary_ranking_cause_bucket") or "")
+        pattern_classes = {
+            str(item)
+            for item in row.get("hard_negative_pattern_classes", [])
+            if isinstance(item, str)
+        }
+        checksum = row.get("actual_top1_checksum")
+        repeat_count = (
+            winner_checksum_counter.get(checksum, 0)
+            if isinstance(checksum, str) and checksum
+            else 0
+        )
+        repeated_generic_winner = repeat_count >= 2 and bool(
+            pattern_classes
+            & {
+                HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX,
+                HARD_NEGATIVE_CLASS_AGGREGATE_SUMMARY,
+            }
+        )
+        likely_ranking_fix = (
+            repeated_generic_winner
+            or HARD_NEGATIVE_CLASS_WEAK_TITLE_VECTOR in pattern_classes
+            or HARD_NEGATIVE_CLASS_SIBLING_FAMILY_COLLISION in pattern_classes
+            or cause_bucket
+            in {
+                RANKING_CAUSE_VECTOR_DOMINANCE,
+                RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING,
+                RANKING_CAUSE_CANDIDATE_GENERATION_MISS,
+                RANKING_CAUSE_CHUNK_AGGREGATION_BIAS,
+                RANKING_CAUSE_DOC_TYPE_PRIOR_SUPPRESSION,
+            }
+        )
+        review_bucket = (
+            LIKELY_RANKING_FIX_CANDIDATE
+            if likely_ranking_fix
+            else LIKELY_BENCHMARK_AMBIGUITY
+        )
+        row["winner_repeat_count"] = repeat_count
+        row["evidence_bucket"] = review_bucket
+        row["benchmark_label_ambiguity_flag"] = review_bucket == LIKELY_BENCHMARK_AMBIGUITY
+        if review_bucket == LIKELY_RANKING_FIX_CANDIDATE:
+            likely_ranking_fix_candidates.append(row)
+        else:
+            likely_benchmark_ambiguity_candidates.append(row)
+
+    repeated_generic_pattern_detected = any(
+        (
+            record.get("count", 0) >= 2
+            and any(
+                str(row.get("actual_top1_checksum") or "") == str(record.get("checksum") or "")
+                and bool(
+                    {
+                        str(item)
+                        for item in row.get("hard_negative_pattern_classes", [])
+                        if isinstance(item, str)
+                    }
+                    & {
+                        HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX,
+                        HARD_NEGATIVE_CLASS_AGGREGATE_SUMMARY,
+                    }
+                )
+                for row in annotated_rows
+            )
+        )
+        for record in repeated_wrong_winner_docs
+    )
+
+    return {
+        "scope": (
+            "strict canonical ranking misses only "
+            "(benchmark_query_type=canonical_document_query and strict hit@1 miss)"
+        ),
+        "summary": {
+            "rows_analyzed": len(annotated_rows),
+            "pattern_counts": {
+                pattern: int(pattern_counter.get(pattern, 0))
+                for pattern in HARD_NEGATIVE_CLASS_ORDER
+            },
+            "repeated_wrong_winner_docs": len(repeated_wrong_winner_docs),
+            "repeated_wrong_winner_families": len(repeated_wrong_winner_families),
+            "likely_ranking_fix_candidates": len(likely_ranking_fix_candidates),
+            "likely_benchmark_ambiguity_manual_review_candidates": len(
+                likely_benchmark_ambiguity_candidates
+            ),
+        },
+        "suppression_signal": {
+            "repeated_generic_hard_negative_pattern_detected": repeated_generic_pattern_detected,
+            "candidate_rule_scope": "canonical anchored/semi-anchored queries only",
+        },
+        "repeated_wrong_winner_docs": repeated_wrong_winner_docs,
+        "repeated_wrong_winner_families": repeated_wrong_winner_families,
+        "likely_ranking_fix_candidates": likely_ranking_fix_candidates,
+        "likely_benchmark_ambiguity_manual_review_candidates": likely_benchmark_ambiguity_candidates,
+        "rows": annotated_rows,
+    }
 
 
 def _chunk_document_collapsing_profile(cfg: RetrievalConfig) -> dict[str, Any]:
@@ -1650,6 +1998,16 @@ def investigate_ranking_post_patha(
                 "expected_checksum": expected_checksum_for_diagnosis,
                 "actual_top1_checksum": winner_checksum,
                 "expected_rank_if_retrieved": expected_rank_probe,
+                "winner_doc_metadata": {
+                    "path": (winner_meta or {}).get("path"),
+                    "filename": (winner_meta or {}).get("filename"),
+                    "doc_type": (winner_meta or {}).get("doc_type"),
+                },
+                "expected_doc_metadata": {
+                    "path": (expected_meta or {}).get("path"),
+                    "filename": (expected_meta or {}).get("filename"),
+                    "doc_type": (expected_meta or {}).get("doc_type"),
+                },
                 "winner_vs_expected_diagnostics": {
                     "lexical_score_contribution": {
                         "winner": winner_lexical,
@@ -1704,6 +2062,9 @@ def investigate_ranking_post_patha(
     strict_canonical_dominant_bucket = max(
         RANKING_CAUSE_ORDER,
         key=lambda bucket: strict_canonical_rank_cause_counter.get(bucket, 0),
+    )
+    strict_canonical_hard_negative_analysis = analyze_strict_canonical_hard_negatives(
+        strict_canonical_rank_cause_rows
     )
     ablation_per_query: list[dict[str, Any]] = []
     ablation_deltas: dict[str, list[int]] = defaultdict(list)
@@ -1909,8 +2270,8 @@ def investigate_ranking_post_patha(
     output = {
         "schema_version": RANKING_INVESTIGATION_SCHEMA_VERSION,
         "compatibility_note": (
-            "Schema v3 adds probe_vs_eval_comparison and strict_canonical_ranking_diagnosis "
-            "blocks. Legacy flat probe keys are not emitted."
+            "Schema v4 adds strict_canonical_hard_negative_analysis for deterministic "
+            "hard-negative pattern aggregation and candidate-vs-ambiguity partitioning."
         ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_artifacts": {
@@ -2064,6 +2425,7 @@ def investigate_ranking_post_patha(
                 else 0.0,
             },
             "rows": strict_canonical_rank_cause_rows,
+            "hard_negative_analysis": strict_canonical_hard_negative_analysis,
         },
         "ablation_analysis": {
             "scope": (

@@ -469,6 +469,106 @@ def test_assign_primary_ranking_cause_bucket_rules():
     )
 
 
+def test_analyze_strict_canonical_hard_negatives_partitions_candidates():
+    rows = [
+        {
+            "query_id": "Q10",
+            "query": "In paper, what control approach is used?",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE,
+            "actual_top1_checksum": "repeat-1",
+            "expected_checksum": "exp-1",
+            "winner_doc_metadata": {
+                "path": "C:/docs/filtered_gdrive_list.txt",
+                "filename": "filtered_gdrive_list.txt",
+                "doc_type": "other",
+            },
+            "expected_doc_metadata": {
+                "path": "C:/docs/paper_final.pdf",
+                "filename": "paper_final.pdf",
+                "doc_type": "research_paper",
+            },
+            "winner_vs_expected_diagnostics": {
+                "title_filename_overlap_features": {
+                    "winner": {"title_or_filename": "filtered_gdrive_list.txt", "overlap_count": 0},
+                    "expected": {"title_or_filename": "paper_final.pdf", "overlap_count": 1},
+                },
+                "vector_score_contribution": {"delta_winner_minus_expected": 0.4},
+                "lexical_score_contribution": {"delta_winner_minus_expected": 0.02},
+                "winner_expected_text_similarity": {"near_duplicate": False},
+            },
+        },
+        {
+            "query_id": "Q20",
+            "query": "In receipt, what amount is shown?",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_AMBIGUOUS,
+            "actual_top1_checksum": "repeat-1",
+            "expected_checksum": "exp-2",
+            "winner_doc_metadata": {
+                "path": "C:/docs/filtered_gdrive_list.txt",
+                "filename": "filtered_gdrive_list.txt",
+                "doc_type": "other",
+            },
+            "expected_doc_metadata": {
+                "path": "C:/docs/metlife_receipt.pdf",
+                "filename": "metlife_receipt.pdf",
+                "doc_type": "receipt",
+            },
+            "winner_vs_expected_diagnostics": {
+                "title_filename_overlap_features": {
+                    "winner": {"title_or_filename": "filtered_gdrive_list.txt", "overlap_count": 0},
+                    "expected": {"title_or_filename": "metlife_receipt.pdf", "overlap_count": 1},
+                },
+                "vector_score_contribution": {"delta_winner_minus_expected": 0.02},
+                "lexical_score_contribution": {"delta_winner_minus_expected": 0.3},
+                "winner_expected_text_similarity": {"near_duplicate": False},
+            },
+        },
+        {
+            "query_id": "Q03",
+            "query": "From CV, list technical skills.",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_AMBIGUOUS,
+            "actual_top1_checksum": "single-1",
+            "expected_checksum": "exp-3",
+            "winner_doc_metadata": {
+                "path": "C:/docs/ali_cv_v2.pdf",
+                "filename": "ali_cv_v2.pdf",
+                "doc_type": "cv",
+            },
+            "expected_doc_metadata": {
+                "path": "C:/docs/ali_resume_v3.pdf",
+                "filename": "ali_resume_v3.pdf",
+                "doc_type": "resume",
+            },
+            "winner_vs_expected_diagnostics": {
+                "title_filename_overlap_features": {
+                    "winner": {"title_or_filename": "ali_cv_v2.pdf", "overlap_count": 1},
+                    "expected": {"title_or_filename": "ali_resume_v3.pdf", "overlap_count": 1},
+                },
+                "vector_score_contribution": {"delta_winner_minus_expected": 0.01},
+                "lexical_score_contribution": {"delta_winner_minus_expected": 0.01},
+                "winner_expected_text_similarity": {"near_duplicate": False},
+            },
+        },
+    ]
+
+    analysis = ranking_script.analyze_strict_canonical_hard_negatives(rows)
+    summary = analysis["summary"]
+
+    assert summary["rows_analyzed"] == 3
+    assert summary["repeated_wrong_winner_docs"] == 1
+    assert summary["pattern_counts"][ranking_script.HARD_NEGATIVE_CLASS_GENERIC_LIST_INDEX] == 2
+    assert summary["likely_ranking_fix_candidates"] == 2
+    assert summary["likely_benchmark_ambiguity_manual_review_candidates"] == 1
+
+    ranking_fix_ids = {row["query_id"] for row in analysis["likely_ranking_fix_candidates"]}
+    manual_review_ids = {
+        row["query_id"]
+        for row in analysis["likely_benchmark_ambiguity_manual_review_candidates"]
+    }
+    assert {"Q10", "Q20"} <= ranking_fix_ids
+    assert manual_review_ids == {"Q03"}
+
+
 def test_build_probe_vs_eval_comparison_reports_discrepancy():
     runbook = {
         "config": {

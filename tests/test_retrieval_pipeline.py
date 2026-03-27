@@ -362,6 +362,321 @@ def test_retrieval_keeps_default_fusion_for_non_anchored_query():
     assert result.documents[0].get("checksum") == "v1"
 
 
+def test_retrieval_rescues_lexical_title_match_for_canonical_anchored_query():
+    vector_hits = [
+        {
+            "id": "v1",
+            "text": "vector winner",
+            "score": 1.0,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "id": "l1",
+            "text": "lexical candidate",
+            "score": 0.75,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "v1",
+            "text": "vector winner",
+            "score": 0.9,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "_id": "l1",
+            "text": "lexical candidate",
+            "score": 1.0,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=0.7,
+        fusion_weight_bm25=0.3,
+        anchored_lexical_bias_enabled=True,
+        anchored_fusion_weight_vector=0.4,
+        anchored_fusion_weight_bm25=0.6,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "In Ali's latest CV contact section, which city is listed?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "l1"
+    assert result.documents[0].get("_canonical_lexical_rescue") is not None
+
+
+def test_retrieval_rescues_lexical_match_for_canonical_semi_anchored_query():
+    vector_hits = [
+        {
+            "id": "v1",
+            "text": "vector winner",
+            "score": 1.0,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "id": "l1",
+            "text": "lexical candidate",
+            "score": 0.75,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "v1",
+            "text": "vector winner",
+            "score": 0.9,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "_id": "l1",
+            "text": "lexical candidate",
+            "score": 1.0,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "What city is listed in his CV contact section?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "l1"
+    assert result.documents[0].get("_canonical_lexical_rescue") is not None
+
+
+def test_retrieval_does_not_apply_lexical_rescue_for_non_canonical_query():
+    vector_hits = [
+        {
+            "id": "v1",
+            "text": "vector winner",
+            "score": 1.0,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "id": "l1",
+            "text": "lexical candidate",
+            "score": 0.75,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "v1",
+            "text": "vector winner",
+            "score": 0.9,
+            "checksum": "v1",
+            "filename": "random_notes.txt",
+        },
+        {
+            "_id": "l1",
+            "text": "lexical candidate",
+            "score": 1.0,
+            "checksum": "l1",
+            "filename": "ali_latest_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "Where did Ali do his PhD studies?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "v1"
+    assert result.documents[0].get("_canonical_lexical_rescue") is None
+
+
+def test_retrieval_suppresses_generic_hard_negative_for_canonical_query():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "generic list winner",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "c1",
+            "text": "relevant cv doc",
+            "score": 0.74,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "g1",
+            "text": "generic list winner",
+            "score": 0.95,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "_id": "c1",
+            "text": "relevant cv doc",
+            "score": 0.9,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "What city is listed in his CV contact section?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "c1"
+    assert result.documents[0].get("_canonical_hard_negative_suppression") is not None
+
+
+def test_retrieval_does_not_suppress_generic_hard_negative_for_non_canonical_query():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "generic list winner",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "c1",
+            "text": "relevant cv doc",
+            "score": 0.74,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "g1",
+            "text": "generic list winner",
+            "score": 0.95,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "_id": "c1",
+            "text": "relevant cv doc",
+            "score": 0.9,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "Where did Ali do his PhD studies?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "g1"
+    assert result.documents[0].get("_canonical_hard_negative_suppression") is None
+
+
+def test_retrieval_control_abstention_unchanged_with_hard_negative_suppression():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "generic list winner",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "c1",
+            "text": "possible corpus doc",
+            "score": 0.74,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "g1",
+            "text": "generic list winner",
+            "score": 0.95,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "_id": "c1",
+            "text": "possible corpus doc",
+            "score": 0.9,
+            "checksum": "c1",
+            "filename": "ali_cv_contact_section.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+    )
+    result = pipeline.retrieve(
+        "What is Bitcoin price today?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert result.documents == []
+    assert result.clarify is None
+
+
 def test_retrieval_uses_mmr_when_enabled():
     calls = {"embed": 0}
 
@@ -838,6 +1153,18 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.anchored_lexical_bias_enabled is True
     assert cfg.anchored_fusion_weight_vector == pytest.approx(0.4)
     assert cfg.anchored_fusion_weight_bm25 == pytest.approx(0.6)
+    assert cfg.canonical_lexical_rescue_enabled is True
+    assert cfg.canonical_lexical_rescue_max_score_gap == pytest.approx(0.20)
+    assert cfg.canonical_lexical_rescue_min_bm25 == pytest.approx(0.85)
+    assert cfg.canonical_lexical_rescue_min_bm25_advantage == pytest.approx(0.08)
+    assert cfg.canonical_lexical_rescue_strong_bm25_advantage == pytest.approx(0.25)
+    assert cfg.canonical_lexical_rescue_min_title_overlap_ratio == pytest.approx(0.40)
+    assert cfg.canonical_lexical_rescue_min_title_overlap_count == 2
+    assert cfg.canonical_hard_negative_suppression_enabled is True
+    assert cfg.canonical_hard_negative_max_score_gap == pytest.approx(0.55)
+    assert cfg.canonical_hard_negative_min_winner_vector_score == pytest.approx(0.80)
+    assert cfg.canonical_hard_negative_max_winner_title_overlap_count == 0
+    assert cfg.canonical_hard_negative_min_candidate_title_overlap_count == 1
     assert cfg.recency_boost_enabled is True
     assert cfg.recency_boost_weight == pytest.approx(0.06)
     assert cfg.cv_family_collapse_enabled is True
