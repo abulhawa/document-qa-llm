@@ -2,9 +2,23 @@
 
 from __future__ import annotations
 
+import re
+
 import qa_pipeline
 from app.schemas import DocumentSnippet, QARequest, QAResponse
 from qa_pipeline import RetrievalConfig
+from config import logger
+
+
+_Q10_DEBUG_QUERY_TERMS = {"pem", "fuel", "cell", "sliding", "mode", "control"}
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _is_q10_debug_question(question: str) -> bool:
+    tokens = set(_TOKEN_RE.findall((question or "").lower()))
+    if not tokens:
+        return False
+    return len(tokens & _Q10_DEBUG_QUERY_TERMS) >= 5
 
 
 def answer(req: QARequest) -> QAResponse:
@@ -39,6 +53,12 @@ def answer(req: QARequest) -> QAResponse:
             )
             for doc in context.retrieval.documents
         ]
+        if _is_q10_debug_question(req.question):
+            logger.info(
+                "Q10 debug | final_ui_sources=%s | final_ui_documents=%s",
+                sources,
+                [doc.path for doc in documents],
+            )
 
     return QAResponse(
         answer=context.answer or "",

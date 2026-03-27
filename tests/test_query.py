@@ -373,6 +373,47 @@ def test_retrieve_context_passes_identity_metadata(monkeypatch):
     assert doc.authority_rank == pytest.approx(0.85)
 
 
+def test_retrieve_context_sources_prefer_pdf_over_list_artifacts(monkeypatch):
+    fake_output = types.SimpleNamespace(
+        clarify=None,
+        documents=[
+            {
+                "text": "Control approach used: Sliding Mode Control.",
+                "path": "C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf",
+                "retrieval_score": 0.96,
+            },
+            {
+                "text": "filtered drive list mentioning sliding mode control paper",
+                "path": "C:/docs/filtered_gdrive_list.txt",
+                "retrieval_score": 0.959,
+            },
+            {
+                "text": "drive file list includes sliding mode control paper",
+                "path": "C:/docs/gdrive-file-list.txt",
+                "retrieval_score": 0.958,
+            },
+        ],
+    )
+    monkeypatch.setattr("qa_pipeline.retrieve.retrieve", lambda query, cfg, deps: fake_output)
+
+    result = retrieve_context(
+        "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        top_k=3,
+        deps=types.SimpleNamespace(
+            semantic_retriever=lambda q, top_k: [],
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+    )
+
+    assert result.sources == [
+        "C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf",
+        "C:/docs/filtered_gdrive_list.txt",
+        "C:/docs/gdrive-file-list.txt",
+    ]
+
+
 def test_answer_question_skips_grounding_when_flag_disabled(monkeypatch):
     called = {"count": 0}
 
