@@ -124,7 +124,7 @@ def test_is_equivalent_answer_support_thresholds():
     )
 
 
-def test_find_first_answer_support_strict_and_equivalent():
+def test_find_first_answer_support_strict_and_equivalent_gate():
     similarity_cache = {}
     docs_strict = [
         {"checksum": "expected-1"},
@@ -153,15 +153,25 @@ def test_find_first_answer_support_strict_and_equivalent():
         "equiv-1": {"text_full": "Ali did his PhD in Aachen in Germany."},
         "other-2": {"text_full": "Completely unrelated content"},
     }
-    equiv = ranking_script.find_first_answer_support(
+    equiv_default = ranking_script.find_first_answer_support(
         docs=docs_equiv,
         expected_checksums=["expected-1"],
         metadata_cache=metadata_cache,
         similarity_cache={},
     )
-    assert equiv["rank"] == 1
-    assert equiv["support_type"] == "equivalent"
-    assert equiv["matched_expected_checksum"] == "expected-1"
+    assert equiv_default["rank"] is None
+    assert equiv_default["support_type"] is None
+
+    equiv_allowed = ranking_script.find_first_answer_support(
+        docs=docs_equiv,
+        expected_checksums=["expected-1"],
+        metadata_cache=metadata_cache,
+        similarity_cache={},
+        allow_equivalent=True,
+    )
+    assert equiv_allowed["rank"] == 1
+    assert equiv_allowed["support_type"] == "equivalent"
+    assert equiv_allowed["matched_expected_checksum"] == "expected-1"
 
 
 def test_resolve_support_expectations_merge_and_replace():
@@ -204,6 +214,94 @@ def test_load_support_label_overrides(tmp_path):
     overrides = ranking_script._load_support_label_overrides(path)
     assert "Q01" in overrides
     assert "Q02" not in overrides
+
+
+def test_load_support_labels_and_query_type_resolution(tmp_path):
+    labels = {
+        "meta": {
+            "default_positive_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT
+        },
+        "overrides": {
+            "Q01": {
+                "benchmark_query_type": ranking_script.QUERY_TYPE_MULTI_SOURCE_FACTUAL
+            }
+        },
+    }
+    path = tmp_path / "labels.json"
+    path.write_text(json.dumps(labels), encoding="utf-8")
+
+    meta, overrides = ranking_script._load_support_labels(path)
+    assert meta["default_positive_query_type"] == ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT
+    assert "Q01" in overrides
+
+    resolved_multi = ranking_script.resolve_query_benchmark_type(
+        fixture_query={},
+        label_override=overrides["Q01"],
+        default_query_type=ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+    )
+    assert resolved_multi == ranking_script.QUERY_TYPE_MULTI_SOURCE_FACTUAL
+    assert (
+        ranking_script.benchmark_mode_for_query_type(resolved_multi)
+        == ranking_script.BENCHMARK_MODE_ANSWER_SUPPORT
+    )
+
+    resolved_default = ranking_script.resolve_query_benchmark_type(
+        fixture_query={},
+        label_override={},
+        default_query_type=ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+    )
+    assert resolved_default == ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT
+    assert (
+        ranking_script.benchmark_mode_for_query_type(resolved_default)
+        == ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL
+    )
+
+
+def test_probe_metrics_by_query_type_breakout():
+    rows = [
+        {
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "strict_retrieval_rank_probe": 1,
+            "answer_support_rank_probe": 1,
+        },
+        {
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "strict_retrieval_rank_probe": 5,
+            "answer_support_rank_probe": 5,
+        },
+        {
+            "benchmark_query_type": ranking_script.QUERY_TYPE_MULTI_SOURCE_FACTUAL,
+            "strict_retrieval_rank_probe": 4,
+            "answer_support_rank_probe": 1,
+        },
+    ]
+    strict = ranking_script.probe_metrics_by_query_type(
+        per_query_rows=rows,
+        mode=ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL,
+        probe_depth=40,
+    )
+    support = ranking_script.probe_metrics_by_query_type(
+        per_query_rows=rows,
+        mode=ranking_script.BENCHMARK_MODE_ANSWER_SUPPORT,
+        probe_depth=40,
+    )
+
+    canonical_strict = strict[ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT]
+    assert canonical_strict["positive_total"] == 2
+    assert canonical_strict["hit_at_1_probe"] == 1
+    assert canonical_strict["hit_at_3_probe"] == 1
+    assert canonical_strict["mrr_probe"] == 0.6
+
+    multi_support = support[ranking_script.QUERY_TYPE_MULTI_SOURCE_FACTUAL]
+    assert multi_support["positive_total"] == 1
+    assert multi_support["hit_at_1_probe"] == 1
+    assert multi_support["hit_at_3_probe"] == 1
+    assert multi_support["mrr_probe"] == 1.0
+
+    ambiguous_strict = strict[ranking_script.QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED]
+    assert ambiguous_strict["positive_total"] == 0
+    assert ambiguous_strict["hit_at_1_probe_rate"] == 0.0
+    assert ambiguous_strict["mrr_probe"] == 0.0
 
 
 def test_query_anchor_tokens_filters_stopwords():

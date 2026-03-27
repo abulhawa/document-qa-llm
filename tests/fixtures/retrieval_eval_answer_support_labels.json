@@ -3,10 +3,31 @@
     "description": "Optional deterministic answer-support overrides for retrieval evaluation.",
     "version": 1,
     "default_answer_support_mode": "merge",
+    "default_positive_query_type": "canonical_document_query",
+    "benchmark_modes": [
+      "strict_retrieval",
+      "answer_support"
+    ],
+    "query_type_labels": [
+      "canonical_document_query",
+      "multi_source_factual_query",
+      "ambiguous_reviewer_needed"
+    ],
     "notes": [
       "These labels are used only by investigation tooling; production retrieval behavior is unchanged.",
-      "Use overrides to add equivalent source checksums that can support correct answers even when strict expected checksums differ."
+      "Use overrides to add manually reviewed support checksums and explicit query benchmark classification metadata.",
+      "Answer-support scoring is checksum-label based in this step; similarity heuristics are suggestion-only."
     ]
   },
-  "overrides": {}
+  "overrides": {
+    "Q01": {
+      "benchmark_query_type": "multi_source_factual_query",
+      "answer_support_mode": "merge",
+      "answer_support_checksums": [
+        "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1"
+      ],
+      "preferred_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+      "notes": "Manual label for an obvious multi-source factual query (PhD location)."
+    }
+  }
 }

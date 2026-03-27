@@ -1,12 +1,28 @@
 {
-  "generated_at_utc": "2026-03-27T07:33:12.711850+00:00",
+  "schema_version": "residual_failure_analysis.v2",
+  "compatibility_note": "Schema v2 adds explicit benchmarking metadata and query-type/mode summaries. Consumers should read aggregate_summary.*_summary fields.",
+  "generated_at_utc": "2026-03-27T10:37:17.759161+00:00",
   "source_artifacts": {
     "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
-    "fixture": "tests\\fixtures\\retrieval_eval_queries.json"
+    "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+    "support_labels": "tests\\fixtures\\retrieval_eval_answer_support_labels.json"
   },
   "analysis_scope": {
-    "failed_positive_queries": 15,
-    "criterion": "mode=positive and hit_at_1=false from Path A eval artifact"
+    "failed_positive_queries": 14,
+    "criterion": "mode=positive with benchmark-aware failure lens: strict_retrieval hit@1 for canonical/ambiguous queries, answer_support hit@1 for explicitly multi-source queries"
+  },
+  "benchmarking": {
+    "benchmark_modes": [
+      "strict_retrieval",
+      "answer_support"
+    ],
+    "query_type_labels": [
+      "canonical_document_query",
+      "multi_source_factual_query",
+      "ambiguous_reviewer_needed"
+    ],
+    "default_positive_query_type": "canonical_document_query",
+    "support_labels_overrides_count": 1
   },
   "probe_method": {
     "candidate_probe": {
@@ -28,107 +44,10 @@
   },
   "residual_failures": [
     {
-      "query_id": "Q01",
-      "query": "Where did Ali do his PhD studies?",
-      "query_classification": "anchored",
-      "expected_reference": {
-        "expected_doc_types": [
-          "cv",
-          "resume"
-        ],
-        "primary_expected_checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
-        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
-        "fixture_note": "Profile and education fact; should prefer the newest relevant CV version."
-      },
-      "relevant_doc_in_top3": true,
-      "relevant_doc_in_candidates": true,
-      "expected_rank_in_candidates": 5,
-      "top_returned_docs": [
-        {
-          "rank": 1,
-          "checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
-          "score": 1.1747541412959115,
-          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_11.docx",
-          "filename": "Resume - Ali 2016_11.docx",
-          "doc_type": "cv"
-        },
-        {
-          "rank": 2,
-          "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
-          "score": 0.6644079357081416,
-          "path": "C:/Users/ali_a/My Drive/Ali/Other/Cover Letter - AUS.docx",
-          "filename": "Cover Letter - AUS.docx",
-          "doc_type": "cover_letter"
-        },
-        {
-          "rank": 3,
-          "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
-          "score": 0.4380145209170921,
-          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
-          "filename": "360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
-          "doc_type": "other"
-        }
-      ],
-      "expected_doc_indicators": [
-        {
-          "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
-          "exists_in_fulltext": true,
-          "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
-          "filename": "redefining-stuttering.pdf",
-          "doc_type": "research_paper",
-          "extraction_mode": null,
-          "text_length": 1448807,
-          "empty_text": false,
-          "very_low_text_length": false,
-          "has_ocr_marker": false,
-          "os_chunk_count": 2287,
-          "qdrant_chunk_count": 2287,
-          "missing_chunk_coverage": false
-        },
-        {
-          "checksum": "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
-          "exists_in_fulltext": true,
-          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/2010-30.pdf",
-          "filename": "2010-30.pdf",
-          "doc_type": "research_paper",
-          "extraction_mode": null,
-          "text_length": 43675,
-          "empty_text": false,
-          "very_low_text_length": false,
-          "has_ocr_marker": false,
-          "os_chunk_count": 67,
-          "qdrant_chunk_count": 67,
-          "missing_chunk_coverage": false
-        },
-        {
-          "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
-          "exists_in_fulltext": true,
-          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
-          "filename": "360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
-          "doc_type": "other",
-          "extraction_mode": null,
-          "text_length": 3138,
-          "empty_text": false,
-          "very_low_text_length": false,
-          "has_ocr_marker": false,
-          "os_chunk_count": 6,
-          "qdrant_chunk_count": 6,
-          "missing_chunk_coverage": false
-        }
-      ],
-      "bucket": "relevant doc ranked below 1 but within top-3",
-      "bucket_evidence": {
-        "text_gap_evidence": false,
-        "corpus_absence_evidence": false,
-        "text_available_evidence": true
-      },
-      "deep_probe_error": null,
-      "reviewer_bucket_override": null,
-      "reviewer_notes": ""
-    },
-    {
       "query_id": "Q02",
       "query": "In Ali's latest CV, what is his most recent job title?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
@@ -136,12 +55,34 @@
           "resume",
           "cover_letter"
         ],
+        "strict_expected_checksums": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "answer_support_checksums": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        ],
         "primary_expected_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
         "primary_expected_path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
         "fixture_note": "Recency-sensitive profile fact."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 4,
+      "answer_support_rank_in_candidates": 4,
       "expected_rank_in_candidates": 4,
       "top_returned_docs": [
         {
@@ -229,18 +170,42 @@
     {
       "query_id": "Q03",
       "query": "From Ali's latest CV, list the main technical skills.",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "cv",
           "resume"
         ],
+        "strict_expected_checksums": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
+        "answer_support_checksums": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        ],
         "primary_expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
         "fixture_note": "Checks profile intent and CV family handling."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 10,
+      "answer_support_rank_in_candidates": 10,
       "expected_rank_in_candidates": 10,
       "top_returned_docs": [
         {
@@ -328,18 +293,42 @@
     {
       "query_id": "Q04",
       "query": "In Ali's most recent CV contact section, which city is listed?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "cv",
           "resume"
         ],
+        "strict_expected_checksums": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
+        "answer_support_checksums": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+        ],
         "primary_expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
         "fixture_note": "Short factual extraction from profile docs."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 7,
+      "answer_support_rank_in_candidates": 7,
       "expected_rank_in_candidates": 7,
       "top_returned_docs": [
         {
@@ -427,17 +416,41 @@
     {
       "query_id": "Q05",
       "query": "From Ali's cover letters, what role is he applying for?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "cover_letter"
         ],
+        "strict_expected_checksums": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "answer_support_checksums": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        ],
         "primary_expected_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Think Python.pdf",
         "fixture_note": "Ensures cover letters can still surface."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 5,
+      "answer_support_rank_in_candidates": 5,
       "expected_rank_in_candidates": 5,
       "top_returned_docs": [
         {
@@ -525,17 +538,41 @@
     {
       "query_id": "Q06",
       "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
+        "answer_support_checksums": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+        ],
         "primary_expected_checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103411 Power Systems (1)/Projects/Dubai Power Grid Project/Dubai Power Grid System Report.pdf",
         "fixture_note": "Dense technical report retrieval with topic anchor."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 41,
+      "answer_support_rank_in_candidates": 41,
       "expected_rank_in_candidates": 41,
       "top_returned_docs": [
         {
@@ -623,17 +660,41 @@
     {
       "query_id": "Q07",
       "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
+        "answer_support_checksums": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+        ],
         "primary_expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
         "fixture_note": "Course and code disambiguation."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": false,
+      "strict_expected_rank_in_candidates": null,
+      "answer_support_rank_in_candidates": null,
       "expected_rank_in_candidates": null,
       "top_returned_docs": [
         {
@@ -721,17 +782,41 @@
     {
       "query_id": "Q09",
       "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
+        "answer_support_checksums": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+        ],
         "primary_expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103318 Introduction to Electrical Engineering/2012 Spring/Chapter 3 Lecture Notes - 103318.docx",
         "fixture_note": "Technical education content retrieval."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 23,
+      "answer_support_rank_in_candidates": 23,
       "expected_rank_in_candidates": 23,
       "top_returned_docs": [
         {
@@ -819,17 +904,41 @@
     {
       "query_id": "Q10",
       "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
+        "answer_support_checksums": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+        ],
         "primary_expected_checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Final ICEEPIII ENE 185 paper 06252013.pdf",
         "fixture_note": "Research title grounding."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 25,
+      "answer_support_rank_in_candidates": 25,
       "expected_rank_in_candidates": 25,
       "top_returned_docs": [
         {
@@ -917,17 +1026,41 @@
     {
       "query_id": "Q11",
       "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
+        "answer_support_checksums": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        ],
         "primary_expected_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
         "fixture_note": "Paper retrieval precision."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 33,
+      "answer_support_rank_in_candidates": 33,
       "expected_rank_in_candidates": 33,
       "top_returned_docs": [
         {
@@ -1015,17 +1148,41 @@
     {
       "query_id": "Q12",
       "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
+        "answer_support_checksums": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+        ],
         "primary_expected_checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/Lit Rev/9783319125794-c2.pdf",
         "fixture_note": "Topic lookup in training materials."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": false,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": false,
       "relevant_doc_in_top3": false,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 4,
+      "answer_support_rank_in_candidates": 4,
       "expected_rank_in_candidates": 4,
       "top_returned_docs": [
         {
@@ -1113,18 +1270,42 @@
     {
       "query_id": "Q13",
       "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__",
           "cover_letter"
         ],
+        "strict_expected_checksums": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
+        "answer_support_checksums": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+        ],
         "primary_expected_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
         "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
         "fixture_note": "Administrative document retrieval."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 4,
+      "answer_support_rank_in_candidates": 4,
       "expected_rank_in_candidates": 4,
       "top_returned_docs": [
         {
@@ -1212,17 +1393,41 @@
     {
       "query_id": "Q15",
       "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
+        "answer_support_checksums": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+        ],
         "primary_expected_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
         "primary_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Salma-sent.pdf",
         "fixture_note": "Form purpose retrieval with stronger anchor."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 15,
+      "answer_support_rank_in_candidates": 15,
       "expected_rank_in_candidates": 15,
       "top_returned_docs": [
         {
@@ -1310,17 +1515,41 @@
     {
       "query_id": "Q19",
       "query": "In the tax-related invoice PDF, who is the issuing company?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
+        "answer_support_checksums": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+        ],
         "primary_expected_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
         "primary_expected_path": "C:/Users/ali_a/My Drive/Ali/Online Business/Make-money-with-no-money.pdf",
         "fixture_note": "Invoice issuer extraction."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 4,
+      "answer_support_rank_in_candidates": 4,
       "expected_rank_in_candidates": 4,
       "top_returned_docs": [
         {
@@ -1408,17 +1637,41 @@
     {
       "query_id": "Q20",
       "query": "In the remittance receipt from 2020, what payment amount is shown?",
+      "benchmark_query_type": "canonical_document_query",
+      "benchmark_primary_mode": "strict_retrieval",
       "query_classification": "anchored",
       "expected_reference": {
         "expected_doc_types": [
           "__missing__"
         ],
+        "strict_expected_checksums": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
+        "answer_support_checksums": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
+        "expected_checksums_for_failure_lens": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+        ],
         "primary_expected_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
         "primary_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
         "fixture_note": "Numeric extraction from payment receipt."
       },
+      "selected_for_failure_analysis": true,
+      "strict_hit_at_1_archived": false,
+      "strict_relevant_doc_in_top3": true,
+      "answer_support_hit_at_1_top3": false,
+      "answer_support_relevant_doc_in_top3": true,
       "relevant_doc_in_top3": true,
       "relevant_doc_in_candidates": true,
+      "strict_expected_rank_in_candidates": 3,
+      "answer_support_rank_in_candidates": 3,
       "expected_rank_in_candidates": 3,
       "top_returned_docs": [
         {
@@ -1505,22 +1758,22 @@
     }
   ],
   "aggregate_summary": {
-    "total_failed_positive_queries": 15,
+    "total_failed_positive_queries": 14,
     "bucket_summary": [
       {
         "bucket": "relevant doc ranked below 1 but within top-3",
-        "count": 7,
-        "percentage": 46.67
+        "count": 6,
+        "percentage": 42.86
       },
       {
         "bucket": "relevant doc retrieved but ranked below top-3",
         "count": 7,
-        "percentage": 46.67
+        "percentage": 50.0
       },
       {
         "bucket": "relevant doc not retrieved despite text being available",
         "count": 1,
-        "percentage": 6.67
+        "percentage": 7.14
       },
       {
         "bucket": "likely text extraction / OCR gap",
@@ -1539,7 +1792,19 @@
       }
     ],
     "query_classification_summary": {
-      "anchored": 15
+      "anchored": 20
+    },
+    "benchmark_query_type_summary": {
+      "canonical_document_query": 19,
+      "multi_source_factual_query": 1,
+      "ambiguous_reviewer_needed": 0
+    },
+    "benchmark_primary_mode_summary": {
+      "strict_retrieval": 19,
+      "answer_support": 1
+    },
+    "selected_failure_mode_summary": {
+      "strict_retrieval": 14
     },
     "deep_probe_errors": 0
   },
@@ -1552,9 +1817,9 @@
     },
     "evidence": {
       "text_gap_failures": 0,
-      "total_failed_positives": 15,
+      "total_failed_positives": 14,
       "text_gap_rate": 0.0,
-      "dominant_bucket": "relevant doc ranked below 1 but within top-3",
+      "dominant_bucket": "relevant doc retrieved but ranked below top-3",
       "dominant_bucket_count": 7
     },
     "rationale": "NO: residual misses are dominated by non-OCR causes; prioritize ranking/retrieval fixes first."
