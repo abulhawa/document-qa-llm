@@ -32,6 +32,8 @@ class RetrievalConfig:
     canonical_hard_negative_min_winner_vector_score: float = 0.80
     canonical_hard_negative_max_winner_title_overlap_count: int = 0
     canonical_hard_negative_min_candidate_title_overlap_count: int = 1
+    content_evidence_guard_enabled: bool = True
+    content_evidence_guard_max_score_gap: float = 0.08
     enable_mmr: bool = True
     mmr_lambda: float = 0.6
     mmr_k: Optional[int] = None

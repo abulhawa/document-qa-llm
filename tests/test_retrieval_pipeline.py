@@ -677,6 +677,135 @@ def test_retrieval_control_abstention_unchanged_with_hard_negative_suppression()
     assert result.clarify is None
 
 
+def test_retrieval_demotes_list_artifacts_for_content_question_evidence_order():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "g2",
+            "text": "drive file list includes sliding mode control of PEM fuel cells",
+            "score": 0.99,
+            "checksum": "g2",
+            "filename": "gdrive-file-list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.96,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "_id": "g2",
+            "text": "drive file list includes sliding mode control of PEM fuel cells",
+            "score": 0.98,
+            "checksum": "g2",
+            "filename": "gdrive-file-list.txt",
+        },
+        {
+            "_id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.97,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        canonical_lexical_rescue_enabled=False,
+        canonical_hard_negative_suppression_enabled=False,
+        content_evidence_guard_enabled=True,
+        content_evidence_guard_max_score_gap=0.08,
+    )
+    result = pipeline.retrieve(
+        "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 3
+    assert result.documents[0].get("checksum") == "p1"
+    assert result.documents[0].get("_evidence_quality_class") == "content_or_unknown"
+    assert result.documents[1].get("_evidence_quality_class") == "non_evidence_artifact"
+    assert result.documents[2].get("_evidence_quality_class") == "non_evidence_artifact"
+    assert result.documents[1].get("_content_evidence_quality_guard") is not None
+
+
+def test_retrieval_keeps_list_artifacts_for_discovery_style_query():
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.96,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    bm25_hits = [
+        {
+            "_id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "_id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.97,
+            "checksum": "p1",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+        canonical_lexical_rescue_enabled=False,
+        canonical_hard_negative_suppression_enabled=False,
+        content_evidence_guard_enabled=True,
+        content_evidence_guard_max_score_gap=0.08,
+    )
+    result = pipeline.retrieve(
+        "List the files that mention the PEM fuel-cell sliding mode control paper.",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, bm25_hits),
+    )
+
+    assert len(result.documents) == 2
+    assert result.documents[0].get("checksum") == "g1"
+    assert result.documents[0].get("_content_evidence_quality_guard") is None
+
+
 def test_retrieval_uses_mmr_when_enabled():
     calls = {"embed": 0}
 
@@ -1165,6 +1294,8 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.canonical_hard_negative_min_winner_vector_score == pytest.approx(0.80)
     assert cfg.canonical_hard_negative_max_winner_title_overlap_count == 0
     assert cfg.canonical_hard_negative_min_candidate_title_overlap_count == 1
+    assert cfg.content_evidence_guard_enabled is True
+    assert cfg.content_evidence_guard_max_score_gap == pytest.approx(0.08)
     assert cfg.recency_boost_enabled is True
     assert cfg.recency_boost_weight == pytest.approx(0.06)
     assert cfg.cv_family_collapse_enabled is True

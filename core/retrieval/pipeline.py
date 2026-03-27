@@ -162,6 +162,102 @@ _GENERIC_AGGREGATE_SUMMARY_TERMS: Set[str] = {
 _GENERIC_HARD_NEGATIVE_TITLE_TERMS: Set[str] = (
     _GENERIC_LIST_INDEX_TERMS | _GENERIC_AGGREGATE_SUMMARY_TERMS
 )
+_DISCOVERY_QUERY_OBJECT_TERMS: Set[str] = {
+    "file",
+    "files",
+    "document",
+    "documents",
+    "doc",
+    "docs",
+    "path",
+    "paths",
+    "folder",
+    "folders",
+    "drive",
+    "gdrive",
+    "inventory",
+    "manifest",
+    "catalog",
+    "directory",
+    "register",
+    "index",
+    "listing",
+    "toc",
+}
+_DISCOVERY_QUERY_INTENT_TERMS: Set[str] = {
+    "list",
+    "show",
+    "find",
+    "locate",
+    "browse",
+    "enumerate",
+    "inventory",
+    "index",
+    "manifest",
+    "directory",
+    "catalog",
+    "listing",
+}
+_CONTENT_QUERY_CUE_TERMS: Set[str] = {
+    "what",
+    "which",
+    "who",
+    "where",
+    "when",
+    "why",
+    "how",
+    "explain",
+    "describe",
+    "summarize",
+    "summary",
+    "list",
+}
+_ARTIFACT_SOURCE_STRONG_CORE_TERMS: Set[str] = {
+    "inventory",
+    "manifest",
+    "catalog",
+    "directory",
+    "register",
+    "toc",
+    "listing",
+    "filelist",
+}
+_ARTIFACT_SOURCE_WEAK_CORE_TERMS: Set[str] = {
+    "list",
+    "index",
+}
+_ARTIFACT_SOURCE_CORE_TERMS: Set[str] = (
+    _ARTIFACT_SOURCE_STRONG_CORE_TERMS | _ARTIFACT_SOURCE_WEAK_CORE_TERMS
+)
+_ARTIFACT_SOURCE_SUPPORT_TERMS: Set[str] = {
+    "file",
+    "files",
+    "drive",
+    "gdrive",
+    "folder",
+    "folders",
+    "path",
+    "paths",
+}
+_ARTIFACT_SOURCE_TEXT_EXTENSIONS: Set[str] = {
+    "txt",
+    "csv",
+    "tsv",
+    "json",
+    "md",
+    "yaml",
+    "yml",
+}
+_NON_EVIDENCE_ARTIFACT_CLASS = "non_evidence_artifact"
+_CONTENT_OR_UNKNOWN_EVIDENCE_CLASS = "content_or_unknown"
+_Q10_DEBUG_CORE_TERMS: Set[str] = {
+    "pem",
+    "fuel",
+    "cell",
+    "sliding",
+    "mode",
+    "control",
+}
 
 
 def _default_deps() -> RetrievalDeps:
@@ -341,6 +437,174 @@ def _generic_hard_negative_title_terms(doc: DocHit) -> Set[str]:
         return set()
     title_tokens = _tokenize_lower(title)
     return title_tokens & _GENERIC_HARD_NEGATIVE_TITLE_TERMS
+
+
+def _query_looks_like_discovery_request(query: str) -> bool:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False
+
+    has_object = bool(tokens & _DISCOVERY_QUERY_OBJECT_TERMS)
+    has_intent = bool(tokens & _DISCOVERY_QUERY_INTENT_TERMS)
+    if has_object and has_intent:
+        return True
+
+    asks_for_file_like_target = bool(tokens & {"which", "what", "where"}) and bool(
+        tokens
+        & {
+            "file",
+            "files",
+            "document",
+            "documents",
+            "doc",
+            "docs",
+            "path",
+            "paths",
+            "folder",
+            "folders",
+        }
+    )
+    return asks_for_file_like_target
+
+
+def _is_content_question_query(query: str) -> bool:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False
+    if _query_looks_like_discovery_request(query):
+        return False
+    if "?" in query:
+        return True
+    return bool(tokens & _CONTENT_QUERY_CUE_TERMS)
+
+
+def _filename_extension(name: str) -> str:
+    if not name:
+        return ""
+    match = re.search(r"\.([a-z0-9]+)$", name.lower())
+    if not match:
+        return ""
+    return match.group(1)
+
+
+def _classify_evidence_quality(doc: DocHit) -> tuple[str, list[str]]:
+    title = _title_or_filename(doc)
+    if not title:
+        return _CONTENT_OR_UNKNOWN_EVIDENCE_CLASS, []
+
+    title_tokens = _tokenize_lower(title)
+    path_tokens = _tokenize_lower(str(doc.get("path") or ""))
+    combined_tokens = title_tokens | path_tokens
+    core_hits = combined_tokens & _ARTIFACT_SOURCE_CORE_TERMS
+    if not core_hits:
+        return _CONTENT_OR_UNKNOWN_EVIDENCE_CLASS, []
+
+    support_hits = combined_tokens & _ARTIFACT_SOURCE_SUPPORT_TERMS
+    extension = _filename_extension(title)
+    has_strong_core = bool(core_hits & _ARTIFACT_SOURCE_STRONG_CORE_TERMS)
+    has_weak_artifact_pattern = bool(
+        core_hits & _ARTIFACT_SOURCE_WEAK_CORE_TERMS
+    ) and bool(
+        support_hits
+        or extension in _ARTIFACT_SOURCE_TEXT_EXTENSIONS
+    )
+    is_artifact = has_strong_core or has_weak_artifact_pattern
+    if not is_artifact:
+        return _CONTENT_OR_UNKNOWN_EVIDENCE_CLASS, []
+
+    artifact_terms = sorted(core_hits | support_hits)
+    return _NON_EVIDENCE_ARTIFACT_CLASS, artifact_terms
+
+
+def _apply_content_evidence_quality_guard(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+) -> bool:
+    if not cfg.content_evidence_guard_enabled or len(docs) < 2:
+        return False
+    if not _is_content_question_query(query):
+        return False
+
+    content_candidates: list[tuple[int, float]] = []
+    artifact_candidates: list[tuple[int, float, list[str]]] = []
+    for idx, doc in enumerate(docs):
+        evidence_class, artifact_terms = _classify_evidence_quality(doc)
+        doc["_evidence_quality_class"] = evidence_class
+        if artifact_terms:
+            doc["_evidence_quality_terms"] = artifact_terms
+        score = float(doc.get("retrieval_score", 0.0) or 0.0)
+        if evidence_class == _NON_EVIDENCE_ARTIFACT_CLASS:
+            artifact_candidates.append((idx, score, artifact_terms))
+        else:
+            content_candidates.append((idx, score))
+
+    if not content_candidates or not artifact_candidates:
+        return False
+
+    best_content_idx, best_content_score = max(
+        content_candidates,
+        key=lambda item: (
+            item[1],
+            str(docs[item[0]].get("modified_at", "")),
+        ),
+    )
+    max_gap = max(cfg.content_evidence_guard_max_score_gap, 0.0)
+    guard_relevant = False
+    demotion_rank = 0
+    for artifact_idx, artifact_score, artifact_terms in sorted(
+        artifact_candidates,
+        key=lambda item: item[1],
+        reverse=True,
+    ):
+        score_gap = artifact_score - best_content_score
+        if score_gap > max_gap:
+            continue
+        guard_relevant = True
+        if score_gap <= 0:
+            continue
+
+        demotion_rank += 1
+        new_score = max(best_content_score - (1e-6 * demotion_rank), 0.0)
+        artifact = docs[artifact_idx]
+        artifact["retrieval_score"] = new_score
+        artifact["_content_evidence_quality_guard"] = {
+            "preferred_content_checksum": docs[best_content_idx].get("checksum"),
+            "score_gap_closed": round(score_gap, 6),
+            "artifact_terms": artifact_terms,
+        }
+
+    return guard_relevant
+
+
+def _is_q10_debug_query(query: str) -> bool:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False
+    return len(tokens & _Q10_DEBUG_CORE_TERMS) >= 5
+
+
+def _debug_evidence_quality_ranking(query: str, stage: str, docs: Sequence[DocHit]) -> None:
+    if not _is_q10_debug_query(query):
+        return
+    ranked_docs = sorted(
+        docs,
+        key=lambda doc: (
+            float(doc.get("retrieval_score", 0.0) or 0.0),
+            str(doc.get("modified_at", "")),
+        ),
+        reverse=True,
+    )
+    rows: list[str] = []
+    for rank, doc in enumerate(ranked_docs[: min(len(ranked_docs), 8)], start=1):
+        evidence_class, artifact_terms = _classify_evidence_quality(doc)
+        title = _title_or_filename(doc)
+        score = float(doc.get("retrieval_score", 0.0) or 0.0)
+        terms_text = ",".join(artifact_terms) if artifact_terms else "-"
+        rows.append(
+            f"{rank}:{score:.6f}:{evidence_class}:{terms_text}:{title}"
+        )
+    logger.info("Q10 debug | stage=%s | ranking=%s", stage, rows)
 
 
 def _is_canonical_anchored_or_semi_anchored_query(
@@ -727,6 +991,13 @@ def retrieve(
     clarify_msg: Optional[str] = None
     variants_with_weights: List[Tuple[str, float]] = []
     exact_query = query.strip()
+    if _is_q10_debug_query(exact_query):
+        query_class = "discovery" if _query_looks_like_discovery_request(exact_query) else "content"
+        logger.info(
+            "Q10 debug | query_classification=%s | query=%s",
+            query_class,
+            exact_query,
+        )
     anchored_query = has_strong_query_anchors(exact_query)
     use_exact_only = (
         cfg.enable_variants
@@ -800,6 +1071,13 @@ def retrieve(
         cfg,
         anchored_query=anchored_query,
     )
+    _debug_evidence_quality_ranking(exact_query, "pre_guard_fused", fused)
+    _apply_content_evidence_quality_guard(
+        exact_query,
+        fused,
+        cfg,
+    )
+    _debug_evidence_quality_ranking(exact_query, "post_guard_fused", fused)
 
     fused_sorted: List[DocHit] = sorted(
         fused,
@@ -854,6 +1132,30 @@ def retrieve(
     if cfg.enable_rerank and deps.cross_encoder is not None and docs_for_answer:
         docs_for_answer = deps.cross_encoder.rerank(
             query, docs_for_answer, top_n=min(cfg.rerank_top_n, len(docs_for_answer))
+        )
+
+    _debug_evidence_quality_ranking(exact_query, "pre_guard_final_candidates", docs_for_answer)
+    citation_guard_relevant = _apply_content_evidence_quality_guard(
+        exact_query,
+        docs_for_answer,
+        cfg,
+    )
+    _debug_evidence_quality_ranking(exact_query, "post_guard_final_candidates", docs_for_answer)
+    if citation_guard_relevant:
+        docs_for_answer = sorted(
+            docs_for_answer,
+            key=lambda doc: (
+                doc.get("_evidence_quality_class")
+                != _NON_EVIDENCE_ARTIFACT_CLASS,
+                float(doc.get("retrieval_score", 0.0) or 0.0),
+                str(doc.get("modified_at", "")),
+            ),
+            reverse=True,
+        )
+        _debug_evidence_quality_ranking(
+            exact_query,
+            "post_guard_final_candidates_sorted",
+            docs_for_answer,
         )
 
     if _should_abstain_for_out_of_corpus_query(query, docs_for_answer, cfg):
