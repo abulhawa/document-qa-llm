@@ -569,6 +569,175 @@ def test_analyze_strict_canonical_hard_negatives_partitions_candidates():
     assert manual_review_ids == {"Q03"}
 
 
+def test_build_strict_canonical_cleaned_residual_split():
+    archived_rows = [
+        {
+            "query_id": "Q04",
+            "query": "q4",
+            "mode": "positive",
+            "hit_at_1": False,
+            "top1_score": 0.9,
+            "top1_checksum": "w4",
+            "top2_score": 0.8,
+            "top2_checksum": "x4",
+            "top3_score": 0.7,
+            "top3_checksum": "y4",
+        },
+        {
+            "query_id": "Q05",
+            "query": "q5",
+            "mode": "positive",
+            "hit_at_1": False,
+            "top1_score": 0.9,
+            "top1_checksum": "w5",
+            "top2_score": 0.8,
+            "top2_checksum": "x5",
+            "top3_score": 0.7,
+            "top3_checksum": "y5",
+        },
+        {
+            "query_id": "Q19",
+            "query": "q19",
+            "mode": "positive",
+            "hit_at_1": False,
+            "top1_score": 0.9,
+            "top1_checksum": "w19",
+            "top2_score": 0.8,
+            "top2_checksum": "x19",
+            "top3_score": 0.7,
+            "top3_checksum": "y19",
+        },
+        {
+            "query_id": "Q10",
+            "query": "q10",
+            "mode": "positive",
+            "hit_at_1": True,
+            "top1_score": 0.9000010,
+            "top1_checksum": "expected-10",
+            "top2_score": 0.9000005,
+            "top2_checksum": "artifact-list",
+            "top3_score": 0.85,
+            "top3_checksum": "normal-3",
+        },
+    ]
+    per_query_rows = [
+        {
+            "query_id": "Q04",
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "benchmark_primary_mode": ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL,
+            "selected_for_ranking_failure_analysis": True,
+        },
+        {
+            "query_id": "Q05",
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "benchmark_primary_mode": ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL,
+            "selected_for_ranking_failure_analysis": True,
+        },
+        {
+            "query_id": "Q19",
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "benchmark_primary_mode": ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL,
+            "selected_for_ranking_failure_analysis": True,
+        },
+        {
+            "query_id": "Q10",
+            "benchmark_query_type": ranking_script.QUERY_TYPE_CANONICAL_DOCUMENT,
+            "benchmark_primary_mode": ranking_script.BENCHMARK_MODE_STRICT_RETRIEVAL,
+            "selected_for_ranking_failure_analysis": False,
+        },
+    ]
+    strict_canonical_rows = [
+        {
+            "query_id": "Q04",
+            "query": "q4",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE,
+            "actual_top1_checksum": "w4",
+            "expected_checksum": "e4",
+            "expected_rank_if_retrieved": 5,
+        },
+        {
+            "query_id": "Q05",
+            "query": "q5",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE,
+            "actual_top1_checksum": "w5",
+            "expected_checksum": "e5",
+            "expected_rank_if_retrieved": 4,
+        },
+        {
+            "query_id": "Q19",
+            "query": "q19",
+            "primary_ranking_cause_bucket": ranking_script.RANKING_CAUSE_AMBIGUOUS,
+            "actual_top1_checksum": "w19",
+            "expected_checksum": "e19",
+            "expected_rank_if_retrieved": 9,
+        },
+    ]
+    strict_canonical_hard_negative_analysis = {
+        "rows": [
+            {
+                "query_id": "Q04",
+                "evidence_bucket": ranking_script.LIKELY_RANKING_FIX_CANDIDATE,
+                "hard_negative_pattern_classes": [],
+            },
+            {
+                "query_id": "Q05",
+                "evidence_bucket": ranking_script.LIKELY_RANKING_FIX_CANDIDATE,
+                "hard_negative_pattern_classes": [],
+            },
+            {
+                "query_id": "Q19",
+                "evidence_bucket": ranking_script.LIKELY_BENCHMARK_AMBIGUITY,
+                "hard_negative_pattern_classes": [],
+            },
+        ]
+    }
+    metadata = {
+        "artifact-list": {
+            "path": "C:/docs/filtered_gdrive_list.txt",
+            "filename": "filtered_gdrive_list.txt",
+            "doc_type": "other",
+        },
+        "expected-10": {
+            "path": "C:/docs/real_paper.pdf",
+            "filename": "real_paper.pdf",
+            "doc_type": "research_paper",
+        },
+        "normal-3": {
+            "path": "C:/docs/normal_doc.pdf",
+            "filename": "normal_doc.pdf",
+            "doc_type": "research_paper",
+        },
+    }
+
+    cleaned = ranking_script.build_strict_canonical_cleaned_residual_split(
+        archived_rows=archived_rows,
+        per_query_rows=per_query_rows,
+        strict_canonical_rows=strict_canonical_rows,
+        strict_canonical_hard_negative_analysis=strict_canonical_hard_negative_analysis,
+        metadata_lookup=lambda checksum: metadata.get(checksum),
+        artifact_near_tie_epsilon=1e-5,
+    )
+    summary = cleaned["summary"]
+    assert summary["strict_canonical_benchmark_failures_total"] == 3
+    assert summary["actionable_ranking_failures"] == 2
+    assert summary["likely_benchmark_ambiguity_manual_review"] == 1
+    assert summary["already_addressed_artifact_first_cases"] == 1
+
+    actionable = cleaned["actionable_ranking_failures"]
+    assert actionable["bucket_counts"][ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE] == 2
+    assert actionable["largest_bucket"]["bucket"] == ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE
+    assert actionable["largest_bucket"]["count"] == 2
+    assert actionable["largest_bucket"]["representative_query_ids"] == ["Q04", "Q05"]
+
+    ambiguity = cleaned["likely_benchmark_ambiguity_manual_review"]
+    assert ambiguity["query_ids"] == ["Q19"]
+
+    addressed = cleaned["already_addressed_artifact_first_cases"]
+    assert addressed["query_ids"] == ["Q10"]
+    competitor = addressed["rows"][0]["artifact_competitors_within_near_tie_epsilon"][0]
+    assert "list" in competitor["artifact_terms"]
+
+
 def test_build_probe_vs_eval_comparison_reports_discrepancy():
     runbook = {
         "config": {

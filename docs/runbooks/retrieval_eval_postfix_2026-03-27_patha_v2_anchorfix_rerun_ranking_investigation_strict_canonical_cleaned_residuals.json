@@ -1,0 +1,246 @@
+{
+  "schema_version": "strict_canonical_cleaned_residuals.v1",
+  "generated_at_utc": "2026-03-27T14:41:39.239777+00:00",
+  "source_artifacts": {
+    "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun.json",
+    "ranking_investigation": "docs\\runbooks\\retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun_ranking_investigation.json"
+  },
+  "strict_canonical_cleaned_residual_split": {
+    "scope": "benchmark-cleaned strict canonical residual split (benchmark_query_type=canonical_document_query, benchmark_primary_mode=strict_retrieval)",
+    "summary": {
+      "strict_canonical_benchmark_failures_total": 10,
+      "actionable_ranking_failures": 4,
+      "likely_benchmark_ambiguity_manual_review": 6,
+      "already_addressed_artifact_first_cases": 3,
+      "artifact_near_tie_epsilon": 1e-05
+    },
+    "actionable_ranking_failures": {
+      "query_ids": [
+        "Q04",
+        "Q05",
+        "Q07",
+        "Q09"
+      ],
+      "bucket_counts": {
+        "vector dominance": 2,
+        "title/filename underweighting": 1,
+        "sibling/near-duplicate collision": 0,
+        "chunk aggregation bias": 0,
+        "doc-type prior suppression": 0,
+        "candidate generation miss": 1
+      },
+      "largest_bucket": {
+        "bucket": "vector dominance",
+        "count": 2,
+        "representative_query_ids": [
+          "Q04",
+          "Q05"
+        ]
+      },
+      "rows": [
+        {
+          "query_id": "Q04",
+          "query": "In Ali's most recent CV contact section, which city is listed?",
+          "primary_ranking_cause_bucket": "vector dominance",
+          "evidence_bucket": "likely_ranking_fix_candidate",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 6,
+          "actual_top1_checksum": "59f963f6eb8414b4f47ebfdfb4f82d5b903787f30085c4b0d8576f36e9c20703",
+          "expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3"
+        },
+        {
+          "query_id": "Q05",
+          "query": "From Ali's cover letters, what role is he applying for?",
+          "primary_ranking_cause_bucket": "vector dominance",
+          "evidence_bucket": "likely_ranking_fix_candidate",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 5,
+          "actual_top1_checksum": "8ddcd0f5da0dea628a114f30d5e2a1aea6587b69dc49e48f7e5dc54514e74705",
+          "expected_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+        },
+        {
+          "query_id": "Q07",
+          "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+          "primary_ranking_cause_bucket": "candidate generation miss",
+          "evidence_bucket": "likely_ranking_fix_candidate",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": null,
+          "actual_top1_checksum": "b14a8cf088dd5448e47eb4ec5029a554eb675acc4eb7ee3d66755143acc72487",
+          "expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        },
+        {
+          "query_id": "Q09",
+          "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+          "primary_ranking_cause_bucket": "title/filename underweighting",
+          "evidence_bucket": "likely_ranking_fix_candidate",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 2,
+          "actual_top1_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+          "expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe"
+        }
+      ]
+    },
+    "likely_benchmark_ambiguity_manual_review": {
+      "query_ids": [
+        "Q02",
+        "Q03",
+        "Q11",
+        "Q12",
+        "Q15",
+        "Q19"
+      ],
+      "rows": [
+        {
+          "query_id": "Q02",
+          "query": "In Ali's latest CV, what is his most recent job title?",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 4,
+          "actual_top1_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "expected_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+        },
+        {
+          "query_id": "Q03",
+          "query": "From Ali's latest CV, list the main technical skills.",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 10,
+          "actual_top1_checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+          "expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+        },
+        {
+          "query_id": "Q11",
+          "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 2,
+          "actual_top1_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "expected_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+        },
+        {
+          "query_id": "Q12",
+          "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 4,
+          "actual_top1_checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+          "expected_checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1"
+        },
+        {
+          "query_id": "Q15",
+          "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 3,
+          "actual_top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "expected_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed"
+        },
+        {
+          "query_id": "Q19",
+          "query": "In the tax-related invoice PDF, who is the issuing company?",
+          "primary_ranking_cause_bucket": "ambiguous/manual review",
+          "evidence_bucket": "likely_benchmark_ambiguity_manual_review",
+          "hard_negative_pattern_classes": [],
+          "expected_rank_if_retrieved": 9,
+          "actual_top1_checksum": "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+          "expected_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517"
+        }
+      ]
+    },
+    "already_addressed_artifact_first_cases": {
+      "query_ids": [
+        "Q10",
+        "Q13",
+        "Q20"
+      ],
+      "rows": [
+        {
+          "query_id": "Q10",
+          "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+          "top1_checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "top1_score": 0.933511576294939,
+          "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Sliding Mode Control of PEM Fuel Cells.pdf",
+          "top1_filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+          "top1_doc_type": "research_paper",
+          "artifact_competitors_within_near_tie_epsilon": [
+            {
+              "rank": 2,
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "score": 0.9335105762949389,
+              "score_delta_vs_top1": 1e-06,
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": "filtered_gdrive_list.txt",
+              "doc_type": "insurance_letter",
+              "artifact_terms": [
+                "list"
+              ]
+            },
+            {
+              "rank": 3,
+              "checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+              "score": 0.933506855626986,
+              "score_delta_vs_top1": 5e-06,
+              "path": "C:/Users/ali_a/My Drive/gdrive-file-list.txt",
+              "filename": "gdrive-file-list.txt",
+              "doc_type": "research_paper",
+              "artifact_terms": [
+                "list"
+              ]
+            }
+          ]
+        },
+        {
+          "query_id": "Q13",
+          "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+          "top1_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "top1_score": 0.5966521370578748,
+          "top1_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
+          "top1_filename": "New Hampshire Application.docx",
+          "top1_doc_type": "government_form",
+          "artifact_competitors_within_near_tie_epsilon": [
+            {
+              "rank": 3,
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "score": 0.5966511370578748,
+              "score_delta_vs_top1": 1e-06,
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": "filtered_gdrive_list.txt",
+              "doc_type": "insurance_letter",
+              "artifact_terms": [
+                "list"
+              ]
+            }
+          ]
+        },
+        {
+          "query_id": "Q20",
+          "query": "In the remittance receipt from 2020, what payment amount is shown?",
+          "top1_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "top1_score": 1.0344938267795152,
+          "top1_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
+          "top1_filename": "metlife receipt 20191224.pdf",
+          "top1_doc_type": "invoice",
+          "artifact_competitors_within_near_tie_epsilon": [
+            {
+              "rank": 3,
+              "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+              "score": 1.0344928267795153,
+              "score_delta_vs_top1": 1e-06,
+              "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+              "filename": "filtered_gdrive_list.txt",
+              "doc_type": "insurance_letter",
+              "artifact_terms": [
+                "list"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

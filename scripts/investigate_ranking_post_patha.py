@@ -66,7 +66,7 @@ VALID_QUERY_TYPES = {
     QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED,
 }
 DEFAULT_POSITIVE_QUERY_TYPE = QUERY_TYPE_CANONICAL_DOCUMENT
-RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v4"
+RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v5"
 RANKING_CAUSE_VECTOR_DOMINANCE = "vector dominance"
 RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING = "title/filename underweighting"
 RANKING_CAUSE_SIBLING_COLLISION = "sibling/near-duplicate collision"
@@ -149,6 +149,10 @@ HARD_NEGATIVE_CLASS_ORDER: tuple[str, ...] = (
 )
 LIKELY_RANKING_FIX_CANDIDATE = "likely_ranking_fix_candidate"
 LIKELY_BENCHMARK_AMBIGUITY = "likely_benchmark_ambiguity_manual_review"
+DEFAULT_ARTIFACT_NEAR_TIE_EPSILON = 1e-5
+STRICT_CANONICAL_CLEANED_RESIDUAL_SCHEMA_VERSION = (
+    "strict_canonical_cleaned_residuals.v1"
+)
 
 
 def reciprocal_rank(rank: int | None) -> float:
@@ -824,6 +828,20 @@ def _doc_family_key(
     return None
 
 
+def _generic_artifact_terms_from_metadata(
+    metadata: Mapping[str, Any] | None,
+) -> list[str]:
+    title = _metadata_title_or_filename(metadata)
+    if not title:
+        return []
+    tokens = set(TOKEN_RE.findall(title.lower()))
+    return sorted(tokens & GENERIC_HARD_NEGATIVE_TERMS)
+
+
+def _is_generic_artifact_metadata(metadata: Mapping[str, Any] | None) -> bool:
+    return bool(_generic_artifact_terms_from_metadata(metadata))
+
+
 def _hard_negative_pattern_context(row: Mapping[str, Any]) -> dict[str, Any]:
     diagnostics_raw = row.get("winner_vs_expected_diagnostics")
     diagnostics = diagnostics_raw if isinstance(diagnostics_raw, Mapping) else {}
@@ -1104,6 +1122,231 @@ def analyze_strict_canonical_hard_negatives(
         "likely_ranking_fix_candidates": likely_ranking_fix_candidates,
         "likely_benchmark_ambiguity_manual_review_candidates": likely_benchmark_ambiguity_candidates,
         "rows": annotated_rows,
+    }
+
+
+def build_strict_canonical_cleaned_residual_split(
+    *,
+    archived_rows: Sequence[Mapping[str, Any]],
+    per_query_rows: Sequence[Mapping[str, Any]],
+    strict_canonical_rows: Sequence[Mapping[str, Any]],
+    strict_canonical_hard_negative_analysis: Mapping[str, Any],
+    metadata_lookup: Any,
+    artifact_near_tie_epsilon: float = DEFAULT_ARTIFACT_NEAR_TIE_EPSILON,
+) -> dict[str, Any]:
+    per_query_by_id = _query_rows_by_id(per_query_rows)
+    strict_row_by_id: dict[str, Mapping[str, Any]] = {}
+    for row in strict_canonical_rows:
+        query_id = row.get("query_id")
+        if isinstance(query_id, str) and query_id:
+            strict_row_by_id[query_id] = row
+
+    hard_negative_rows = strict_canonical_hard_negative_analysis.get("rows", [])
+    hard_negative_row_by_id: dict[str, Mapping[str, Any]] = {}
+    if isinstance(hard_negative_rows, Sequence):
+        for row in hard_negative_rows:
+            if not isinstance(row, Mapping):
+                continue
+            query_id = row.get("query_id")
+            if isinstance(query_id, str) and query_id:
+                hard_negative_row_by_id[query_id] = row
+
+    strict_canonical_benchmark_failure_query_ids: list[str] = []
+    for row in per_query_rows:
+        if not isinstance(row, Mapping):
+            continue
+        if row.get("benchmark_query_type") != QUERY_TYPE_CANONICAL_DOCUMENT:
+            continue
+        if row.get("benchmark_primary_mode") != BENCHMARK_MODE_STRICT_RETRIEVAL:
+            continue
+        if not bool(row.get("selected_for_ranking_failure_analysis")):
+            continue
+        query_id = row.get("query_id")
+        if isinstance(query_id, str) and query_id:
+            strict_canonical_benchmark_failure_query_ids.append(query_id)
+
+    actionable_rows: list[dict[str, Any]] = []
+    ambiguity_rows: list[dict[str, Any]] = []
+    actionable_bucket_counter: Counter[str] = Counter()
+
+    for query_id in strict_canonical_benchmark_failure_query_ids:
+        cause_row = strict_row_by_id.get(query_id)
+        if not cause_row:
+            continue
+        hard_row = hard_negative_row_by_id.get(query_id, {})
+        cause_bucket = str(cause_row.get("primary_ranking_cause_bucket") or "")
+        evidence_bucket = str(hard_row.get("evidence_bucket") or "").strip()
+        if evidence_bucket not in {
+            LIKELY_RANKING_FIX_CANDIDATE,
+            LIKELY_BENCHMARK_AMBIGUITY,
+        }:
+            evidence_bucket = (
+                LIKELY_BENCHMARK_AMBIGUITY
+                if cause_bucket == RANKING_CAUSE_AMBIGUOUS
+                else LIKELY_RANKING_FIX_CANDIDATE
+            )
+
+        row_payload = {
+            "query_id": query_id,
+            "query": cause_row.get("query"),
+            "primary_ranking_cause_bucket": cause_bucket,
+            "evidence_bucket": evidence_bucket,
+            "hard_negative_pattern_classes": (
+                list(hard_row.get("hard_negative_pattern_classes", []))
+                if isinstance(hard_row.get("hard_negative_pattern_classes"), Sequence)
+                and not isinstance(hard_row.get("hard_negative_pattern_classes"), str)
+                else []
+            ),
+            "expected_rank_if_retrieved": cause_row.get("expected_rank_if_retrieved"),
+            "actual_top1_checksum": cause_row.get("actual_top1_checksum"),
+            "expected_checksum": cause_row.get("expected_checksum"),
+        }
+        if evidence_bucket == LIKELY_BENCHMARK_AMBIGUITY:
+            ambiguity_rows.append(row_payload)
+            continue
+        actionable_rows.append(row_payload)
+        if cause_bucket:
+            actionable_bucket_counter[cause_bucket] += 1
+
+    actionable_bucket_counts = {
+        bucket: int(actionable_bucket_counter.get(bucket, 0))
+        for bucket in RANKING_CAUSE_ORDER
+        if bucket != RANKING_CAUSE_AMBIGUOUS
+    }
+    largest_actionable_bucket: str | None = None
+    largest_actionable_bucket_count = 0
+    for bucket in RANKING_CAUSE_ORDER:
+        if bucket == RANKING_CAUSE_AMBIGUOUS:
+            continue
+        count = int(actionable_bucket_counts.get(bucket, 0))
+        if count > largest_actionable_bucket_count:
+            largest_actionable_bucket = bucket
+            largest_actionable_bucket_count = count
+
+    largest_actionable_representative_query_ids: list[str] = []
+    if largest_actionable_bucket:
+        largest_actionable_representative_query_ids = [
+            str(row.get("query_id"))
+            for row in actionable_rows
+            if row.get("primary_ranking_cause_bucket") == largest_actionable_bucket
+            and isinstance(row.get("query_id"), str)
+        ][:5]
+
+    already_addressed_artifact_first_rows: list[dict[str, Any]] = []
+    for archived_row in archived_rows:
+        query_id = archived_row.get("query_id")
+        if not isinstance(query_id, str) or not query_id:
+            continue
+        diag = per_query_by_id.get(query_id, {})
+        if (
+            diag.get("benchmark_query_type") != QUERY_TYPE_CANONICAL_DOCUMENT
+            or diag.get("benchmark_primary_mode") != BENCHMARK_MODE_STRICT_RETRIEVAL
+        ):
+            continue
+        if not bool(archived_row.get("hit_at_1")):
+            continue
+
+        top1_score = _safe_float(archived_row.get("top1_score"))
+        if top1_score is None:
+            continue
+        top1_checksum_raw = archived_row.get("top1_checksum")
+        top1_checksum = (
+            str(top1_checksum_raw)
+            if isinstance(top1_checksum_raw, str) and top1_checksum_raw
+            else None
+        )
+        top1_meta = (
+            metadata_lookup(top1_checksum) if callable(metadata_lookup) and top1_checksum else None
+        )
+        artifact_competitors: list[dict[str, Any]] = []
+        for rank in (2, 3):
+            checksum_raw = archived_row.get(f"top{rank}_checksum")
+            checksum = (
+                str(checksum_raw)
+                if isinstance(checksum_raw, str) and checksum_raw
+                else None
+            )
+            score = _safe_float(archived_row.get(f"top{rank}_score"))
+            if checksum is None or score is None:
+                continue
+            score_delta_vs_top1 = top1_score - score
+            if (
+                score_delta_vs_top1 < 0.0
+                or score_delta_vs_top1 > artifact_near_tie_epsilon
+            ):
+                continue
+            metadata = metadata_lookup(checksum) if callable(metadata_lookup) else None
+            if not _is_generic_artifact_metadata(metadata):
+                continue
+            artifact_competitors.append(
+                {
+                    "rank": rank,
+                    "checksum": checksum,
+                    "score": score,
+                    "score_delta_vs_top1": round(score_delta_vs_top1, 6),
+                    "path": (metadata or {}).get("path"),
+                    "filename": (metadata or {}).get("filename"),
+                    "doc_type": (metadata or {}).get("doc_type"),
+                    "artifact_terms": _generic_artifact_terms_from_metadata(metadata),
+                }
+            )
+        if not artifact_competitors:
+            continue
+        already_addressed_artifact_first_rows.append(
+            {
+                "query_id": query_id,
+                "query": archived_row.get("query"),
+                "top1_checksum": top1_checksum,
+                "top1_score": top1_score,
+                "top1_path": (top1_meta or {}).get("path"),
+                "top1_filename": (top1_meta or {}).get("filename"),
+                "top1_doc_type": (top1_meta or {}).get("doc_type"),
+                "artifact_competitors_within_near_tie_epsilon": artifact_competitors,
+            }
+        )
+
+    already_addressed_artifact_first_rows.sort(
+        key=lambda row: str(row.get("query_id") or "")
+    )
+    actionable_rows.sort(key=lambda row: str(row.get("query_id") or ""))
+    ambiguity_rows.sort(key=lambda row: str(row.get("query_id") or ""))
+
+    return {
+        "scope": (
+            "benchmark-cleaned strict canonical residual split "
+            "(benchmark_query_type=canonical_document_query, benchmark_primary_mode=strict_retrieval)"
+        ),
+        "summary": {
+            "strict_canonical_benchmark_failures_total": len(
+                strict_canonical_benchmark_failure_query_ids
+            ),
+            "actionable_ranking_failures": len(actionable_rows),
+            "likely_benchmark_ambiguity_manual_review": len(ambiguity_rows),
+            "already_addressed_artifact_first_cases": len(
+                already_addressed_artifact_first_rows
+            ),
+            "artifact_near_tie_epsilon": artifact_near_tie_epsilon,
+        },
+        "actionable_ranking_failures": {
+            "query_ids": [row.get("query_id") for row in actionable_rows],
+            "bucket_counts": actionable_bucket_counts,
+            "largest_bucket": {
+                "bucket": largest_actionable_bucket,
+                "count": largest_actionable_bucket_count,
+                "representative_query_ids": largest_actionable_representative_query_ids,
+            },
+            "rows": actionable_rows,
+        },
+        "likely_benchmark_ambiguity_manual_review": {
+            "query_ids": [row.get("query_id") for row in ambiguity_rows],
+            "rows": ambiguity_rows,
+        },
+        "already_addressed_artifact_first_cases": {
+            "query_ids": [
+                row.get("query_id") for row in already_addressed_artifact_first_rows
+            ],
+            "rows": already_addressed_artifact_first_rows,
+        },
     }
 
 
@@ -1563,6 +1806,8 @@ def investigate_ranking_post_patha(
     probe_depth: int,
     support_labels_path: Path | None = DEFAULT_SUPPORT_LABELS_PATH,
     review_rank_limit: int = DEFAULT_REVIEW_RANK_LIMIT,
+    cleaned_strict_output_path: Path | None = None,
+    artifact_near_tie_epsilon: float = DEFAULT_ARTIFACT_NEAR_TIE_EPSILON,
 ) -> dict[str, Any]:
     runbook = _load_json(patha_runbook_path)
     fixture = _load_json(fixture_path)
@@ -2066,6 +2311,16 @@ def investigate_ranking_post_patha(
     strict_canonical_hard_negative_analysis = analyze_strict_canonical_hard_negatives(
         strict_canonical_rank_cause_rows
     )
+    strict_canonical_cleaned_residual_split = (
+        build_strict_canonical_cleaned_residual_split(
+            archived_rows=rows,
+            per_query_rows=per_query_rank_rows,
+            strict_canonical_rows=strict_canonical_rank_cause_rows,
+            strict_canonical_hard_negative_analysis=strict_canonical_hard_negative_analysis,
+            metadata_lookup=cached_fulltext,
+            artifact_near_tie_epsilon=artifact_near_tie_epsilon,
+        )
+    )
     ablation_per_query: list[dict[str, Any]] = []
     ablation_deltas: dict[str, list[int]] = defaultdict(list)
 
@@ -2270,8 +2525,9 @@ def investigate_ranking_post_patha(
     output = {
         "schema_version": RANKING_INVESTIGATION_SCHEMA_VERSION,
         "compatibility_note": (
-            "Schema v4 adds strict_canonical_hard_negative_analysis for deterministic "
-            "hard-negative pattern aggregation and candidate-vs-ambiguity partitioning."
+            "Schema v5 keeps v4 outputs and adds strict_canonical_cleaned_residual_split "
+            "for benchmark-cleaned strict canonical triage "
+            "(actionable vs ambiguity vs already-addressed artifact-first)."
         ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_artifacts": {
@@ -2427,6 +2683,7 @@ def investigate_ranking_post_patha(
             "rows": strict_canonical_rank_cause_rows,
             "hard_negative_analysis": strict_canonical_hard_negative_analysis,
         },
+        "strict_canonical_cleaned_residual_split": strict_canonical_cleaned_residual_split,
         "ablation_analysis": {
             "scope": (
                 "benchmark-aware ranking failures: strict_retrieval misses for canonical/ambiguous "
@@ -2473,11 +2730,32 @@ def investigate_ranking_post_patha(
         json.dump(output, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
 
+    if cleaned_strict_output_path is not None:
+        cleaned_sidecar = {
+            "schema_version": STRICT_CANONICAL_CLEANED_RESIDUAL_SCHEMA_VERSION,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "source_artifacts": {
+                "patha_runbook": str(patha_runbook_path),
+                "ranking_investigation": str(output_path),
+            },
+            "strict_canonical_cleaned_residual_split": strict_canonical_cleaned_residual_split,
+        }
+        cleaned_strict_output_path.parent.mkdir(parents=True, exist_ok=True)
+        with cleaned_strict_output_path.open("w", encoding="utf-8") as fh:
+            json.dump(cleaned_sidecar, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+
     return output
 
 
 def _default_output(patha_runbook: Path) -> Path:
     return patha_runbook.with_name(f"{patha_runbook.stem}_ranking_investigation.json")
+
+
+def _default_cleaned_strict_output(ranking_output: Path) -> Path:
+    return ranking_output.with_name(
+        f"{ranking_output.stem}_strict_canonical_cleaned_residuals.json"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -2504,7 +2782,25 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--cleaned-strict-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional sidecar output path for benchmark-cleaned strict canonical split "
+            "(actionable vs ambiguity vs already-addressed artifact-first)."
+        ),
+    )
     parser.add_argument("--probe-depth", type=int, default=DEFAULT_PROBE_DEPTH)
+    parser.add_argument(
+        "--artifact-near-tie-epsilon",
+        type=float,
+        default=DEFAULT_ARTIFACT_NEAR_TIE_EPSILON,
+        help=(
+            "Score delta threshold used to flag already-addressed artifact-first cases "
+            "where artifact docs remain near-tied behind a correct top-1."
+        ),
+    )
     parser.add_argument(
         "--review-rank-limit",
         type=int,
@@ -2517,6 +2813,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     output_path = args.output or _default_output(args.patha_runbook)
+    cleaned_strict_output_path = (
+        args.cleaned_strict_output or _default_cleaned_strict_output(output_path)
+    )
     output = investigate_ranking_post_patha(
         patha_runbook_path=args.patha_runbook,
         fixture_path=args.fixture,
@@ -2524,11 +2823,14 @@ def main() -> None:
         probe_depth=max(args.probe_depth, 1),
         support_labels_path=args.support_labels,
         review_rank_limit=max(args.review_rank_limit, 1),
+        cleaned_strict_output_path=cleaned_strict_output_path,
+        artifact_near_tie_epsilon=max(float(args.artifact_near_tie_epsilon), 0.0),
     )
     metrics = output.get("probe_ranking_metrics", {})
     strict_metrics = metrics.get(BENCHMARK_MODE_STRICT_RETRIEVAL, {})
     support_metrics = metrics.get(BENCHMARK_MODE_ANSWER_SUPPORT, {})
     print(f"Wrote: {output_path}")
+    print(f"Wrote cleaned strict sidecar: {cleaned_strict_output_path}")
     print(
         "Probe metrics: "
         f"strict_hit@1={strict_metrics.get('hit_at_1_probe')}/{strict_metrics.get('positive_total')}, "
