@@ -72,6 +72,25 @@ DEFAULT_CANDIDATE_DEPTH = 60
 DEFAULT_VERY_LOW_TEXT_THRESHOLD = 200
 OCR_MEANINGFUL_MIN_RATE = 0.30
 OCR_MEANINGFUL_MIN_COUNT = 3
+DEFAULT_SUPPORT_LABELS_PATH = Path("tests/fixtures/retrieval_eval_answer_support_labels.json")
+
+BENCHMARK_MODE_STRICT_RETRIEVAL = "strict_retrieval"
+BENCHMARK_MODE_ANSWER_SUPPORT = "answer_support"
+QUERY_TYPE_CANONICAL_DOCUMENT = "canonical_document_query"
+QUERY_TYPE_MULTI_SOURCE_FACTUAL = "multi_source_factual_query"
+QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED = "ambiguous_reviewer_needed"
+QUERY_TYPE_ORDER: tuple[str, ...] = (
+    QUERY_TYPE_CANONICAL_DOCUMENT,
+    QUERY_TYPE_MULTI_SOURCE_FACTUAL,
+    QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED,
+)
+VALID_QUERY_TYPES = {
+    QUERY_TYPE_CANONICAL_DOCUMENT,
+    QUERY_TYPE_MULTI_SOURCE_FACTUAL,
+    QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED,
+}
+DEFAULT_POSITIVE_QUERY_TYPE = QUERY_TYPE_CANONICAL_DOCUMENT
+RESIDUAL_FAILURE_ANALYSIS_SCHEMA_VERSION = "residual_failure_analysis.v2"
 
 
 @dataclass(frozen=True)
@@ -97,6 +116,99 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"Expected JSON object in {path}")
     return data
+
+
+def _dedupe_str_checksums(values: Sequence[Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        checksum = value.strip()
+        if not checksum or checksum in seen:
+            continue
+        seen.add(checksum)
+        out.append(checksum)
+    return out
+
+
+def _normalize_query_type(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in VALID_QUERY_TYPES:
+        return normalized
+    return None
+
+
+def _load_support_labels(path: Path | None) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    if path is None or not path.exists():
+        return {}, {}
+    data = _load_json(path)
+    meta = data.get("meta", {})
+    if not isinstance(meta, dict):
+        meta = {}
+    raw_overrides = data.get("overrides", {})
+    if not isinstance(raw_overrides, dict):
+        return meta, {}
+    overrides: dict[str, dict[str, Any]] = {}
+    for query_id, override in raw_overrides.items():
+        if not isinstance(query_id, str) or not isinstance(override, dict):
+            continue
+        overrides[query_id] = override
+    return meta, overrides
+
+
+def resolve_query_benchmark_type(
+    *,
+    fixture_query: Mapping[str, Any] | None,
+    label_override: Mapping[str, Any] | None,
+    default_query_type: str = DEFAULT_POSITIVE_QUERY_TYPE,
+) -> str:
+    override_type = _normalize_query_type(
+        (label_override or {}).get("benchmark_query_type")
+    )
+    if override_type:
+        return override_type
+    fixture_type = _normalize_query_type((fixture_query or {}).get("benchmark_query_type"))
+    if fixture_type:
+        return fixture_type
+    return _normalize_query_type(default_query_type) or QUERY_TYPE_CANONICAL_DOCUMENT
+
+
+def benchmark_mode_for_query_type(query_type: str) -> str:
+    if query_type == QUERY_TYPE_MULTI_SOURCE_FACTUAL:
+        return BENCHMARK_MODE_ANSWER_SUPPORT
+    return BENCHMARK_MODE_STRICT_RETRIEVAL
+
+
+def resolve_support_expectations(
+    *,
+    strict_expected_checksums: Sequence[str],
+    label_override: Mapping[str, Any] | None,
+) -> tuple[list[str], str | None]:
+    strict = _dedupe_str_checksums(strict_expected_checksums)
+    if not label_override:
+        preferred = strict[0] if strict else None
+        return strict, preferred
+
+    raw_mode = str(label_override.get("answer_support_mode") or "merge").strip().lower()
+    mode = raw_mode if raw_mode in {"merge", "replace"} else "merge"
+    extra_checksums = _dedupe_str_checksums(
+        label_override.get("answer_support_checksums") or []
+    )
+    if mode == "replace":
+        support = extra_checksums
+    else:
+        support = _dedupe_str_checksums([*strict, *extra_checksums])
+
+    preferred_override = label_override.get("preferred_checksum")
+    preferred_checksum: str | None = None
+    if isinstance(preferred_override, str) and preferred_override.strip():
+        preferred_checksum = preferred_override.strip()
+    if preferred_checksum is None:
+        preferred_checksum = strict[0] if strict else None
+    return support, preferred_checksum
 
 
 def _tokenize(query: str) -> list[str]:
@@ -422,6 +534,7 @@ def analyze_residual_failures(
     output_path: Path,
     candidate_depth: int,
     very_low_text_threshold: int,
+    support_labels_path: Path | None = DEFAULT_SUPPORT_LABELS_PATH,
 ) -> dict[str, Any]:
     patha_data = _load_json(patha_runbook_path)
     fixture_data = _load_json(fixture_path)
@@ -432,13 +545,16 @@ def analyze_residual_failures(
         if isinstance(q, dict) and q.get("id")
     }
 
-    positive_failed_rows: list[dict[str, Any]] = [
+    positive_rows: list[dict[str, Any]] = [
         row
         for row in patha_data.get("rows", [])
         if isinstance(row, dict)
         and row.get("mode") == "positive"
-        and not bool(row.get("hit_at_1"))
     ]
+    support_label_meta, support_label_overrides = _load_support_labels(support_labels_path)
+    default_positive_query_type = _normalize_query_type(
+        support_label_meta.get("default_positive_query_type")
+    ) or DEFAULT_POSITIVE_QUERY_TYPE
 
     os_client = get_client()
     metadata_cache: dict[str, dict[str, Any] | None] = {}
@@ -447,23 +563,39 @@ def analyze_residual_failures(
     per_query_rows: list[dict[str, Any]] = []
     bucket_counter: Counter[str] = Counter()
     query_class_counter: Counter[str] = Counter()
+    query_type_counter: Counter[str] = Counter()
+    benchmark_mode_counter: Counter[str] = Counter()
+    selected_failure_mode_counter: Counter[str] = Counter()
 
-    for row in positive_failed_rows:
+    for row in positive_rows:
         query_id = str(row.get("query_id") or "")
         query_text = str(row.get("query") or "")
         fixture_row = fixture_queries.get(query_id, {})
-        expected_checksums = list(row.get("expected_checksums") or fixture_row.get("expected_checksums") or [])
+        strict_expected_checksums = _dedupe_str_checksums(
+            row.get("expected_checksums") or fixture_row.get("expected_checksums") or []
+        )
+        label_override = support_label_overrides.get(query_id)
+        support_expected_checksums, _ = resolve_support_expectations(
+            strict_expected_checksums=strict_expected_checksums,
+            label_override=label_override,
+        )
+        query_type = resolve_query_benchmark_type(
+            fixture_query=fixture_row,
+            label_override=label_override,
+            default_query_type=default_positive_query_type,
+        )
+        benchmark_mode = benchmark_mode_for_query_type(query_type)
         expected_doc_types = list(fixture_row.get("expected_doc_types") or [])
+        expected_checksums_for_failure_lens = (
+            support_expected_checksums
+            if benchmark_mode == BENCHMARK_MODE_ANSWER_SUPPORT
+            else strict_expected_checksums
+        )
 
         query_class = classify_query_anchor(query_text)
         query_class_counter[query_class] += 1
-
-        deep_hits, deep_probe_error = _run_deep_probe(query_text, probe_cfg)
-        deep_checksums = _safe_checksums(deep_hits)
-        expected_rank_in_candidates = _first_expected_rank(deep_checksums, expected_checksums)
-        relevant_in_candidates = (
-            None if deep_probe_error else bool(expected_rank_in_candidates is not None)
-        )
+        query_type_counter[query_type] += 1
+        benchmark_mode_counter[benchmark_mode] += 1
 
         top_docs = _top_doc_records(row, metadata_cache, os_client)
         top_checksums = [
@@ -471,9 +603,42 @@ def analyze_residual_failures(
             for doc in top_docs
             if isinstance(doc.get("checksum"), str)
         ]
+        strict_rank_in_top3 = _first_expected_rank(top_checksums, strict_expected_checksums)
+        support_rank_in_top3 = _first_expected_rank(top_checksums, support_expected_checksums)
+        strict_hit_at_1_archived = bool(row.get("hit_at_1"))
+        strict_hit_at_3_top3 = (
+            isinstance(strict_rank_in_top3, int) and strict_rank_in_top3 <= 3
+        )
+        support_hit_at_1_top3 = support_rank_in_top3 == 1
+        support_hit_at_3_top3 = (
+            isinstance(support_rank_in_top3, int) and support_rank_in_top3 <= 3
+        )
+        selected_for_failure = (
+            not strict_hit_at_1_archived
+            if benchmark_mode == BENCHMARK_MODE_STRICT_RETRIEVAL
+            else not support_hit_at_1_top3
+        )
+        if not selected_for_failure:
+            continue
+        selected_failure_mode_counter[benchmark_mode] += 1
+
+        deep_hits, deep_probe_error = _run_deep_probe(query_text, probe_cfg)
+        deep_checksums = _safe_checksums(deep_hits)
+        strict_rank_in_candidates = _first_expected_rank(deep_checksums, strict_expected_checksums)
+        support_rank_in_candidates = _first_expected_rank(
+            deep_checksums, support_expected_checksums
+        )
+        expected_rank_in_candidates = (
+            support_rank_in_candidates
+            if benchmark_mode == BENCHMARK_MODE_ANSWER_SUPPORT
+            else strict_rank_in_candidates
+        )
+        relevant_in_candidates = (
+            None if deep_probe_error else bool(expected_rank_in_candidates is not None)
+        )
 
         expected_indicators: list[ExpectedDocIndicator] = []
-        for checksum in expected_checksums:
+        for checksum in expected_checksums_for_failure_lens:
             if checksum not in metadata_cache:
                 metadata_cache[checksum] = _fetch_fulltext_by_checksum(os_client, checksum)
             fulltext_doc = metadata_cache[checksum]
@@ -507,7 +672,11 @@ def analyze_residual_failures(
         corpus_absence_evidence = not any_expected_exists
 
         bucket = assign_primary_bucket(
-            relevant_in_top3=bool(row.get("hit_at_3")),
+            relevant_in_top3=(
+                support_hit_at_3_top3
+                if benchmark_mode == BENCHMARK_MODE_ANSWER_SUPPORT
+                else strict_hit_at_3_top3
+            ),
             relevant_in_candidates=relevant_in_candidates,
             expected_rank_in_candidates=expected_rank_in_candidates,
             text_gap_evidence=text_gap_evidence,
@@ -517,7 +686,7 @@ def analyze_residual_failures(
         bucket_counter[bucket] += 1
 
         primary_expected_checksum = _resolve_primary_expected_checksum(
-            expected_checksums=expected_checksums,
+            expected_checksums=expected_checksums_for_failure_lens,
             top_checksums=top_checksums,
             deep_probe_checksums=deep_checksums,
         )
@@ -532,17 +701,33 @@ def analyze_residual_failures(
             {
                 "query_id": query_id,
                 "query": query_text,
+                "benchmark_query_type": query_type,
+                "benchmark_primary_mode": benchmark_mode,
                 "query_classification": query_class,
                 "expected_reference": {
                     "expected_doc_types": expected_doc_types,
+                    "strict_expected_checksums": strict_expected_checksums,
+                    "answer_support_checksums": support_expected_checksums,
+                    "expected_checksums_for_failure_lens": expected_checksums_for_failure_lens,
                     "primary_expected_checksum": primary_expected_checksum,
                     "primary_expected_path": (
                         primary_indicator.path if primary_indicator else None
                     ),
                     "fixture_note": fixture_row.get("notes"),
                 },
-                "relevant_doc_in_top3": bool(row.get("hit_at_3")),
+                "selected_for_failure_analysis": selected_for_failure,
+                "strict_hit_at_1_archived": strict_hit_at_1_archived,
+                "strict_relevant_doc_in_top3": strict_hit_at_3_top3,
+                "answer_support_hit_at_1_top3": support_hit_at_1_top3,
+                "answer_support_relevant_doc_in_top3": support_hit_at_3_top3,
+                "relevant_doc_in_top3": (
+                    support_hit_at_3_top3
+                    if benchmark_mode == BENCHMARK_MODE_ANSWER_SUPPORT
+                    else strict_hit_at_3_top3
+                ),
                 "relevant_doc_in_candidates": relevant_in_candidates,
+                "strict_expected_rank_in_candidates": strict_rank_in_candidates,
+                "answer_support_rank_in_candidates": support_rank_in_candidates,
                 "expected_rank_in_candidates": expected_rank_in_candidates,
                 "top_returned_docs": top_docs,
                 "expected_doc_indicators": [
@@ -575,15 +760,46 @@ def analyze_residual_failures(
         )
 
     recommendation = build_ocr_recommendation(bucket_counter, total_failed)
+    query_type_summary = {
+        query_type: query_type_counter.get(query_type, 0)
+        for query_type in QUERY_TYPE_ORDER
+    }
+    benchmark_mode_summary = {
+        BENCHMARK_MODE_STRICT_RETRIEVAL: benchmark_mode_counter.get(
+            BENCHMARK_MODE_STRICT_RETRIEVAL, 0
+        ),
+        BENCHMARK_MODE_ANSWER_SUPPORT: benchmark_mode_counter.get(
+            BENCHMARK_MODE_ANSWER_SUPPORT, 0
+        ),
+    }
     output = {
+        "schema_version": RESIDUAL_FAILURE_ANALYSIS_SCHEMA_VERSION,
+        "compatibility_note": (
+            "Schema v2 adds explicit benchmarking metadata and query-type/mode summaries. "
+            "Consumers should read aggregate_summary.*_summary fields."
+        ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_artifacts": {
             "patha_runbook": str(patha_runbook_path),
             "fixture": str(fixture_path),
+            "support_labels": str(support_labels_path) if support_labels_path else None,
         },
         "analysis_scope": {
             "failed_positive_queries": total_failed,
-            "criterion": "mode=positive and hit_at_1=false from Path A eval artifact",
+            "criterion": (
+                "mode=positive with benchmark-aware failure lens: strict_retrieval hit@1 "
+                "for canonical/ambiguous queries, answer_support hit@1 for explicitly "
+                "multi-source queries"
+            ),
+        },
+        "benchmarking": {
+            "benchmark_modes": [
+                BENCHMARK_MODE_STRICT_RETRIEVAL,
+                BENCHMARK_MODE_ANSWER_SUPPORT,
+            ],
+            "query_type_labels": list(QUERY_TYPE_ORDER),
+            "default_positive_query_type": default_positive_query_type,
+            "support_labels_overrides_count": len(support_label_overrides),
         },
         "probe_method": {
             "candidate_probe": {
@@ -608,6 +824,9 @@ def analyze_residual_failures(
             "total_failed_positive_queries": total_failed,
             "bucket_summary": bucket_summary,
             "query_classification_summary": dict(query_class_counter),
+            "benchmark_query_type_summary": query_type_summary,
+            "benchmark_primary_mode_summary": benchmark_mode_summary,
+            "selected_failure_mode_summary": dict(selected_failure_mode_counter),
             "deep_probe_errors": sum(
                 1 for row in per_query_rows if row.get("deep_probe_error")
             ),
@@ -645,6 +864,15 @@ def parse_args() -> argparse.Namespace:
         help="Path to retrieval fixture JSON.",
     )
     parser.add_argument(
+        "--support-labels",
+        type=Path,
+        default=DEFAULT_SUPPORT_LABELS_PATH,
+        help=(
+            "Optional JSON file containing manual answer-support checksums and "
+            "benchmark query-type overrides."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -674,6 +902,7 @@ def main() -> None:
         output_path=output_path,
         candidate_depth=max(args.candidate_depth, 1),
         very_low_text_threshold=max(args.very_low_text_threshold, 1),
+        support_labels_path=args.support_labels,
     )
     recommendation = output.get("ocr_canary_recommendation", {})
     print(f"Wrote: {output_path}")

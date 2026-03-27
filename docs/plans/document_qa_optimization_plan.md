@@ -725,45 +725,45 @@ Status (2026-03-26):
   - Artifacts:
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json`
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.csv`
-- Residual-failure sidecar analysis completed (2026-03-27) for all positive queries with `hit@1=false`:
+- Residual-failure sidecar analysis rerun completed (2026-03-27) under benchmark-separated framing:
   - Artifact:
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_residual_failure_analysis.json`
-  - Scope: `15` residual positive misses (`20 positive - 5 hit@1`).
+  - Schema marker:
+    - `schema_version=residual_failure_analysis.v2` (compatibility note included in artifact).
+  - Query-type counts:
+    - `canonical_document_query=19`
+    - `multi_source_factual_query=1`
+    - `ambiguous_reviewer_needed=0`
+  - Scope: `14` benchmark-selected residual misses (`selected_failure_mode_summary: strict_retrieval=14`).
   - Primary buckets:
-    - `relevant doc ranked below 1 but within top-3`: `7/15` (`46.67%`)
-    - `relevant doc retrieved but ranked below top-3`: `7/15` (`46.67%`)
-    - `relevant doc not retrieved despite text being available`: `1/15` (`6.67%`)
-    - `likely text extraction / OCR gap`: `0/15` (`0.00%`)
-  - OCR canary recommendation: **NO** (no measured text-extraction/OCR-driven residual misses in this pass).
-  - Conclusion: defer P8 OCR canary; prioritize another targeted non-OCR retrieval iteration focused on top-1 ranking lift.
-- Ranking-focused follow-up investigation completed (2026-03-27):
+    - `relevant doc ranked below 1 but within top-3`: `6/14` (`42.86%`)
+    - `relevant doc retrieved but ranked below top-3`: `7/14` (`50.00%`)
+    - `relevant doc not retrieved despite text being available`: `1/14` (`7.14%`)
+    - `likely text extraction / OCR gap`: `0/14` (`0.00%`)
+  - OCR canary recommendation: **NO** (no measured text-extraction/OCR-driven residual misses).
+- Ranking-focused follow-up investigation rerun completed (2026-03-27) under benchmark-separated framing:
   - Artifact:
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_ranking_investigation.json`
-  - Deterministic deep-rank probe (`exact-query`, `probe_depth=40`) for rank diagnostics:
-    - `hit@1_probe=4/20` (`0.20`)
-    - `hit@3_probe=6/20` (`0.30`)
-    - `MRR_probe=0.3261`
-    - Rank buckets: `rank1=4`, `rank2-3=2`, `rank4-10=6`, `rank11-40=7`, `not_retrieved=1`.
-  - Failed-query ablation signal (`15` archived hit@1 misses):
-    - `no_boosts`: improved `6/15`, worsened `0/15`, avg rank delta `-1.4`.
-    - `no_authority`: improved `5/15`, worsened `0/15`, avg rank delta `-1.0`.
-    - `no_recency`: improved `3/15`, worsened `0/15`, avg rank delta `-0.4`.
-  - Retrieved-content similarity check on archived misses:
-    - No strong near-duplicate (`~99%`) top1-vs-expected cases detected.
-    - Auto answer-likelihood remained `unlikely_or_unknown` for `13/15` (only `2/15` marked `possibly_correct_with_top3_context`).
-    - Repeated hard-negative top1 checksum observed: `45f108c0...` (`4` misses; `filtered_gdrive_list.txt`, `doc_type=insurance_letter`).
-  - Dual-metric scoring added (strict source-hit vs deterministic equivalent-source answer-support):
-    - `source_strict_hit@1_probe=4/20`, `source_strict_hit@3_probe=6/20`.
-    - `answer_support_hit@1_probe=4/20`, `answer_support_hit@3_probe=6/20` (no lift under current conservative equivalence thresholds).
-    - Support-label infrastructure added for curated overrides:
-      - `tests/fixtures/retrieval_eval_answer_support_labels.json`
-      - `scripts/investigate_ranking_post_patha.py --support-labels ...`
-    - Interpretation: no override labels are populated yet (`overrides_count=0`), so current deterministic equivalence policy did not capture additional “correct via alternate source” cases.
-  - Next ranking investigation increment (2026-03-27):
-    - Added deterministic `answer_support_review_queue` output (archived hit@1 failures only) with query anchors, top probe docs, and reviewer fields for alternate-source support decisions.
-    - Current queue snapshot: `queries_in_queue=15`, `queries_with_suggested_candidates=0/15`, `suggested_candidate_docs_total=0` under configured thresholds.
-    - Interpretation: remaining misses still look primarily like ranking/ordering failures rather than obvious duplicate/equivalent-source labeling misses.
-  - Conclusion: weak metrics remain primarily a ranking policy issue (boost tuning + hard-negative suppression), not OCR.
+  - Schema marker:
+    - `schema_version=ranking_investigation.v2` (compatibility note included in artifact; legacy flat probe keys removed).
+  - Deterministic deep-rank probe (`exact-query`, `probe_depth=40`) metrics:
+    - `strict_retrieval`: `hit@1=4/20` (`0.20`), `hit@3=6/20` (`0.30`), `MRR=0.3261`
+    - `answer_support`: `hit@1=5/20` (`0.25`), `hit@3=7/20` (`0.35`), `MRR=0.3661`
+  - Query-type breakouts now emitted in both metric blocks:
+    - `canonical_document_query (n=19)`: strict `hit@1=4/19`, strict `hit@3=6/19`; answer-support identical (`4/19`, `6/19`)
+    - `multi_source_factual_query (n=1)`: strict `hit@1=0/1`, strict `hit@3=0/1`; answer-support `hit@1=1/1`, `hit@3=1/1`
+    - `ambiguous_reviewer_needed (n=0)`: no samples in this fixture pass
+  - Comparison vs prior mixed framing artifact (`HEAD` runbook before separation rerun):
+    - Prior mixed probe metrics: `hit@1=4/20`, `hit@3=6/20`, `MRR=0.3261`
+    - New strict metrics are unchanged (`4/20`, `6/20`, `0.3261`) -> no strict lift from relabeling; ranking weakness remains.
+    - New answer-support metrics improved (`hit@1: 4->5`, `hit@3: 6->7`, `MRR: 0.3261->0.3661`) due benchmark separation/manual support labeling.
+    - Benchmark-selected residual misses dropped `15->14`, explained by one multi-source query (`Q01`) moving from strict miss to answer-support success.
+  - Remaining true ranking failures:
+    - Benchmark-selected ranking failures are entirely strict (`14`, mode=`strict_retrieval`).
+    - Canonical strict misses remain high: `15/19` on probe hit@1 (query IDs: `Q02,Q03,Q04,Q05,Q06,Q07,Q09,Q10,Q11,Q12,Q13,Q14,Q15,Q19,Q20`).
+    - Ablation signal over benchmark-selected failures (`14`): `no_boosts` improved `5/14`, `no_authority` improved `4/14`, `no_recency` improved `3/14`.
+  - Next tuning target (strict canonical only):
+    - Prioritize top-1 ranking lift for `canonical_document_query` misses only, focusing on boost/hard-negative behavior (`45f108c0...` remains recurrent) rather than answer-support labeling or OCR.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
 Objective:
