@@ -1,0 +1,63 @@
+{
+  "generated_at_utc": "2026-03-27T23:53:14.876278+00:00",
+  "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+  "support_labels": "tests\\fixtures\\retrieval_eval_answer_support_labels.json",
+  "mode": "sibling_expansion_off_vs_on",
+  "comparison": {
+    "full_gold_set": {
+      "strict_hit_at_1": {
+        "off": 9,
+        "on": 9,
+        "delta": 0
+      },
+      "strict_hit_at_3": {
+        "off": 16,
+        "on": 15,
+        "delta": -1
+      },
+      "final_context_support_hits": {
+        "off": 16,
+        "on": 16,
+        "delta": 0
+      }
+    },
+    "target_profile_when_where": {
+      "query_ids": [
+        "Q01"
+      ],
+      "support_hits": {
+        "off": 1,
+        "on": 1,
+        "delta": 0
+      },
+      "qa_answered_without_error": {
+        "off": 0,
+        "on": 0,
+        "delta": 0
+      }
+    },
+    "query_level_deltas": {
+      "improved_final_context_support": [],
+      "regressed_final_context_support": [],
+      "improved_strict_hit_at_3": [],
+      "regressed_strict_hit_at_3": [
+        "Q01"
+      ]
+    },
+    "timing_dominant_stage_group": {
+      "off": "live_index_queries",
+      "on": "live_index_queries"
+    },
+    "run_duration_ms": {
+      "off": 13257.68,
+      "on": 13405.816,
+      "delta": 148.13600000000042
+    }
+  },
+  "artifacts": {
+    "off_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_off.json",
+    "on_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_on.json",
+    "off_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_off.csv",
+    "on_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_on.csv"
+  }
+}
