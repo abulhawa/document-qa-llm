@@ -722,6 +722,23 @@ def _is_canonical_anchored_or_semi_anchored_query(
     return bool(tokens & _AMBIGUOUS_PRONOUNS)
 
 
+def _collapse_similarity_threshold_for_query(
+    query: str,
+    cfg: RetrievalConfig,
+    *,
+    anchored_query: bool,
+) -> float:
+    if not _is_canonical_anchored_or_semi_anchored_query(
+        query,
+        anchored_query=anchored_query,
+    ):
+        return cfg.sim_threshold
+    return max(
+        cfg.sim_threshold,
+        cfg.canonical_anchored_sim_threshold,
+    )
+
+
 def _apply_canonical_lexical_rescue(
     query: str,
     docs: Sequence[DocHit],
@@ -1194,11 +1211,16 @@ def retrieve(
 
     # 4) Near-duplicate collapse (keep one rep; stage dups aside)
     kept, dups = (unique_docs, [])
-    if deps.embed_texts is not None and cfg.sim_threshold > 0:
+    collapse_sim_threshold = _collapse_similarity_threshold_for_query(
+        exact_query,
+        cfg,
+        anchored_query=anchored_query,
+    )
+    if deps.embed_texts is not None and collapse_sim_threshold > 0:
         kept, dups = collapse_near_duplicates(
             unique_docs,
             embed_texts=deps.embed_texts,
-            sim_threshold=cfg.sim_threshold,
+            sim_threshold=collapse_sim_threshold,
             keep_limit=cfg.collapse_keep_limit,
         )
 

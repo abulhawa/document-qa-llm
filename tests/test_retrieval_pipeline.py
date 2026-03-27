@@ -1078,6 +1078,93 @@ def test_retrieval_tops_up_from_unique_docs_before_duplicates(monkeypatch):
     assert [doc.get("id") for doc in result.documents] == ["v1", "v2", "v3"]
 
 
+def test_retrieval_uses_higher_canonical_sim_threshold_for_anchored_query(monkeypatch):
+    observed: Dict[str, float] = {}
+
+    def fake_collapse(docs, embed_texts, sim_threshold=0.9, keep_limit=64):
+        observed["sim_threshold"] = float(sim_threshold)
+        return list(docs), []
+
+    monkeypatch.setattr(pipeline, "collapse_near_duplicates", fake_collapse)
+    monkeypatch.setattr(pipeline, "has_strong_query_anchors", lambda _query: True)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_mmr=False,
+        sim_threshold=0.82,
+        canonical_anchored_sim_threshold=0.94,
+    )
+    pipeline.retrieve(
+        "In Ali's latest CV, what is his most recent job title?",
+        cfg=cfg,
+        deps=_build_deps(
+            [{"id": "v1", "text": "doc", "score": 1.0, "checksum": "c1"}],
+            [],
+            embedder=lambda texts: [[1.0] for _ in texts],
+        ),
+    )
+
+    assert observed["sim_threshold"] == pytest.approx(0.94)
+
+
+def test_retrieval_uses_higher_canonical_sim_threshold_for_semi_anchored_query(monkeypatch):
+    observed: Dict[str, float] = {}
+
+    def fake_collapse(docs, embed_texts, sim_threshold=0.9, keep_limit=64):
+        observed["sim_threshold"] = float(sim_threshold)
+        return list(docs), []
+
+    monkeypatch.setattr(pipeline, "collapse_near_duplicates", fake_collapse)
+    monkeypatch.setattr(pipeline, "has_strong_query_anchors", lambda _query: False)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_mmr=False,
+        sim_threshold=0.82,
+        canonical_anchored_sim_threshold=0.94,
+    )
+    pipeline.retrieve(
+        "What did he write in that CV?",
+        cfg=cfg,
+        deps=_build_deps(
+            [{"id": "v1", "text": "doc", "score": 1.0, "checksum": "c1"}],
+            [],
+            embedder=lambda texts: [[1.0] for _ in texts],
+        ),
+    )
+
+    assert observed["sim_threshold"] == pytest.approx(0.94)
+
+
+def test_retrieval_keeps_default_sim_threshold_for_non_canonical_query(monkeypatch):
+    observed: Dict[str, float] = {}
+
+    def fake_collapse(docs, embed_texts, sim_threshold=0.9, keep_limit=64):
+        observed["sim_threshold"] = float(sim_threshold)
+        return list(docs), []
+
+    monkeypatch.setattr(pipeline, "collapse_near_duplicates", fake_collapse)
+    monkeypatch.setattr(pipeline, "has_strong_query_anchors", lambda _query: False)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_mmr=False,
+        sim_threshold=0.82,
+        canonical_anchored_sim_threshold=0.94,
+    )
+    pipeline.retrieve(
+        "summarize this document",
+        cfg=cfg,
+        deps=_build_deps(
+            [{"id": "v1", "text": "doc", "score": 1.0, "checksum": "c1"}],
+            [],
+            embedder=lambda texts: [[1.0] for _ in texts],
+        ),
+    )
+
+    assert observed["sim_threshold"] == pytest.approx(0.82)
+
+
 def test_retrieval_applies_authority_boost_when_metadata_exists():
     vector_hits = [
         {"id": "v1", "text": "doc1", "score": 1.0, "checksum": "a1"},
@@ -1412,6 +1499,7 @@ def test_retrieval_abstains_for_live_out_of_corpus_query_even_with_partial_overl
 
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
+    assert RetrievalConfig().canonical_anchored_sim_threshold == pytest.approx(0.94)
     cfg = RetrievalConfig()
     assert cfg.anchored_exact_only is True
     assert cfg.anchored_lexical_bias_enabled is True
