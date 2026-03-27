@@ -1,0 +1,1562 @@
+{
+  "generated_at_utc": "2026-03-27T07:33:12.711850+00:00",
+  "source_artifacts": {
+    "patha_runbook": "docs\\runbooks\\retrieval_eval_postfix_2026-03-26_patha_v1.json",
+    "fixture": "tests\\fixtures\\retrieval_eval_queries.json"
+  },
+  "analysis_scope": {
+    "failed_positive_queries": 15,
+    "criterion": "mode=positive and hit_at_1=false from Path A eval artifact"
+  },
+  "probe_method": {
+    "candidate_probe": {
+      "enabled": true,
+      "deterministic": true,
+      "description": "Exact-query deep retrieval probe (variants disabled) to avoid LLM rewrite variance.",
+      "config": {
+        "top_k": 60,
+        "top_k_each": 240,
+        "enable_variants": false,
+        "enable_mmr": true,
+        "fusion_weight_vector": 0.7,
+        "fusion_weight_bm25": 0.3
+      }
+    },
+    "text_gap_thresholds": {
+      "very_low_text_length_lt": 200
+    }
+  },
+  "residual_failures": [
+    {
+      "query_id": "Q01",
+      "query": "Where did Ali do his PhD studies?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "cv",
+          "resume"
+        ],
+        "primary_expected_checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+        "fixture_note": "Profile and education fact; should prefer the newest relevant CV version."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 5,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+          "score": 1.1747541412959115,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_11.docx",
+          "filename": "Resume - Ali 2016_11.docx",
+          "doc_type": "cv"
+        },
+        {
+          "rank": 2,
+          "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "score": 0.6644079357081416,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/Cover Letter - AUS.docx",
+          "filename": "Cover Letter - AUS.docx",
+          "doc_type": "cover_letter"
+        },
+        {
+          "rank": 3,
+          "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+          "score": 0.4380145209170921,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+          "filename": "360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+          "doc_type": "other"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+          "filename": "redefining-stuttering.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 1448807,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 2287,
+          "qdrant_chunk_count": 2287,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/2010-30.pdf",
+          "filename": "2010-30.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 43675,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 67,
+          "qdrant_chunk_count": 67,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+          "filename": "360° Feedback_Q2 2020_Ali Abul-Hawa.pdf",
+          "doc_type": "other",
+          "extraction_mode": null,
+          "text_length": 3138,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 6,
+          "qdrant_chunk_count": 6,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q02",
+      "query": "In Ali's latest CV, what is his most recent job title?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "cv",
+          "resume",
+          "cover_letter"
+        ],
+        "primary_expected_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+        "fixture_note": "Recency-sensitive profile fact."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 4,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "score": 0.6000008827758498,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/the-knowledge-graph-cookbook.pdf",
+          "filename": "the-knowledge-graph-cookbook.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 2,
+          "checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+          "score": 0.5770518258252963,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/CV - Ali-Abul-Hawa.docx",
+          "filename": "CV - Ali-Abul-Hawa.docx",
+          "doc_type": "cv"
+        },
+        {
+          "rank": 3,
+          "checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+          "score": 0.5685691150620413,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_4.pdf",
+          "filename": "Resume - Ali 2016_4.pdf",
+          "doc_type": "cv"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/Applications/Qonto application questions.docx",
+          "filename": "Qonto application questions.docx",
+          "doc_type": "government_form",
+          "extraction_mode": null,
+          "text_length": 2851,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 7,
+          "qdrant_chunk_count": 7,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/the-fourth-industrial-revolution-2016-21.pdf",
+          "filename": "the-fourth-industrial-revolution-2016-21.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 288576,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 490,
+          "qdrant_chunk_count": 490,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+          "filename": "redefining-stuttering.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 1448807,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 2287,
+          "qdrant_chunk_count": 2287,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q03",
+      "query": "From Ali's latest CV, list the main technical skills.",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "cv",
+          "resume"
+        ],
+        "primary_expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
+        "fixture_note": "Checks profile intent and CV family handling."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 10,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+          "score": 0.6000000000341573,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/AUM Archive/VALUE_Rubrics___a-k_final_version_2.pdf",
+          "filename": "VALUE_Rubrics___a-k_final_version_2.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 2,
+          "checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+          "score": 0.5028979754571216,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2017_3/Fintech startup CV library/AliAbulhawa_Cover_Letter.docx",
+          "filename": "AliAbulhawa_Cover_Letter.docx",
+          "doc_type": "cv"
+        },
+        {
+          "rank": 3,
+          "checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+          "score": 0.501113546080725,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/Cover Letter - AUS.docx",
+          "filename": "Cover Letter - AUS.docx",
+          "doc_type": "cover_letter"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/preparation of course project reports and presentations.pdf",
+          "filename": "preparation of course project reports and presentations.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 6379,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 10,
+          "qdrant_chunk_count": 10,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Study Plans.docx",
+          "filename": "Engineering Study Plans.docx",
+          "doc_type": "course_material",
+          "extraction_mode": null,
+          "text_length": 85966,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 134,
+          "qdrant_chunk_count": 134,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
+          "filename": "Engineering Student Handbook - AUM - 06-03-2012.docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 141734,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 227,
+          "qdrant_chunk_count": 227,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q04",
+      "query": "In Ali's most recent CV contact section, which city is listed?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "cv",
+          "resume"
+        ],
+        "primary_expected_checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
+        "fixture_note": "Short factual extraction from profile docs."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 7,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+          "score": 0.600000000092309,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/The elements of statistical learning  Data mining, inference, and prediction.pdf",
+          "filename": "The elements of statistical learning  Data mining, inference, and prediction.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 2,
+          "checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+          "score": 0.5993851160209904,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/SWAMBIT/References/O-Reilly_et_al-2014-Cognitive_Science.pdf",
+          "filename": "O-Reilly_et_al-2014-Cognitive_Science.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+          "score": 0.5729106493516563,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103350 Signals and Systems/Signals, Systems, and Transforms, 4th Edition.pdf",
+          "filename": "Signals, Systems, and Transforms, 4th Edition.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
+          "filename": "knowledge_graph paper.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 103527,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 171,
+          "qdrant_chunk_count": 171,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Final Report/SIT Edits to report (Jan 22).docx",
+          "filename": "SIT Edits to report (Jan 22).docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 36225,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 57,
+          "qdrant_chunk_count": 57,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Final Report/SIT Edits to report (Jan 21).docx",
+          "filename": "SIT Edits to report (Jan 21).docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 34314,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 54,
+          "qdrant_chunk_count": 54,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q05",
+      "query": "From Ali's cover letters, what role is he applying for?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "cover_letter"
+        ],
+        "primary_expected_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Think Python.pdf",
+        "fixture_note": "Ensures cover letters can still surface."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 5,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+          "score": 0.6000000433779902,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/redefining-stuttering.pdf",
+          "filename": "redefining-stuttering.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 2,
+          "checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+          "score": 0.5666557085723849,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/the-fourth-industrial-revolution-2016-21.pdf",
+          "filename": "the-fourth-industrial-revolution-2016-21.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+          "score": 0.5706051970098057,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Think Python.pdf",
+          "filename": "Think Python.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/AUM Archive/Developing a Rubric-Based Framework for Measuring the ABET Outcomes Achieved by Students of Electric Machinery Courses.pdf",
+          "filename": "Developing a Rubric-Based Framework for Measuring the ABET Outcomes Achieved by Students of Electric Machinery Courses.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 34092,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 50,
+          "qdrant_chunk_count": 50,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/Applied Science Prep Doc[4906]_my notes.docx",
+          "filename": "Applied Science Prep Doc[4906]_my notes.docx",
+          "doc_type": "technical_report",
+          "extraction_mode": null,
+          "text_length": 16648,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 30,
+          "qdrant_chunk_count": 30,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Think Python.pdf",
+          "filename": "Think Python.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 453300,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 744,
+          "qdrant_chunk_count": 744,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q06",
+      "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103411 Power Systems (1)/Projects/Dubai Power Grid Project/Dubai Power Grid System Report.pdf",
+        "fixture_note": "Dense technical report retrieval with topic anchor."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 41,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
+          "score": 0.6900566406159512,
+          "path": "C:/Users/ali_a/My Drive/Ali/recommendation letters/Recommendation Letter (Mohammad Osta).docx",
+          "filename": "Recommendation Letter (Mohammad Osta).docx",
+          "doc_type": "reference_letter"
+        },
+        {
+          "rank": 2,
+          "checksum": "d4c1578aa1155ca4e33eddede363059140267e00d2f28ca5a81ecb26c92d6fef",
+          "score": 0.3778097749645528,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/grid pv amman.pdf",
+          "filename": "grid pv amman.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "score": 0.3758213389834644,
+          "path": "C:/Users/ali_a/My Drive/Ali/PhD - Paper/PhD Thesis_Ali Abul Hawa_Printed.docx",
+          "filename": "PhD Thesis_Ali Abul Hawa_Printed.docx",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103411 Power Systems (1)/Projects/Dubai Power Grid Project/Dubai Power Grid System Report.pdf",
+          "filename": "Dubai Power Grid System Report.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 25189,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 47,
+          "qdrant_chunk_count": 47,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/Graduation Project/AUTONOMOUS TRACKING VEHICLE.pdf",
+          "filename": "AUTONOMOUS TRACKING VEHICLE.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 100193,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 179,
+          "qdrant_chunk_count": 179,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/Graduation Project/Solar Charging Booth Final Graduation Project Report.docx",
+          "filename": "Solar Charging Booth Final Graduation Project Report.docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 163642,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 265,
+          "qdrant_chunk_count": 265,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q07",
+      "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
+        "fixture_note": "Course and code disambiguation."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": false,
+      "expected_rank_in_candidates": null,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+          "score": 0.9356709688351148,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Books for EE Courses/Private accreditation form - EE (1).docx",
+          "filename": "Private accreditation form - EE (1).docx",
+          "doc_type": "government_form"
+        },
+        {
+          "rank": 2,
+          "checksum": "0893dd07512912f90ffdfa22283e1cddec86c8580fb90e0a9e29333d0aa1f760",
+          "score": 0.4266568929085638,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Ali/Faculty annual report - Ali Abul Hawa - 2015.docx",
+          "filename": "Faculty annual report - Ali Abul Hawa - 2015.docx",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "b14a8cf088dd5448e47eb4ec5029a554eb675acc4eb7ee3d66755143acc72487",
+          "score": 0.6399204774233298,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103318 Introduction to Electrical Engineering/2015 Fall/Haidar intro to EE/Lecture Notes Intro to EE 01.pdf",
+          "filename": "Lecture Notes Intro to EE 01.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Engineering Student Handbook - AUM - 06-03-2012.docx",
+          "filename": "Engineering Student Handbook - AUM - 06-03-2012.docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 141734,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 227,
+          "qdrant_chunk_count": 227,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/Electrical Engineering Catalogue.docx",
+          "filename": "Electrical Engineering Catalogue.docx",
+          "doc_type": "course_material",
+          "extraction_mode": null,
+          "text_length": 41340,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 68,
+          "qdrant_chunk_count": 68,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/messeger_2003_-_photovoltaic_systems_engineering.pdf",
+          "filename": "messeger_2003_-_photovoltaic_systems_engineering.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 1110437,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 1769,
+          "qdrant_chunk_count": 1769,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc not retrieved despite text being available",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q09",
+      "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103318 Introduction to Electrical Engineering/2012 Spring/Chapter 3 Lecture Notes - 103318.docx",
+        "fixture_note": "Technical education content retrieval."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 23,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+          "score": 0.8846794084811691,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103214 Electric Circuits Lab/References/JU - Circuits Lab/exp2.pdf",
+          "filename": "exp2.pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 2,
+          "checksum": "994b7c25e7559f12f2d0f7db4719c09e7059e3f1659114b11f0de78fa5f3961b",
+          "score": 0.47579791697523977,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103212 Electric Circuits (1)/2012 Fall/Lecture Notes (12) - 103212.docx",
+          "filename": "Lecture Notes (12) - 103212.docx",
+          "doc_type": "course_material"
+        },
+        {
+          "rank": 3,
+          "checksum": "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af",
+          "score": 0.3874361304462028,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/messeger_2003_-_photovoltaic_systems_engineering.pdf",
+          "filename": "messeger_2003_-_photovoltaic_systems_engineering.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103318 Introduction to Electrical Engineering/2012 Spring/Chapter 3 Lecture Notes - 103318.docx",
+          "filename": "Chapter 3 Lecture Notes - 103318.docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 7716,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 12,
+          "qdrant_chunk_count": 12,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103212 Electric Circuits (1)/2015 Fall/Ch5 Lecture Notes EE212.docx",
+          "filename": "Ch5 Lecture Notes EE212.docx",
+          "doc_type": "course_material",
+          "extraction_mode": null,
+          "text_length": 2600,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 5,
+          "qdrant_chunk_count": 5,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103212 Electric Circuits (1)/2013 Fall/Ch5 Lecture Notes EE212.docx",
+          "filename": "Ch5 Lecture Notes EE212.docx",
+          "doc_type": "course_material",
+          "extraction_mode": null,
+          "text_length": 2905,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 6,
+          "qdrant_chunk_count": 6,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q10",
+      "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Final ICEEPIII ENE 185 paper 06252013.pdf",
+        "fixture_note": "Research title grounding."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 25,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "score": 0.9335105762949389,
+          "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+          "filename": "filtered_gdrive_list.txt",
+          "doc_type": "insurance_letter"
+        },
+        {
+          "rank": 2,
+          "checksum": "415657546c1de309c40ced8f973468ee5ae665cc2424e21a8c7449e2a4aee3e6",
+          "score": 0.933506855626986,
+          "path": "C:/Users/ali_a/My Drive/gdrive-file-list.txt",
+          "filename": "gdrive-file-list.txt",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+          "score": 0.7742909010682498,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/Ali Abul Hawa, Thesis and DSR description.pdf",
+          "filename": "Ali Abul Hawa, Thesis and DSR description.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Sliding Mode Control of PEM Fuel Cells.pdf",
+          "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 346995,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 567,
+          "qdrant_chunk_count": 567,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/PhD - Paper/PhD Thesis_Ali Abul Hawa_Printed.docx",
+          "filename": "PhD Thesis_Ali Abul Hawa_Printed.docx",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 277506,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 495,
+          "qdrant_chunk_count": 495,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/Final ICEEPIII ENE 185 paper 06252013.pdf",
+          "filename": "Final ICEEPIII ENE 185 paper 06252013.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 23081,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 45,
+          "qdrant_chunk_count": 45,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q11",
+      "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+        "fixture_note": "Paper retrieval precision."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 33,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+          "score": 0.8294506218882806,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103517 Special Topics in Power Engineering/References/Applied Photovoltaics by Stuart R Wenham.pdf",
+          "filename": "Applied Photovoltaics by Stuart R Wenham.pdf",
+          "doc_type": "other"
+        },
+        {
+          "rank": 2,
+          "checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "score": 0.8144745882633346,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+          "filename": "Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+          "doc_type": "research_paper"
+        },
+        {
+          "rank": 3,
+          "checksum": "9ec11b977b57aefadac77417a879826f09fee02d3ae46452ac639ff00aa72d7e",
+          "score": 0.7988109292984876,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Photovoltaic Solar Energy Systems (20_7_2013).pdf",
+          "filename": "Photovoltaic Solar Energy Systems (20_7_2013).pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Tilt Angle for Solar Collector to Receive Maximum Radiation (20_7_2013).pdf",
+          "filename": "Optimization of Tilt Angle for Solar Collector to Receive Maximum Radiation (20_7_2013).pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 25271,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 44,
+          "qdrant_chunk_count": 44,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/MODELLING OF GLOBAL DAILY SOLAR RADIATION ON Horiz. Surf. Amman.pdf",
+          "filename": "MODELLING OF GLOBAL DAILY SOLAR RADIATION ON Horiz. Surf. Amman.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 37092,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 58,
+          "qdrant_chunk_count": 58,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Research/PV-Paper_backup/References/Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+          "filename": "Optimization of Solar Power by varying Tilt Angle-Slope (HOMER) (saved 4_7_2013).pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 22013,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 35,
+          "qdrant_chunk_count": 35,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q12",
+      "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/Lit Rev/9783319125794-c2.pdf",
+        "fixture_note": "Topic lookup in training materials."
+      },
+      "relevant_doc_in_top3": false,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 4,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+          "score": 0.9914292053914062,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science Retreat/DSR-Spark-Class Daniel/DF 3.3.3 - PCA for Feature Engineering.pdf",
+          "filename": "DF 3.3.3 - PCA for Feature Engineering.pdf",
+          "doc_type": "other"
+        },
+        {
+          "rank": 2,
+          "checksum": "525eafe3dc7c17f89886b58770ca661fd8fdd479bff1faef9b176c7a6357c15d",
+          "score": 0.5995452337052436,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/Mastering Python for Data Science.pdf",
+          "filename": "Mastering Python for Data Science.pdf",
+          "doc_type": "other"
+        },
+        {
+          "rank": 3,
+          "checksum": "88c0f7e96bb8c23a3043216a8a021c006189f64120a6440fa747d21a458af895",
+          "score": 0.592876845284605,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/Resume - Ali 2018_1_single_p.pdf",
+          "filename": "Resume - Ali 2018_1_single_p.pdf",
+          "doc_type": "cv"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/MLS/Lit Rev/9783319125794-c2.pdf",
+          "filename": "9783319125794-c2.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 44058,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 69,
+          "qdrant_chunk_count": 69,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
+          "filename": "knowledge_graph paper.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 103527,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 171,
+          "qdrant_chunk_count": 171,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/Information Extraction - Ch17.pdf",
+          "filename": "Information Extraction - Ch17.pdf",
+          "doc_type": "policy",
+          "extraction_mode": null,
+          "text_length": 93175,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 147,
+          "qdrant_chunk_count": 147,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc retrieved but ranked below top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q13",
+      "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__",
+          "cover_letter"
+        ],
+        "primary_expected_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
+        "fixture_note": "Administrative document retrieval."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 4,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "score": 0.6599999999999999,
+          "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+          "filename": "filtered_gdrive_list.txt",
+          "doc_type": "insurance_letter"
+        },
+        {
+          "rank": 2,
+          "checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "score": 0.5966521370578748,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
+          "filename": "New Hampshire Application.docx",
+          "doc_type": "government_form"
+        },
+        {
+          "rank": 3,
+          "checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+          "score": 0.5106054595457765,
+          "path": "C:/Users/ali_a/My Drive/Ali/Other/the-knowledge-graph-cookbook.pdf",
+          "filename": "the-knowledge-graph-cookbook.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Administrative/New Hampshire Application.docx",
+          "filename": "New Hampshire Application.docx",
+          "doc_type": "government_form",
+          "extraction_mode": null,
+          "text_length": 108620,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 189,
+          "qdrant_chunk_count": 189,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/Machine Translation for Arabic Dialects (Survey).pdf",
+          "filename": "Machine Translation for Arabic Dialects (Survey).pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 68469,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 107,
+          "qdrant_chunk_count": 107,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/papers/RegragiEtAl2016-GWN2016.pdf",
+          "filename": "RegragiEtAl2016-GWN2016.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 34470,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 59,
+          "qdrant_chunk_count": 59,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q15",
+      "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Salma-sent.pdf",
+        "fixture_note": "Form purpose retrieval with stronger anchor."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 15,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+          "score": 1.0033280328243503,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/VE-Ali.pdf",
+          "filename": "VE-Ali.pdf",
+          "doc_type": "government_form"
+        },
+        {
+          "rank": 2,
+          "checksum": "a215cacea12ce643ba7d4eaa4adcd7c02de3b43ebe26773611caa8c043cd0f06",
+          "score": 0.42998928431358535,
+          "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/B2 Sprachkurs/9783065213172_Fokus_Deutsch_B2_Neubearbeitung_Hoertexte-1.pdf",
+          "filename": "9783065213172_Fokus_Deutsch_B2_Neubearbeitung_Hoertexte-1.pdf",
+          "doc_type": "other"
+        },
+        {
+          "rank": 3,
+          "checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "score": 0.8855331080550228,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Salma-sent.pdf",
+          "filename": "WEP Salma-sent.pdf",
+          "doc_type": "government_form"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Anlage WEP Template.pdf",
+          "filename": "Anlage WEP Template.pdf",
+          "doc_type": "government_form",
+          "extraction_mode": null,
+          "text_length": 12499,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 22,
+          "qdrant_chunk_count": 22,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Salma-sent.pdf",
+          "filename": "WEP Salma-sent.pdf",
+          "doc_type": "government_form",
+          "extraction_mode": null,
+          "text_length": 12497,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 22,
+          "qdrant_chunk_count": 22,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Government & Benefits/Agentur fur Arbeit/JobCenter/Berlin/Formular/WEP Hala-sent.pdf",
+          "filename": "WEP Hala-sent.pdf",
+          "doc_type": "government_form",
+          "extraction_mode": null,
+          "text_length": 12497,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 22,
+          "qdrant_chunk_count": 22,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q19",
+      "query": "In the tax-related invoice PDF, who is the issuing company?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/Ali/Online Business/Make-money-with-no-money.pdf",
+        "fixture_note": "Invoice issuer extraction."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 4,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "score": 1.034495991321328,
+          "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+          "filename": "filtered_gdrive_list.txt",
+          "doc_type": "insurance_letter"
+        },
+        {
+          "rank": 2,
+          "checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "score": 0.40434632005485605,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/2025/peerberry tax_statement_2025-01-01-2025-12-31_84857.pdf",
+          "filename": "peerberry tax_statement_2025-01-01-2025-12-31_84857.pdf",
+          "doc_type": "other"
+        },
+        {
+          "rank": 3,
+          "checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "score": 0.3935153540724284,
+          "path": "C:/Users/ali_a/My Drive/Ali/Online Business/Make-money-with-no-money.pdf",
+          "filename": "Make-money-with-no-money.pdf",
+          "doc_type": "research_paper"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Online Business/Make-money-with-no-money.pdf",
+          "filename": "Make-money-with-no-money.pdf",
+          "doc_type": "research_paper",
+          "extraction_mode": null,
+          "text_length": 74129,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 124,
+          "qdrant_chunk_count": 124,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Berlin/FLIX-Ticket-8022804381 BER-NUR.pdf",
+          "filename": "FLIX-Ticket-8022804381 BER-NUR.pdf",
+          "doc_type": "contract",
+          "extraction_mode": null,
+          "text_length": 2231,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 6,
+          "qdrant_chunk_count": 6,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Berlin/FLIX-Ticket-8022804557 NUR-BER.pdf",
+          "filename": "FLIX-Ticket-8022804557 NUR-BER.pdf",
+          "doc_type": "contract",
+          "extraction_mode": null,
+          "text_length": 2232,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 6,
+          "qdrant_chunk_count": 6,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    },
+    {
+      "query_id": "Q20",
+      "query": "In the remittance receipt from 2020, what payment amount is shown?",
+      "query_classification": "anchored",
+      "expected_reference": {
+        "expected_doc_types": [
+          "__missing__"
+        ],
+        "primary_expected_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "primary_expected_path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
+        "fixture_note": "Numeric extraction from payment receipt."
+      },
+      "relevant_doc_in_top3": true,
+      "relevant_doc_in_candidates": true,
+      "expected_rank_in_candidates": 3,
+      "top_returned_docs": [
+        {
+          "rank": 1,
+          "checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "score": 1.0344928267795153,
+          "path": "C:/Users/ali_a/My Drive/filtered_gdrive_list.txt",
+          "filename": "filtered_gdrive_list.txt",
+          "doc_type": "insurance_letter"
+        },
+        {
+          "rank": 2,
+          "checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "score": 0.5763414811940555,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
+          "filename": "metlife receipt 20191224.pdf",
+          "doc_type": "invoice"
+        },
+        {
+          "rank": 3,
+          "checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "score": 0.5718251626557636,
+          "path": "C:/Users/ali_a/My Drive/4. Travel & Events/Past Trips/Europe trip/Hotels/03_24 Aug Birmingham Aparthotel Adagio 1.pdf",
+          "filename": "03_24 Aug Birmingham Aparthotel Adagio 1.pdf",
+          "doc_type": "invoice"
+        }
+      ],
+      "expected_doc_indicators": [
+        {
+          "checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/2. Personal Admin & Life/Taxes/Tax docs/metlife receipt 20191224.pdf",
+          "filename": "metlife receipt 20191224.pdf",
+          "doc_type": "invoice",
+          "extraction_mode": null,
+          "text_length": 1612,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 4,
+          "qdrant_chunk_count": 4,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/Ali/Whatsapp Backup/WhatsApp Chat with Rami Hammad.txt",
+          "filename": "WhatsApp Chat with Rami Hammad.txt",
+          "doc_type": "other",
+          "extraction_mode": null,
+          "text_length": 11564,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 21,
+          "qdrant_chunk_count": 21,
+          "missing_chunk_coverage": false
+        },
+        {
+          "checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "exists_in_fulltext": true,
+          "path": "C:/Users/ali_a/My Drive/4. Travel & Events/Past Trips/Europe trip/Hotels/03_24 Aug Birmingham Aparthotel Adagio 1.pdf",
+          "filename": "03_24 Aug Birmingham Aparthotel Adagio 1.pdf",
+          "doc_type": "invoice",
+          "extraction_mode": null,
+          "text_length": 2445,
+          "empty_text": false,
+          "very_low_text_length": false,
+          "has_ocr_marker": false,
+          "os_chunk_count": 6,
+          "qdrant_chunk_count": 6,
+          "missing_chunk_coverage": false
+        }
+      ],
+      "bucket": "relevant doc ranked below 1 but within top-3",
+      "bucket_evidence": {
+        "text_gap_evidence": false,
+        "corpus_absence_evidence": false,
+        "text_available_evidence": true
+      },
+      "deep_probe_error": null,
+      "reviewer_bucket_override": null,
+      "reviewer_notes": ""
+    }
+  ],
+  "aggregate_summary": {
+    "total_failed_positive_queries": 15,
+    "bucket_summary": [
+      {
+        "bucket": "relevant doc ranked below 1 but within top-3",
+        "count": 7,
+        "percentage": 46.67
+      },
+      {
+        "bucket": "relevant doc retrieved but ranked below top-3",
+        "count": 7,
+        "percentage": 46.67
+      },
+      {
+        "bucket": "relevant doc not retrieved despite text being available",
+        "count": 1,
+        "percentage": 6.67
+      },
+      {
+        "bucket": "likely text extraction / OCR gap",
+        "count": 0,
+        "percentage": 0.0
+      },
+      {
+        "bucket": "likely corpus absence or mislabeled expectation",
+        "count": 0,
+        "percentage": 0.0
+      },
+      {
+        "bucket": "ambiguous / needs manual review",
+        "count": 0,
+        "percentage": 0.0
+      }
+    ],
+    "query_classification_summary": {
+      "anchored": 15
+    },
+    "deep_probe_errors": 0
+  },
+  "ocr_canary_recommendation": {
+    "decision": "NO",
+    "recommend_ocr_canary_now": false,
+    "criteria": {
+      "min_text_gap_rate": 0.3,
+      "min_text_gap_count": 3
+    },
+    "evidence": {
+      "text_gap_failures": 0,
+      "total_failed_positives": 15,
+      "text_gap_rate": 0.0,
+      "dominant_bucket": "relevant doc ranked below 1 but within top-3",
+      "dominant_bucket_count": 7
+    },
+    "rationale": "NO: residual misses are dominated by non-OCR causes; prioritize ranking/retrieval fixes first."
+  }
+}

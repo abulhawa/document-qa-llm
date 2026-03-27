@@ -1,6 +1,6 @@
 # document_qa Optimization Plan (v4)
 
-Last updated: 2026-03-26 (post-P9 completion + Path A retrieval tuning)
+Last updated: 2026-03-27 (post-Path-A residual + ranking investigation)
 Purpose: Convert the external draft into an execution-ready plan for this repository.
 
 ## 1. Goals
@@ -725,6 +725,38 @@ Status (2026-03-26):
   - Artifacts:
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json`
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.csv`
+- Residual-failure sidecar analysis completed (2026-03-27) for all positive queries with `hit@1=false`:
+  - Artifact:
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_residual_failure_analysis.json`
+  - Scope: `15` residual positive misses (`20 positive - 5 hit@1`).
+  - Primary buckets:
+    - `relevant doc ranked below 1 but within top-3`: `7/15` (`46.67%`)
+    - `relevant doc retrieved but ranked below top-3`: `7/15` (`46.67%`)
+    - `relevant doc not retrieved despite text being available`: `1/15` (`6.67%`)
+    - `likely text extraction / OCR gap`: `0/15` (`0.00%`)
+  - OCR canary recommendation: **NO** (no measured text-extraction/OCR-driven residual misses in this pass).
+  - Conclusion: defer P8 OCR canary; prioritize another targeted non-OCR retrieval iteration focused on top-1 ranking lift.
+- Ranking-focused follow-up investigation completed (2026-03-27):
+  - Artifact:
+    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_ranking_investigation.json`
+  - Deterministic deep-rank probe (`exact-query`, `probe_depth=40`) for rank diagnostics:
+    - `hit@1_probe=4/20` (`0.20`)
+    - `hit@3_probe=6/20` (`0.30`)
+    - `MRR_probe=0.3261`
+    - Rank buckets: `rank1=4`, `rank2-3=2`, `rank4-10=6`, `rank11-40=7`, `not_retrieved=1`.
+  - Failed-query ablation signal (`15` archived hit@1 misses):
+    - `no_boosts`: improved `6/15`, worsened `0/15`, avg rank delta `-1.4`.
+    - `no_authority`: improved `5/15`, worsened `0/15`, avg rank delta `-1.0`.
+    - `no_recency`: improved `3/15`, worsened `0/15`, avg rank delta `-0.4`.
+  - Retrieved-content similarity check on archived misses:
+    - No strong near-duplicate (`~99%`) top1-vs-expected cases detected.
+    - Auto answer-likelihood remained `unlikely_or_unknown` for `13/15` (only `2/15` marked `possibly_correct_with_top3_context`).
+    - Repeated hard-negative top1 checksum observed: `45f108c0...` (`4` misses; `filtered_gdrive_list.txt`, `doc_type=insurance_letter`).
+  - Dual-metric scoring added (strict source-hit vs deterministic equivalent-source answer-support):
+    - `source_strict_hit@1_probe=4/20`, `source_strict_hit@3_probe=6/20`.
+    - `answer_support_hit@1_probe=4/20`, `answer_support_hit@3_probe=6/20` (no lift under current conservative equivalence thresholds).
+    - Interpretation: current deterministic equivalence policy did not yet capture additional “correct via alternate source” cases; if needed, add curated equivalence/fact-support labels in fixture metadata for broader answer-support scoring.
+  - Conclusion: weak metrics remain primarily a ranking policy issue (boost tuning + hard-negative suppression), not OCR.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
 Objective:
