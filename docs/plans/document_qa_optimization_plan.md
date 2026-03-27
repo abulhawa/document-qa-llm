@@ -745,7 +745,7 @@ Status (2026-03-26):
   - Artifact:
     - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_ranking_investigation.json`
   - Schema marker:
-    - `schema_version=ranking_investigation.v2` (compatibility note included in artifact; legacy flat probe keys removed).
+    - `schema_version=ranking_investigation.v3` (adds `probe_vs_eval_comparison` and `strict_canonical_ranking_diagnosis` blocks; legacy flat probe keys removed).
   - Deterministic deep-rank probe (`exact-query`, `probe_depth=40`) metrics:
     - `strict_retrieval`: `hit@1=4/20` (`0.20`), `hit@3=6/20` (`0.30`), `MRR=0.3261`
     - `answer_support`: `hit@1=5/20` (`0.25`), `hit@3=7/20` (`0.35`), `MRR=0.3661`
@@ -758,12 +758,29 @@ Status (2026-03-26):
     - New strict metrics are unchanged (`4/20`, `6/20`, `0.3261`) -> no strict lift from relabeling; ranking weakness remains.
     - New answer-support metrics improved (`hit@1: 4->5`, `hit@3: 6->7`, `MRR: 0.3261->0.3661`) due benchmark separation/manual support labeling.
     - Benchmark-selected residual misses dropped `15->14`, explained by one multi-source query (`Q01`) moving from strict miss to answer-support success.
+  - Probe-vs-eval methodology discrepancy explanation (`probe_vs_eval_comparison` block):
+    - Archived Path A eval profile: `variants_enabled=true`, `rewrites_enabled=true`, `exact_query_probing=false`, `candidate_depth=3`.
+    - Strict investigation probe profile: `variants_enabled=false`, `rewrites_enabled=false`, `exact_query_probing=true`, `candidate_depth=40`.
+    - Deterministic strict metric delta captured in artifact: eval `hit@1=5/20`, `hit@3=12/20` vs probe `hit@1=4/20`, `hit@3=6/20`.
+    - Query-level disagreement is fully one-sided (`archived_only_hit@3=6`, `probe_only_hit@3=0`), consistent with methodology mismatch rather than a benchmark-labeling bug.
+    - Mechanism recorded explicitly: retrieval ties MMR depth to `top_k`; moving from `top_k=3` to `top_k=40` changes top-3 ordering.
   - Remaining true ranking failures:
     - Benchmark-selected ranking failures are entirely strict (`14`, mode=`strict_retrieval`).
     - Canonical strict misses remain high: `15/19` on probe hit@1 (query IDs: `Q02,Q03,Q04,Q05,Q06,Q07,Q09,Q10,Q11,Q12,Q13,Q14,Q15,Q19,Q20`).
     - Ablation signal over benchmark-selected failures (`14`): `no_boosts` improved `5/14`, `no_authority` improved `4/14`, `no_recency` improved `3/14`.
+  - Strict canonical ranking-cause attribution (`strict_canonical_ranking_diagnosis` block):
+    - Bucket counts over `15` strict canonical hit@1 misses:
+      - `ambiguous/manual review`: `7`
+      - `vector dominance`: `5`
+      - `title/filename underweighting`: `2`
+      - `candidate generation miss`: `1`
+      - `sibling/near-duplicate collision`: `0`
+      - `chunk aggregation bias`: `0`
+      - `doc-type prior suppression`: `0`
+    - Largest bucket: `ambiguous/manual review` (`7/15`, `46.67%`).
+    - Largest actionable bucket: `vector dominance` (`5/15`, `33.33%`).
   - Next tuning target (strict canonical only):
-    - Prioritize top-1 ranking lift for `canonical_document_query` misses only, focusing on boost/hard-negative behavior (`45f108c0...` remains recurrent) rather than answer-support labeling or OCR.
+    - Prioritize a low-blast-radius lexical-priority calibration for strict canonical misses that are currently `vector dominance`, while keeping answer-support framing and OCR scope unchanged.
 - Path B trigger was not met after this iteration (thresholds achieved), so broader RAG redesign is deferred.
 
 Objective:

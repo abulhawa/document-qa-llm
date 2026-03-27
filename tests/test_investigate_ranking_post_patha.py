@@ -373,3 +373,181 @@ def test_build_answer_support_review_candidates_returns_suggestions():
         "equivalent_fulltext_threshold",
         "query_conditioned_similarity_threshold",
     }
+
+
+def test_assign_primary_ranking_cause_bucket_rules():
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=None,
+            winner_vector_minus_expected=None,
+            winner_lexical_minus_expected=None,
+            title_overlap_count_delta=None,
+            title_overlap_ratio_delta=None,
+            doc_type_prior_delta=None,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_CANDIDATE_GENERATION_MISS
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.01,
+            winner_lexical_minus_expected=0.01,
+            title_overlap_count_delta=0,
+            title_overlap_ratio_delta=0.0,
+            doc_type_prior_delta=0.0,
+            near_duplicate_collision=True,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_SIBLING_COLLISION
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.01,
+            winner_lexical_minus_expected=0.01,
+            title_overlap_count_delta=0,
+            title_overlap_ratio_delta=0.0,
+            doc_type_prior_delta=0.03,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_DOC_TYPE_PRIOR_SUPPRESSION
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.01,
+            winner_lexical_minus_expected=0.01,
+            title_overlap_count_delta=-2,
+            title_overlap_ratio_delta=-0.4,
+            doc_type_prior_delta=0.0,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.08,
+            winner_lexical_minus_expected=0.0,
+            title_overlap_count_delta=0,
+            title_overlap_ratio_delta=0.0,
+            doc_type_prior_delta=0.0,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_VECTOR_DOMINANCE
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.01,
+            winner_lexical_minus_expected=0.01,
+            title_overlap_count_delta=0,
+            title_overlap_ratio_delta=0.0,
+            doc_type_prior_delta=0.0,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=True,
+        )
+        == ranking_script.RANKING_CAUSE_CHUNK_AGGREGATION_BIAS
+    )
+    assert (
+        ranking_script.assign_primary_ranking_cause(
+            expected_rank_probe=4,
+            winner_vector_minus_expected=0.01,
+            winner_lexical_minus_expected=0.01,
+            title_overlap_count_delta=0,
+            title_overlap_ratio_delta=0.0,
+            doc_type_prior_delta=0.0,
+            near_duplicate_collision=False,
+            chunk_aggregation_bias=False,
+        )
+        == ranking_script.RANKING_CAUSE_AMBIGUOUS
+    )
+
+
+def test_build_probe_vs_eval_comparison_reports_discrepancy():
+    runbook = {
+        "config": {
+            "top_k": 3,
+            "enable_variants": True,
+            "enable_mmr": True,
+            "anchored_exact_only": True,
+            "anchored_lexical_bias_enabled": True,
+            "anchored_fusion_weight_vector": 0.4,
+            "anchored_fusion_weight_bm25": 0.6,
+        },
+        "summary": {
+            "positive_total": 2,
+            "positive_hit_at_1": 1,
+            "positive_hit_at_3": 2,
+        },
+    }
+    archived_rows = [
+        {
+            "query_id": "Q1",
+            "query": "where did ali do his phd",
+            "mode": "positive",
+            "hit_at_1": True,
+            "hit_at_3": True,
+            "top1_checksum": "a",
+            "top2_checksum": "b",
+            "top3_checksum": "c",
+        },
+        {
+            "query_id": "Q2",
+            "query": "what is ali latest role",
+            "mode": "positive",
+            "hit_at_1": False,
+            "hit_at_3": True,
+            "top1_checksum": "d",
+            "top2_checksum": "e",
+            "top3_checksum": "f",
+        },
+    ]
+    per_query_rows = [
+        {
+            "query_id": "Q1",
+            "strict_retrieval_hit_at_1_probe": True,
+            "strict_retrieval_hit_at_3_probe": True,
+            "strict_retrieval_rank_probe": 1,
+        },
+        {
+            "query_id": "Q2",
+            "strict_retrieval_hit_at_1_probe": False,
+            "strict_retrieval_hit_at_3_probe": False,
+            "strict_retrieval_rank_probe": 4,
+        },
+    ]
+    probe_docs = {
+        "Q1": [{"checksum": "a"}, {"checksum": "b"}, {"checksum": "c"}],
+        "Q2": [{"checksum": "x"}, {"checksum": "y"}, {"checksum": "z"}],
+    }
+    probe_cfg = ranking_script.RetrievalConfig(
+        top_k=40,
+        top_k_each=160,
+        enable_variants=False,
+        enable_mmr=True,
+    )
+
+    comparison = ranking_script.build_probe_vs_eval_comparison(
+        patha_runbook_path=pathlib.Path("docs/runbooks/patha.json"),
+        ranking_artifact_path=pathlib.Path("docs/runbooks/ranking.json"),
+        runbook=runbook,
+        archived_rows=archived_rows,
+        per_query_rows=per_query_rows,
+        probe_docs_by_query=probe_docs,
+        probe_cfg=probe_cfg,
+    )
+
+    strict_metrics = comparison["strict_metric_comparison"]
+    assert strict_metrics["archived_eval"]["hit_at_3"] == 2
+    assert strict_metrics["deterministic_probe"]["hit_at_3"] == 1
+    assert strict_metrics["delta_probe_minus_archived"]["hit_at_3"] == -1
+    assert comparison["query_disagreement_summary"]["archived_only_hit_at_3_queries"] == 1
+    assert comparison["artifact_method_profiles"][0]["candidate_depth"] == 3
+    assert comparison["artifact_method_profiles"][1]["candidate_depth"] == 40
+    assert "candidate_depth=3" in comparison["deterministic_explanation"]

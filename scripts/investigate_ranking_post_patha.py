@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 
 from config import FULLTEXT_INDEX
 from core.opensearch_client import get_client
+from core.query_rewriter import has_strong_query_anchors
 from core.retrieval.pipeline import retrieve
 from core.retrieval.types import RetrievalConfig
 
@@ -65,7 +66,23 @@ VALID_QUERY_TYPES = {
     QUERY_TYPE_AMBIGUOUS_REVIEWER_NEEDED,
 }
 DEFAULT_POSITIVE_QUERY_TYPE = QUERY_TYPE_CANONICAL_DOCUMENT
-RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v2"
+RANKING_INVESTIGATION_SCHEMA_VERSION = "ranking_investigation.v3"
+RANKING_CAUSE_VECTOR_DOMINANCE = "vector dominance"
+RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING = "title/filename underweighting"
+RANKING_CAUSE_SIBLING_COLLISION = "sibling/near-duplicate collision"
+RANKING_CAUSE_CHUNK_AGGREGATION_BIAS = "chunk aggregation bias"
+RANKING_CAUSE_DOC_TYPE_PRIOR_SUPPRESSION = "doc-type prior suppression"
+RANKING_CAUSE_CANDIDATE_GENERATION_MISS = "candidate generation miss"
+RANKING_CAUSE_AMBIGUOUS = "ambiguous/manual review"
+RANKING_CAUSE_ORDER: tuple[str, ...] = (
+    RANKING_CAUSE_VECTOR_DOMINANCE,
+    RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING,
+    RANKING_CAUSE_SIBLING_COLLISION,
+    RANKING_CAUSE_CHUNK_AGGREGATION_BIAS,
+    RANKING_CAUSE_DOC_TYPE_PRIOR_SUPPRESSION,
+    RANKING_CAUSE_CANDIDATE_GENERATION_MISS,
+    RANKING_CAUSE_AMBIGUOUS,
+)
 COMMON_STOPWORDS = {
     "a",
     "an",
@@ -600,6 +617,405 @@ def probe_metrics_by_query_type(
     return by_query_type
 
 
+def _safe_float(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric != numeric:  # NaN
+        return None
+    return numeric
+
+
+def _title_or_filename(doc: Mapping[str, Any] | None) -> str:
+    if not doc:
+        return ""
+    filename = doc.get("filename")
+    if isinstance(filename, str) and filename.strip():
+        return filename.strip()
+    path = doc.get("path")
+    if isinstance(path, str) and path.strip():
+        return Path(path).name
+    return ""
+
+
+def _title_filename_overlap(
+    *,
+    query_text: str,
+    doc: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    anchors = query_anchor_tokens(query_text)
+    anchor_set = set(anchors)
+    title = _title_or_filename(doc)
+    title_tokens = [token for token in TOKEN_RE.findall(title.lower()) if token]
+    overlap_tokens = sorted(anchor_set & set(title_tokens))
+    overlap_count = len(overlap_tokens)
+    overlap_ratio = (overlap_count / len(anchor_set)) if anchor_set else 0.0
+    return {
+        "title_or_filename": title,
+        "overlap_tokens": overlap_tokens,
+        "overlap_count": overlap_count,
+        "overlap_ratio": round(overlap_ratio, 4),
+    }
+
+
+def _fusion_weights_for_query(query_text: str, cfg: RetrievalConfig) -> tuple[float, float]:
+    anchored = has_strong_query_anchors(query_text.strip())
+    if anchored and cfg.anchored_lexical_bias_enabled:
+        return cfg.anchored_fusion_weight_vector, cfg.anchored_fusion_weight_bm25
+    return cfg.fusion_weight_vector, cfg.fusion_weight_bm25
+
+
+def _score_contributions(
+    *,
+    doc: Mapping[str, Any] | None,
+    fusion_weight_vector: float,
+    fusion_weight_bm25: float,
+) -> dict[str, float | None]:
+    if not doc:
+        return {
+            "vector_component": None,
+            "lexical_component": None,
+            "doc_type_prior_component": None,
+            "final_retrieval_score": None,
+        }
+    score_vector = _safe_float(doc.get("score_vector")) or 0.0
+    score_bm25 = _safe_float(doc.get("score_bm25")) or 0.0
+    bm25_variant_weight = _safe_float(doc.get("_bm25_variant_weight")) or 1.0
+    vector_component = fusion_weight_vector * score_vector
+    lexical_component = fusion_weight_bm25 * score_bm25 * bm25_variant_weight
+    doc_type_prior_component = _safe_float(doc.get("_profile_intent_adjustment")) or 0.0
+    return {
+        "vector_component": round(vector_component, 6),
+        "lexical_component": round(lexical_component, 6),
+        "doc_type_prior_component": round(doc_type_prior_component, 6),
+        "final_retrieval_score": _safe_float(doc.get("retrieval_score")),
+    }
+
+
+def _chunk_aggregation_signals(doc: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not doc:
+        return {
+            "source_channel": None,
+            "has_vector_signal": None,
+            "has_lexical_signal": None,
+            "bm25_variant_weight": None,
+            "chunk_id": None,
+            "chunk_index": None,
+            "cv_family_size": None,
+            "cv_family_suppressed": None,
+            "cv_family_choice_reason": None,
+        }
+    score_vector = _safe_float(doc.get("score_vector")) or 0.0
+    score_bm25 = _safe_float(doc.get("score_bm25")) or 0.0
+    return {
+        "source_channel": doc.get("source"),
+        "has_vector_signal": score_vector > 0.0,
+        "has_lexical_signal": score_bm25 > 0.0,
+        "bm25_variant_weight": _safe_float(doc.get("_bm25_variant_weight")),
+        "chunk_id": doc.get("id") or doc.get("_id"),
+        "chunk_index": doc.get("chunk_index"),
+        "cv_family_size": doc.get("_cv_family_size"),
+        "cv_family_suppressed": doc.get("_cv_family_suppressed"),
+        "cv_family_choice_reason": doc.get("_cv_family_choice_reason"),
+    }
+
+
+def assign_primary_ranking_cause(
+    *,
+    expected_rank_probe: int | None,
+    winner_vector_minus_expected: float | None,
+    winner_lexical_minus_expected: float | None,
+    title_overlap_count_delta: int | None,
+    title_overlap_ratio_delta: float | None,
+    doc_type_prior_delta: float | None,
+    near_duplicate_collision: bool,
+    chunk_aggregation_bias: bool,
+) -> str:
+    if expected_rank_probe is None:
+        return RANKING_CAUSE_CANDIDATE_GENERATION_MISS
+    if near_duplicate_collision:
+        return RANKING_CAUSE_SIBLING_COLLISION
+    if doc_type_prior_delta is not None and doc_type_prior_delta >= 0.02:
+        return RANKING_CAUSE_DOC_TYPE_PRIOR_SUPPRESSION
+    if (
+        title_overlap_count_delta is not None
+        and title_overlap_count_delta <= -1
+        and title_overlap_ratio_delta is not None
+        and title_overlap_ratio_delta <= -0.2
+    ):
+        return RANKING_CAUSE_TITLE_FILENAME_UNDERWEIGHTING
+    if (
+        winner_vector_minus_expected is not None
+        and winner_vector_minus_expected >= 0.05
+        and (
+            winner_lexical_minus_expected is None
+            or winner_lexical_minus_expected <= 0.03
+        )
+    ):
+        return RANKING_CAUSE_VECTOR_DOMINANCE
+    if chunk_aggregation_bias:
+        return RANKING_CAUSE_CHUNK_AGGREGATION_BIAS
+    return RANKING_CAUSE_AMBIGUOUS
+
+
+def _chunk_document_collapsing_profile(cfg: RetrievalConfig) -> dict[str, Any]:
+    return {
+        "checksum_dedup_enabled": True,
+        "cv_family_collapse_enabled": cfg.cv_family_collapse_enabled,
+        "near_duplicate_collapse_enabled": cfg.sim_threshold > 0,
+        "near_duplicate_similarity_threshold": cfg.sim_threshold,
+        "mmr_enabled": cfg.enable_mmr,
+        "mmr_effective_k": cfg.mmr_k or cfg.top_k,
+        "duplicate_topup_enabled": cfg.include_dups_if_needed,
+    }
+
+
+def _artifact_method_profile(
+    *,
+    artifact_path: Path,
+    variants_enabled: bool,
+    rewrites_enabled: bool,
+    exact_query_probing: bool,
+    candidate_depth: int,
+    top_k_each: int | None,
+    fusion_configuration: Mapping[str, Any],
+    chunk_document_collapsing: Mapping[str, Any],
+    metric_interpretation_scope: str,
+) -> dict[str, Any]:
+    return {
+        "artifact_path": str(artifact_path),
+        "variants_enabled": variants_enabled,
+        "rewrites_enabled": rewrites_enabled,
+        "exact_query_probing": exact_query_probing,
+        "candidate_depth": candidate_depth,
+        "top_k_each": top_k_each,
+        "fusion_configuration": dict(fusion_configuration),
+        "chunk_document_collapsing_behavior": dict(chunk_document_collapsing),
+        "metric_interpretation_scope": metric_interpretation_scope,
+    }
+
+
+def build_probe_vs_eval_comparison(
+    *,
+    patha_runbook_path: Path,
+    ranking_artifact_path: Path,
+    runbook: Mapping[str, Any],
+    archived_rows: Sequence[Mapping[str, Any]],
+    per_query_rows: Sequence[Mapping[str, Any]],
+    probe_docs_by_query: Mapping[str, Sequence[Mapping[str, Any]]],
+    probe_cfg: RetrievalConfig,
+) -> dict[str, Any]:
+    runbook_cfg_raw = runbook.get("config", {}) or {}
+    runbook_cfg = runbook_cfg_raw if isinstance(runbook_cfg_raw, Mapping) else {}
+    default_cfg = RetrievalConfig()
+    eval_candidate_depth = int(runbook_cfg.get("top_k") or 3)
+    eval_cfg = RetrievalConfig(
+        top_k=max(eval_candidate_depth, 1),
+        enable_variants=bool(runbook_cfg.get("enable_variants", True)),
+        enable_mmr=bool(runbook_cfg.get("enable_mmr", True)),
+        anchored_exact_only=bool(runbook_cfg.get("anchored_exact_only", True)),
+        anchored_lexical_bias_enabled=bool(
+            runbook_cfg.get("anchored_lexical_bias_enabled", True)
+        ),
+        anchored_fusion_weight_vector=float(
+            runbook_cfg.get(
+                "anchored_fusion_weight_vector",
+                default_cfg.anchored_fusion_weight_vector,
+            )
+        ),
+        anchored_fusion_weight_bm25=float(
+            runbook_cfg.get(
+                "anchored_fusion_weight_bm25",
+                default_cfg.anchored_fusion_weight_bm25,
+            )
+        ),
+        fusion_weight_vector=float(
+            runbook_cfg.get("fusion_weight_vector", default_cfg.fusion_weight_vector)
+        ),
+        fusion_weight_bm25=float(
+            runbook_cfg.get("fusion_weight_bm25", default_cfg.fusion_weight_bm25)
+        ),
+    )
+    eval_profile = _artifact_method_profile(
+        artifact_path=patha_runbook_path,
+        variants_enabled=eval_cfg.enable_variants,
+        rewrites_enabled=eval_cfg.enable_variants,
+        exact_query_probing=False,
+        candidate_depth=eval_cfg.top_k,
+        top_k_each=None,
+        fusion_configuration={
+            "anchored_exact_only": eval_cfg.anchored_exact_only,
+            "anchored_lexical_bias_enabled": eval_cfg.anchored_lexical_bias_enabled,
+            "fusion_weight_vector": eval_cfg.fusion_weight_vector,
+            "fusion_weight_bm25": eval_cfg.fusion_weight_bm25,
+            "anchored_fusion_weight_vector": eval_cfg.anchored_fusion_weight_vector,
+            "anchored_fusion_weight_bm25": eval_cfg.anchored_fusion_weight_bm25,
+        },
+        chunk_document_collapsing=_chunk_document_collapsing_profile(eval_cfg),
+        metric_interpretation_scope=(
+            "Archived strict metrics from runbook summary "
+            "(positive_hit_at_1/positive_hit_at_3 over mode=positive rows, "
+            "strict expected-checksum match within top_k window)."
+        ),
+    )
+    probe_profile = _artifact_method_profile(
+        artifact_path=ranking_artifact_path,
+        variants_enabled=probe_cfg.enable_variants,
+        rewrites_enabled=probe_cfg.enable_variants,
+        exact_query_probing=True,
+        candidate_depth=probe_cfg.top_k,
+        top_k_each=probe_cfg.top_k_each,
+        fusion_configuration={
+            "anchored_exact_only": probe_cfg.anchored_exact_only,
+            "anchored_lexical_bias_enabled": probe_cfg.anchored_lexical_bias_enabled,
+            "fusion_weight_vector": probe_cfg.fusion_weight_vector,
+            "fusion_weight_bm25": probe_cfg.fusion_weight_bm25,
+            "anchored_fusion_weight_vector": probe_cfg.anchored_fusion_weight_vector,
+            "anchored_fusion_weight_bm25": probe_cfg.anchored_fusion_weight_bm25,
+        },
+        chunk_document_collapsing=_chunk_document_collapsing_profile(probe_cfg),
+        metric_interpretation_scope=(
+            "Deterministic strict probe metrics "
+            "(strict_retrieval_rank_probe over exact-query deep probe depth)."
+        ),
+    )
+
+    runbook_summary_raw = runbook.get("summary", {}) or {}
+    runbook_summary = runbook_summary_raw if isinstance(runbook_summary_raw, Mapping) else {}
+    archived_total = int(
+        runbook_summary.get("positive_total")
+        or len([row for row in archived_rows if row.get("mode") == "positive"])
+    )
+    archived_hit1 = int(runbook_summary.get("positive_hit_at_1") or 0)
+    archived_hit3 = int(runbook_summary.get("positive_hit_at_3") or 0)
+
+    diag_by_id = _query_rows_by_id(per_query_rows)
+    disagreements: list[dict[str, Any]] = []
+    archived_only_hit1: list[str] = []
+    archived_only_hit3: list[str] = []
+    probe_only_hit1: list[str] = []
+    probe_only_hit3: list[str] = []
+    probe_hit1 = 0
+    probe_hit3 = 0
+
+    for archived_row in archived_rows:
+        query_id = str(archived_row.get("query_id") or "")
+        if not query_id:
+            continue
+        diag_row = diag_by_id.get(query_id, {})
+        archived_h1 = bool(archived_row.get("hit_at_1"))
+        archived_h3 = bool(archived_row.get("hit_at_3"))
+        probe_h1 = bool(diag_row.get("strict_retrieval_hit_at_1_probe"))
+        probe_h3 = bool(diag_row.get("strict_retrieval_hit_at_3_probe"))
+        if probe_h1:
+            probe_hit1 += 1
+        if probe_h3:
+            probe_hit3 += 1
+
+        if archived_h1 and not probe_h1:
+            archived_only_hit1.append(query_id)
+        if archived_h3 and not probe_h3:
+            archived_only_hit3.append(query_id)
+        if probe_h1 and not archived_h1:
+            probe_only_hit1.append(query_id)
+        if probe_h3 and not archived_h3:
+            probe_only_hit3.append(query_id)
+
+        if archived_h1 == probe_h1 and archived_h3 == probe_h3:
+            continue
+
+        archived_top3 = [
+            checksum
+            for checksum in (
+                archived_row.get("top1_checksum"),
+                archived_row.get("top2_checksum"),
+                archived_row.get("top3_checksum"),
+            )
+            if isinstance(checksum, str) and checksum
+        ]
+        probe_top3 = [
+            checksum
+            for checksum in (
+                doc.get("checksum") for doc in (probe_docs_by_query.get(query_id) or [])[:3]
+            )
+            if isinstance(checksum, str) and checksum
+        ]
+        disagreements.append(
+            {
+                "query_id": query_id,
+                "query": archived_row.get("query"),
+                "archived_hit_at_1": archived_h1,
+                "archived_hit_at_3": archived_h3,
+                "probe_hit_at_1": probe_h1,
+                "probe_hit_at_3": probe_h3,
+                "archived_top3_checksums": archived_top3,
+                "probe_top3_checksums": probe_top3,
+                "strict_retrieval_rank_probe": diag_row.get("strict_retrieval_rank_probe"),
+            }
+        )
+
+    strict_metric_comparison = {
+        "archived_eval": {
+            "positive_total": archived_total,
+            "hit_at_1": archived_hit1,
+            "hit_at_1_rate": round((archived_hit1 / archived_total), 4)
+            if archived_total
+            else 0.0,
+            "hit_at_3": archived_hit3,
+            "hit_at_3_rate": round((archived_hit3 / archived_total), 4)
+            if archived_total
+            else 0.0,
+        },
+        "deterministic_probe": {
+            "positive_total": archived_total,
+            "hit_at_1": probe_hit1,
+            "hit_at_1_rate": round((probe_hit1 / archived_total), 4)
+            if archived_total
+            else 0.0,
+            "hit_at_3": probe_hit3,
+            "hit_at_3_rate": round((probe_hit3 / archived_total), 4)
+            if archived_total
+            else 0.0,
+        },
+        "delta_probe_minus_archived": {
+            "hit_at_1": probe_hit1 - archived_hit1,
+            "hit_at_3": probe_hit3 - archived_hit3,
+        },
+    }
+
+    explanation = (
+        f"Archived Path A eval uses variants_enabled={eval_cfg.enable_variants}, "
+        f"rewrites_enabled={eval_cfg.enable_variants}, exact_query_probing=False, "
+        f"candidate_depth={eval_cfg.top_k}; deterministic ranking probe uses "
+        f"variants_enabled={probe_cfg.enable_variants}, rewrites_enabled={probe_cfg.enable_variants}, "
+        f"exact_query_probing=True, candidate_depth={probe_cfg.top_k}. "
+        "retrieve() binds MMR selection depth to top_k (mmr_k defaults to top_k), "
+        "so changing candidate_depth changes top-3 ordering. "
+        f"Observed strict discrepancy: archived hit@1={archived_hit1}/{archived_total}, "
+        f"hit@3={archived_hit3}/{archived_total} vs probe hit@1={probe_hit1}/{archived_total}, "
+        f"hit@3={probe_hit3}/{archived_total}."
+    )
+
+    return {
+        "artifact_method_profiles": [eval_profile, probe_profile],
+        "strict_metric_comparison": strict_metric_comparison,
+        "query_disagreement_summary": {
+            "queries_with_any_disagreement": len(disagreements),
+            "archived_only_hit_at_1_queries": len(archived_only_hit1),
+            "archived_only_hit_at_3_queries": len(archived_only_hit3),
+            "probe_only_hit_at_1_queries": len(probe_only_hit1),
+            "probe_only_hit_at_3_queries": len(probe_only_hit3),
+            "archived_only_hit_at_1_query_ids": archived_only_hit1,
+            "archived_only_hit_at_3_query_ids": archived_only_hit3,
+            "probe_only_hit_at_1_query_ids": probe_only_hit1,
+            "probe_only_hit_at_3_query_ids": probe_only_hit3,
+        },
+        "query_disagreements": disagreements,
+        "deterministic_explanation": explanation,
+    }
+
+
 def _best_similarity_to_expected(
     *,
     doc_checksum: str,
@@ -1076,6 +1492,219 @@ def investigate_ranking_post_patha(
     failed_rows = [
         row_by_id[query_id] for query_id in failed_query_ids if query_id in row_by_id
     ]
+    strict_canonical_failed_query_ids = [
+        str(row.get("query_id"))
+        for row in per_query_rank_rows
+        if row.get("benchmark_query_type") == QUERY_TYPE_CANONICAL_DOCUMENT
+        and not bool(row.get("strict_retrieval_hit_at_1_probe"))
+    ]
+    strict_canonical_rank_cause_rows: list[dict[str, Any]] = []
+    strict_canonical_rank_cause_counter: Counter[str] = Counter()
+
+    def _delta(a: float | None, b: float | None) -> float | None:
+        if a is None or b is None:
+            return None
+        return round(a - b, 6)
+
+    for query_id in strict_canonical_failed_query_ids:
+        diag_row = per_query_by_id.get(query_id, {})
+        query_text = str(diag_row.get("query") or "")
+        docs = list(base_probe_docs.get(query_id, []))
+        strict_expected = _dedupe_str_checksums(
+            diag_row.get("strict_expected_checksums_probe") or []
+        )
+        preferred_expected_checksum = diag_row.get("preferred_expected_checksum")
+        preferred_expected_checksum_str = (
+            str(preferred_expected_checksum)
+            if isinstance(preferred_expected_checksum, str) and preferred_expected_checksum
+            else None
+        )
+        expected_rank_probe = _expected_rank(docs, strict_expected)
+        expected_doc = (
+            docs[expected_rank_probe - 1]
+            if isinstance(expected_rank_probe, int)
+            and expected_rank_probe > 0
+            and expected_rank_probe - 1 < len(docs)
+            else None
+        )
+        expected_checksum_for_diagnosis = (
+            str(expected_doc.get("checksum"))
+            if expected_doc and isinstance(expected_doc.get("checksum"), str)
+            else (
+                preferred_expected_checksum_str
+                or (strict_expected[0] if strict_expected else None)
+            )
+        )
+        if expected_doc is None and expected_checksum_for_diagnosis:
+            expected_doc = _doc_by_checksum(docs, expected_checksum_for_diagnosis)
+
+        winner_doc = docs[0] if docs else None
+        winner_checksum = (
+            str(winner_doc.get("checksum"))
+            if winner_doc and isinstance(winner_doc.get("checksum"), str)
+            else None
+        )
+
+        fusion_weight_vector, fusion_weight_bm25 = _fusion_weights_for_query(
+            query_text, base_cfg
+        )
+        winner_contrib = _score_contributions(
+            doc=winner_doc,
+            fusion_weight_vector=fusion_weight_vector,
+            fusion_weight_bm25=fusion_weight_bm25,
+        )
+        expected_contrib = _score_contributions(
+            doc=expected_doc,
+            fusion_weight_vector=fusion_weight_vector,
+            fusion_weight_bm25=fusion_weight_bm25,
+        )
+        winner_vector = _safe_float(winner_contrib.get("vector_component"))
+        expected_vector = _safe_float(expected_contrib.get("vector_component"))
+        winner_lexical = _safe_float(winner_contrib.get("lexical_component"))
+        expected_lexical = _safe_float(expected_contrib.get("lexical_component"))
+        winner_prior = _safe_float(winner_contrib.get("doc_type_prior_component"))
+        expected_prior = _safe_float(expected_contrib.get("doc_type_prior_component"))
+        winner_final = _safe_float(winner_contrib.get("final_retrieval_score"))
+        expected_final = _safe_float(expected_contrib.get("final_retrieval_score"))
+
+        winner_title_overlap = _title_filename_overlap(
+            query_text=query_text,
+            doc=winner_doc,
+        )
+        expected_title_overlap = _title_filename_overlap(
+            query_text=query_text,
+            doc=expected_doc,
+        )
+        title_overlap_count_delta = (
+            int(winner_title_overlap.get("overlap_count", 0))
+            - int(expected_title_overlap.get("overlap_count", 0))
+        )
+        title_overlap_ratio_delta = round(
+            float(winner_title_overlap.get("overlap_ratio", 0.0))
+            - float(expected_title_overlap.get("overlap_ratio", 0.0)),
+            4,
+        )
+
+        winner_chunk_signals = _chunk_aggregation_signals(winner_doc)
+        expected_chunk_signals = _chunk_aggregation_signals(expected_doc)
+        winner_has_dual_signal = bool(winner_chunk_signals.get("has_vector_signal")) and bool(
+            winner_chunk_signals.get("has_lexical_signal")
+        )
+        expected_has_dual_signal = bool(
+            expected_chunk_signals.get("has_vector_signal")
+        ) and bool(expected_chunk_signals.get("has_lexical_signal"))
+        winner_cv_suppressed = _safe_float(winner_chunk_signals.get("cv_family_suppressed")) or 0.0
+        chunk_aggregation_bias = bool(
+            isinstance(expected_rank_probe, int)
+            and expected_rank_probe <= 10
+            and winner_has_dual_signal
+            and (not expected_has_dual_signal or winner_cv_suppressed > 0.0)
+            and (
+                _delta(winner_final, expected_final) is None
+                or (_delta(winner_final, expected_final) or 0.0) <= 0.20
+            )
+        )
+
+        winner_meta = cached_fulltext(winner_checksum) if winner_checksum else None
+        expected_meta = (
+            cached_fulltext(expected_checksum_for_diagnosis)
+            if expected_checksum_for_diagnosis
+            else None
+        )
+        winner_text = str((winner_meta or {}).get("text_full") or "")
+        expected_text = str((expected_meta or {}).get("text_full") or "")
+        winner_expected_similarity = (
+            text_similarity_metrics(winner_text, expected_text)
+            if winner_text and expected_text
+            else None
+        )
+        near_duplicate_collision = bool(
+            winner_expected_similarity
+            and (
+                bool(winner_expected_similarity.get("near_duplicate"))
+                or (
+                    float(winner_expected_similarity.get("containment_min", 0.0) or 0.0)
+                    >= 0.88
+                    and float(winner_expected_similarity.get("sequence_ratio", 0.0) or 0.0)
+                    >= 0.75
+                )
+            )
+        )
+
+        cause_bucket = assign_primary_ranking_cause(
+            expected_rank_probe=expected_rank_probe,
+            winner_vector_minus_expected=_delta(winner_vector, expected_vector),
+            winner_lexical_minus_expected=_delta(winner_lexical, expected_lexical),
+            title_overlap_count_delta=title_overlap_count_delta,
+            title_overlap_ratio_delta=title_overlap_ratio_delta,
+            doc_type_prior_delta=_delta(winner_prior, expected_prior),
+            near_duplicate_collision=near_duplicate_collision,
+            chunk_aggregation_bias=chunk_aggregation_bias,
+        )
+        strict_canonical_rank_cause_counter[cause_bucket] += 1
+
+        strict_canonical_rank_cause_rows.append(
+            {
+                "query_id": query_id,
+                "query": query_text,
+                "expected_checksum": expected_checksum_for_diagnosis,
+                "actual_top1_checksum": winner_checksum,
+                "expected_rank_if_retrieved": expected_rank_probe,
+                "winner_vs_expected_diagnostics": {
+                    "lexical_score_contribution": {
+                        "winner": winner_lexical,
+                        "expected": expected_lexical,
+                        "delta_winner_minus_expected": _delta(
+                            winner_lexical, expected_lexical
+                        ),
+                    },
+                    "vector_score_contribution": {
+                        "winner": winner_vector,
+                        "expected": expected_vector,
+                        "delta_winner_minus_expected": _delta(
+                            winner_vector, expected_vector
+                        ),
+                    },
+                    "title_filename_overlap_features": {
+                        "winner": winner_title_overlap,
+                        "expected": expected_title_overlap,
+                        "delta_overlap_count_winner_minus_expected": title_overlap_count_delta,
+                        "delta_overlap_ratio_winner_minus_expected": title_overlap_ratio_delta,
+                    },
+                    "doc_type_prior_contribution": {
+                        "winner": winner_prior,
+                        "expected": expected_prior,
+                        "delta_winner_minus_expected": _delta(
+                            winner_prior, expected_prior
+                        ),
+                    },
+                    "chunk_aggregation_signals": {
+                        "winner": winner_chunk_signals,
+                        "expected": expected_chunk_signals,
+                        "heuristic_chunk_aggregation_bias": chunk_aggregation_bias,
+                    },
+                    "final_score_delta": {
+                        "winner_retrieval_score": winner_final,
+                        "expected_retrieval_score": expected_final,
+                        "delta_winner_minus_expected": _delta(
+                            winner_final, expected_final
+                        ),
+                    },
+                    "winner_expected_text_similarity": winner_expected_similarity,
+                },
+                "primary_ranking_cause_bucket": cause_bucket,
+                "reviewer_bucket_override": None,
+                "reviewer_notes": "",
+            }
+        )
+    strict_canonical_bucket_counts = {
+        bucket: int(strict_canonical_rank_cause_counter.get(bucket, 0))
+        for bucket in RANKING_CAUSE_ORDER
+    }
+    strict_canonical_dominant_bucket = max(
+        RANKING_CAUSE_ORDER,
+        key=lambda bucket: strict_canonical_rank_cause_counter.get(bucket, 0),
+    )
     ablation_per_query: list[dict[str, Any]] = []
     ablation_deltas: dict[str, list[int]] = defaultdict(list)
 
@@ -1267,12 +1896,21 @@ def investigate_ranking_post_patha(
     review_candidates_total = sum(
         len(row.get("suggested_candidate_docs") or []) for row in review_queue_rows
     )
+    probe_vs_eval_comparison = build_probe_vs_eval_comparison(
+        patha_runbook_path=patha_runbook_path,
+        ranking_artifact_path=output_path,
+        runbook=runbook,
+        archived_rows=rows,
+        per_query_rows=per_query_rank_rows,
+        probe_docs_by_query=base_probe_docs,
+        probe_cfg=base_cfg,
+    )
 
     output = {
         "schema_version": RANKING_INVESTIGATION_SCHEMA_VERSION,
         "compatibility_note": (
-            "Schema v2 uses nested probe_ranking_metrics.{strict_retrieval,answer_support} "
-            "blocks and includes by_query_type metrics. Legacy flat probe keys are not emitted."
+            "Schema v3 adds probe_vs_eval_comparison and strict_canonical_ranking_diagnosis "
+            "blocks. Legacy flat probe keys are not emitted."
         ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_artifacts": {
@@ -1325,6 +1963,7 @@ def investigate_ranking_post_patha(
             },
         },
         "archived_patha_metrics": runbook.get("summary", {}),
+        "probe_vs_eval_comparison": probe_vs_eval_comparison,
         "benchmark_scope_summary": {
             "query_type_counts": query_type_counts,
             "primary_mode_counts": primary_mode_counts,
@@ -1398,6 +2037,34 @@ def investigate_ranking_post_patha(
             },
         },
         "per_query_rank_diagnostics": per_query_rank_rows,
+        "strict_canonical_ranking_diagnosis": {
+            "scope": (
+                "strict canonical ranking misses only "
+                "(benchmark_query_type=canonical_document_query and strict hit@1 miss)"
+            ),
+            "failed_query_count": len(strict_canonical_rank_cause_rows),
+            "bucket_counts": strict_canonical_bucket_counts,
+            "largest_bucket": {
+                "bucket": strict_canonical_dominant_bucket,
+                "count": int(
+                    strict_canonical_rank_cause_counter.get(
+                        strict_canonical_dominant_bucket, 0
+                    )
+                ),
+                "share_of_failed_queries": round(
+                    (
+                        strict_canonical_rank_cause_counter.get(
+                            strict_canonical_dominant_bucket, 0
+                        )
+                        / len(strict_canonical_rank_cause_rows)
+                    ),
+                    4,
+                )
+                if strict_canonical_rank_cause_rows
+                else 0.0,
+            },
+            "rows": strict_canonical_rank_cause_rows,
+        },
         "ablation_analysis": {
             "scope": (
                 "benchmark-aware ranking failures: strict_retrieval misses for canonical/ambiguous "
