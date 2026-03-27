@@ -441,6 +441,91 @@ def test_retrieve_context_sources_prefer_pdf_over_list_artifacts(monkeypatch):
     ]
 
 
+def test_qa_usecase_sources_prefer_pdf_over_list_artifacts_for_anchored_near_tie(monkeypatch):
+    from app.schemas import QARequest
+    from app.usecases import qa_usecase
+    from core.retrieval.types import RetrievalConfig
+
+    vector_hits = [
+        {
+            "id": "g1",
+            "text": "filtered drive list mentioning sliding mode control of PEM fuel cells paper",
+            "score": 1.0,
+            "checksum": "g1",
+            "path": "C:/docs/filtered_gdrive_list.txt",
+            "filename": "filtered_gdrive_list.txt",
+        },
+        {
+            "id": "p1",
+            "text": "Control approach used: Sliding Mode Control.",
+            "score": 0.999995,
+            "checksum": "p1",
+            "path": "C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf",
+            "filename": "Sliding Mode Control of PEM Fuel Cells.pdf",
+        },
+        {
+            "id": "g2",
+            "text": "drive file list includes sliding mode control of PEM fuel cells",
+            "score": 0.999994,
+            "checksum": "g2",
+            "path": "C:/docs/gdrive-file-list.txt",
+            "filename": "gdrive-file-list.txt",
+        },
+    ]
+
+    monkeypatch.setattr(
+        "qa_pipeline.retrieve.default_retrieval_deps",
+        lambda: types.SimpleNamespace(
+            semantic_retriever=lambda q, top_k: vector_hits,
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+    )
+    monkeypatch.setattr(
+        qa_usecase,
+        "RetrievalConfig",
+        lambda: RetrievalConfig(
+            top_k=3,
+            enable_variants=False,
+            enable_mmr=False,
+            fusion_weight_vector=1.0,
+            fusion_weight_bm25=0.0,
+            authority_boost_enabled=False,
+            recency_boost_enabled=False,
+            profile_intent_boost_enabled=False,
+            canonical_lexical_rescue_enabled=False,
+            canonical_hard_negative_suppression_enabled=False,
+            content_evidence_guard_enabled=False,
+            anchored_content_near_tie_score_epsilon=1e-5,
+        ),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.rewrite_question",
+        lambda question, temperature=0.15, use_cache=True: QueryRewrite(
+            rewritten="PEM fuel cell sliding mode control approach"
+        ),
+    )
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", lambda *args, **kwargs: "answer")
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
+
+    response = qa_usecase.answer(
+        QARequest(
+            question="In the PEM fuel-cell sliding mode control research paper, what control approach is used?"
+        )
+    )
+
+    assert "C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf" in response.sources
+    assert "C:/docs/filtered_gdrive_list.txt" in response.sources
+    assert "C:/docs/gdrive-file-list.txt" in response.sources
+    assert response.sources.index("C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf") < response.sources.index(
+        "C:/docs/filtered_gdrive_list.txt"
+    )
+    assert response.sources.index("C:/docs/Sliding Mode Control of PEM Fuel Cells.pdf") < response.sources.index(
+        "C:/docs/gdrive-file-list.txt"
+    )
+
+
 def test_answer_question_skips_grounding_when_flag_disabled(monkeypatch):
     called = {"count": 0}
 

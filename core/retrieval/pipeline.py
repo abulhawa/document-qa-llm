@@ -577,6 +577,105 @@ def _apply_content_evidence_quality_guard(
     return guard_relevant
 
 
+def _apply_anchored_content_near_tie_break(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+    *,
+    anchored_query: bool,
+) -> bool:
+    if not anchored_query or len(docs) < 2:
+        return False
+    if not _is_content_question_query(query):
+        return False
+
+    epsilon = max(cfg.anchored_content_near_tie_score_epsilon, 0.0)
+    if epsilon <= 0:
+        return False
+
+    scored_docs: list[tuple[int, float, str, str]] = []
+    has_artifact = False
+    has_content = False
+    for idx, doc in enumerate(docs):
+        evidence_class = doc.get("_evidence_quality_class")
+        if evidence_class not in {
+            _NON_EVIDENCE_ARTIFACT_CLASS,
+            _CONTENT_OR_UNKNOWN_EVIDENCE_CLASS,
+        }:
+            evidence_class, artifact_terms = _classify_evidence_quality(doc)
+            doc["_evidence_quality_class"] = evidence_class
+            if artifact_terms:
+                doc["_evidence_quality_terms"] = artifact_terms
+
+        if evidence_class == _NON_EVIDENCE_ARTIFACT_CLASS:
+            has_artifact = True
+        else:
+            has_content = True
+
+        scored_docs.append(
+            (
+                idx,
+                float(doc.get("retrieval_score", 0.0) or 0.0),
+                str(doc.get("modified_at", "")),
+                evidence_class,
+            )
+        )
+
+    if not has_artifact or not has_content:
+        return False
+
+    ranked_docs = sorted(
+        scored_docs,
+        key=lambda item: (item[1], item[2]),
+        reverse=True,
+    )
+
+    tie_break_applied = False
+    demotion_rank = 0
+    for artifact_idx, artifact_score, _, artifact_class in ranked_docs:
+        if artifact_class != _NON_EVIDENCE_ARTIFACT_CLASS:
+            continue
+
+        preferred_content_idx: int | None = None
+        preferred_content_score: float | None = None
+        preferred_content_modified = ""
+        for content_idx, content_score, content_modified, content_class in ranked_docs:
+            if content_class == _NON_EVIDENCE_ARTIFACT_CLASS:
+                continue
+            score_gap = artifact_score - content_score
+            if score_gap < 0 or score_gap > epsilon:
+                continue
+            if preferred_content_score is None or (
+                content_score,
+                content_modified,
+            ) > (
+                preferred_content_score,
+                preferred_content_modified,
+            ):
+                preferred_content_idx = content_idx
+                preferred_content_score = content_score
+                preferred_content_modified = content_modified
+
+        if preferred_content_idx is None or preferred_content_score is None:
+            continue
+
+        demotion_rank += 1
+        new_score = max(preferred_content_score - (epsilon * demotion_rank), 0.0)
+        if artifact_score <= new_score:
+            continue
+
+        artifact_doc = docs[artifact_idx]
+        artifact_doc["retrieval_score"] = new_score
+        artifact_doc["_anchored_content_near_tie_break"] = {
+            "preferred_content_checksum": docs[preferred_content_idx].get("checksum"),
+            "score_gap_closed": round(artifact_score - preferred_content_score, 8),
+            "score_epsilon": epsilon,
+        }
+        tie_break_applied = True
+
+    return tie_break_applied
+
+
 def _is_q10_debug_query(query: str) -> bool:
     tokens = _tokenize_lower(query)
     if not tokens:
@@ -1077,6 +1176,12 @@ def retrieve(
         fused,
         cfg,
     )
+    _apply_anchored_content_near_tie_break(
+        exact_query,
+        fused,
+        cfg,
+        anchored_query=anchored_query,
+    )
     _debug_evidence_quality_ranking(exact_query, "post_guard_fused", fused)
 
     fused_sorted: List[DocHit] = sorted(
@@ -1139,6 +1244,12 @@ def retrieve(
         exact_query,
         docs_for_answer,
         cfg,
+    )
+    _apply_anchored_content_near_tie_break(
+        exact_query,
+        docs_for_answer,
+        cfg,
+        anchored_query=anchored_query,
     )
     _debug_evidence_quality_ranking(exact_query, "post_guard_final_candidates", docs_for_answer)
     if citation_guard_relevant:
