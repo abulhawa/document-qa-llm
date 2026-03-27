@@ -288,6 +288,33 @@ def test_answer_question_bypasses_clarify_for_anchored_query(monkeypatch):
     assert result.answer == "answer"
 
 
+def test_answer_question_uses_original_text_for_anchored_query_retrieval(monkeypatch):
+    observed = {}
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):
+        observed["retrieval_query"] = query
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="doc", path="path", score=1.0)],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):
+        return QueryRewrite(rewritten="PEM fuel cell sliding mode control approach")
+
+    def mock_generate(*args, **kwargs):
+        return "answer"
+
+    original = "In the PEM fuel-cell sliding mode control research paper, what control approach is used?"
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+
+    result = answer_question(original)
+
+    assert observed["retrieval_query"] == original
+    assert result.rewritten_question == original
+
+
 def test_answer_question_returns_clarify_for_unanchored_query(monkeypatch):
     def mock_rewrite(question, temperature=0.15, use_cache=True):
         return QueryRewrite(clarify="Could you provide more detail?")

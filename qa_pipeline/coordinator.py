@@ -86,6 +86,16 @@ def answer_question(
                 )
                 rewrite_span.set_status(STATUS_OK)
 
+            if has_strong_query_anchors(question):
+                if (
+                    context.rewritten_question
+                    and context.rewritten_question.strip() != question.strip()
+                ):
+                    logger.info(
+                        "Rewrite produced alternate text for anchored query; using original question for retrieval."
+                    )
+                context.rewritten_question = question
+
             if context.clarification and has_strong_query_anchors(question):
                 logger.info(
                     "Rewrite requested clarification but query has strong anchors; continuing with exact query."
