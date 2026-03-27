@@ -1,12 +1,15 @@
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from config import logger
 
 from core.embeddings import embed_texts
 from core.vector_store import retrieve_top_k as semantic_retriever
-from core.opensearch_store import search as keyword_retriever
+from core.opensearch_store import (
+    search as keyword_retriever,
+    fetch_sibling_chunks as opensearch_fetch_sibling_chunks,
+)
 
 from core.retrieval.fusion import fuse_semantic_and_bm25, dedup_by_checksum
 from core.retrieval.variants import generate_variants
@@ -48,7 +51,42 @@ _PROFILE_QUERY_PERSON_TERMS: Set[str] = {
     "person",
     "candidate",
 }
+_PROFILE_SIBLING_QUERY_TERMS: Set[str] = {"when", "where"}
+_PROFILE_ENTITY_IGNORE_TERMS: Set[str] = {
+    "his",
+    "her",
+    "their",
+    "them",
+    "this",
+    "that",
+}
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TEMPORAL_EVIDENCE_RE = re.compile(
+    r"\b(?:19|20)\d{2}\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+    r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|"
+    r"nov(?:ember)?|dec(?:ember)?)\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
+    re.IGNORECASE,
+)
+_LOCATION_EVIDENCE_RE = re.compile(
+    r"\b(?:in|at|from)\s+[A-Z][\w.-]+(?:\s+[A-Z][\w.-]+)?\b"
+)
+_LOCATION_CUE_TERMS: Set[str] = {
+    "university",
+    "college",
+    "city",
+    "country",
+    "state",
+    "province",
+    "region",
+    "district",
+    "campus",
+    "location",
+    "located",
+    "address",
+    "resides",
+    "based",
+    "headquartered",
+}
 _OUT_OF_CORPUS_CUE_TERMS: Set[str] = {
     "bitcoin",
     "crypto",
@@ -266,6 +304,7 @@ def _default_deps() -> RetrievalDeps:
         keyword_retriever=keyword_retriever,
         embed_texts=embed_texts,
         cross_encoder=build_configured_reranker(),
+        sibling_chunk_fetcher=opensearch_fetch_sibling_chunks,
     )
 
 
@@ -979,6 +1018,293 @@ def _apply_profile_intent_adjustment(query: str, docs: Sequence[DocHit], cfg: Re
         doc["_profile_intent_class"] = "other"
 
 
+def _profile_sibling_expansion_scope(query: str) -> tuple[bool, bool, bool]:
+    tokens = _tokenize_lower(query)
+    if not tokens:
+        return False, False, False
+    if not _is_profile_intent_query(query):
+        return False, False, False
+    wants_temporal = "when" in tokens
+    wants_location = "where" in tokens
+    active = bool(tokens & _PROFILE_SIBLING_QUERY_TERMS) and (wants_temporal or wants_location)
+    return active, wants_temporal, wants_location
+
+
+def _doc_unique_id(doc: DocHit) -> str:
+    for key in ("id", "_id"):
+        value = doc.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+    path = str(doc.get("path") or "").strip()
+    chunk_index = doc.get("chunk_index")
+    return f"{path}#{chunk_index}"
+
+
+def _doc_source_key(doc: DocHit) -> str:
+    checksum = str(doc.get("checksum") or "").strip()
+    if checksum:
+        return f"checksum:{checksum}"
+    path = str(doc.get("path") or "").strip()
+    if path:
+        return f"path:{path}"
+    return ""
+
+
+def _profile_entity_tokens(query: str) -> Set[str]:
+    ignore = _QUERY_STOPWORDS | _PROFILE_QUERY_FACT_TERMS | _PROFILE_QUERY_PERSON_TERMS | _PROFILE_ENTITY_IGNORE_TERMS
+    return {
+        token
+        for token in _tokenize_lower(query)
+        if len(token) >= 3 and token not in ignore
+    }
+
+
+def _doc_tokens_for_sibling_scoring(doc: DocHit) -> Set[str]:
+    fields = (
+        str(doc.get("text") or ""),
+        str(doc.get("path") or ""),
+        str(doc.get("filename") or ""),
+        str(doc.get("person_name") or ""),
+        str(doc.get("doc_type") or ""),
+    )
+    return _tokenize_lower(" ".join(fields))
+
+
+def _has_temporal_evidence(text: str) -> bool:
+    return bool(_TEMPORAL_EVIDENCE_RE.search(text or ""))
+
+
+def _has_location_evidence(text: str) -> bool:
+    if _LOCATION_EVIDENCE_RE.search(text or ""):
+        return True
+    tokens = _tokenize_lower(text or "")
+    return bool(tokens & _LOCATION_CUE_TERMS)
+
+
+def _sibling_evidence_features(
+    doc: DocHit,
+    *,
+    query_tokens: Set[str],
+    entity_tokens: Set[str],
+    wants_temporal: bool,
+    wants_location: bool,
+) -> Dict[str, int]:
+    doc_tokens = _doc_tokens_for_sibling_scoring(doc)
+    text = str(doc.get("text") or "")
+    lexical_overlap = len(query_tokens & doc_tokens)
+    entity_overlap = len(entity_tokens & doc_tokens) if entity_tokens else 0
+    temporal_match = int(wants_temporal and _has_temporal_evidence(text))
+    location_match = int(wants_location and _has_location_evidence(text))
+    score = (
+        lexical_overlap * 2
+        + entity_overlap * 2
+        + temporal_match * 6
+        + location_match * 4
+    )
+    return {
+        "score": score,
+        "lexical_overlap": lexical_overlap,
+        "entity_overlap": entity_overlap,
+        "temporal_match": temporal_match,
+        "location_match": location_match,
+    }
+
+
+def _sibling_feature_rank(features: Dict[str, int]) -> tuple[int, int, int, int, int]:
+    return (
+        int(features.get("score", 0)),
+        int(features.get("temporal_match", 0)),
+        int(features.get("location_match", 0)),
+        int(features.get("entity_overlap", 0)),
+        int(features.get("lexical_overlap", 0)),
+    )
+
+
+def _sibling_reason_tags(
+    base_features: Dict[str, int],
+    candidate_features: Dict[str, int],
+) -> List[str]:
+    reasons: List[str] = []
+    if candidate_features.get("lexical_overlap", 0) > base_features.get("lexical_overlap", 0):
+        reasons.append("lexical_overlap")
+    if candidate_features.get("entity_overlap", 0) > base_features.get("entity_overlap", 0):
+        reasons.append("entity_overlap")
+    if candidate_features.get("temporal_match", 0) > base_features.get("temporal_match", 0):
+        reasons.append("temporal_evidence")
+    if candidate_features.get("location_match", 0) > base_features.get("location_match", 0):
+        reasons.append("location_evidence")
+    return reasons
+
+
+def _chunk_index_as_int(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return -1
+
+
+def _apply_source_limit(
+    docs: Sequence[DocHit],
+    *,
+    top_k: int,
+    max_chunks_per_source: int,
+) -> List[DocHit]:
+    limit = max(1, max_chunks_per_source)
+    capped: List[DocHit] = []
+    seen_per_source: Dict[str, int] = {}
+    for doc in docs:
+        source_key = _doc_source_key(doc)
+        if source_key:
+            count = seen_per_source.get(source_key, 0)
+            if count >= limit:
+                continue
+            seen_per_source[source_key] = count + 1
+        capped.append(doc)
+        if len(capped) >= top_k:
+            break
+    return capped
+
+
+def _expand_profile_query_with_sibling_chunks(
+    query: str,
+    docs: Sequence[DocHit],
+    cfg: RetrievalConfig,
+    *,
+    sibling_chunk_fetcher: Optional[Callable[[DocHit, int], Sequence[DocHit]]],
+) -> List[DocHit]:
+    if not cfg.sibling_expansion_enabled or not docs:
+        return list(docs)
+    if sibling_chunk_fetcher is None:
+        return list(docs)
+
+    expansion_active, wants_temporal, wants_location = _profile_sibling_expansion_scope(query)
+    if not expansion_active:
+        return list(docs)
+
+    query_tokens = _query_content_tokens(query)
+    if not query_tokens:
+        return list(docs)
+    entity_tokens = _profile_entity_tokens(query)
+
+    max_sources = max(0, int(cfg.sibling_expansion_max_sources))
+    max_per_source = max(0, int(cfg.sibling_expansion_max_per_source))
+    if max_sources <= 0 or max_per_source <= 0:
+        return list(docs)
+
+    expanded: List[DocHit] = []
+    existing_ids: Set[str] = {_doc_unique_id(doc) for doc in docs}
+    expanded_count_by_source: Dict[str, int] = {}
+    expanded_sources = 0
+    added_any_sibling = False
+
+    for base_doc in docs:
+        expanded.append(base_doc)
+        source_key = _doc_source_key(base_doc)
+        if not source_key:
+            continue
+        if expanded_sources >= max_sources:
+            continue
+        if expanded_count_by_source.get(source_key, 0) >= max_per_source:
+            continue
+
+        sibling_candidates = list(
+            sibling_chunk_fetcher(
+                base_doc,
+                max(1, int(cfg.sibling_expansion_candidate_limit)),
+            )
+        )
+        if not sibling_candidates:
+            continue
+
+        base_id = _doc_unique_id(base_doc)
+        base_chunk_index = _chunk_index_as_int(base_doc.get("chunk_index"))
+        base_features = _sibling_evidence_features(
+            base_doc,
+            query_tokens=query_tokens,
+            entity_tokens=entity_tokens,
+            wants_temporal=wants_temporal,
+            wants_location=wants_location,
+        )
+        base_rank = _sibling_feature_rank(base_features)
+
+        best_choice: tuple[tuple[int, int, int, int, int, int, int], DocHit, List[str], Dict[str, int]] | None = None
+        for candidate in sibling_candidates:
+            candidate_source_key = _doc_source_key(candidate)
+            if candidate_source_key != source_key:
+                continue
+            candidate_id = _doc_unique_id(candidate)
+            if candidate_id == base_id or candidate_id in existing_ids:
+                continue
+
+            candidate_features = _sibling_evidence_features(
+                candidate,
+                query_tokens=query_tokens,
+                entity_tokens=entity_tokens,
+                wants_temporal=wants_temporal,
+                wants_location=wants_location,
+            )
+            candidate_rank = _sibling_feature_rank(candidate_features)
+            if candidate_rank <= base_rank:
+                continue
+
+            reasons = _sibling_reason_tags(base_features, candidate_features)
+            if not reasons:
+                continue
+
+            candidate_chunk_index = _chunk_index_as_int(candidate.get("chunk_index"))
+            if base_chunk_index >= 0 and candidate_chunk_index >= 0:
+                chunk_distance_score = -abs(candidate_chunk_index - base_chunk_index)
+            else:
+                chunk_distance_score = -10**6
+            tie_key = (
+                *candidate_rank,
+                chunk_distance_score,
+                -candidate_chunk_index,
+            )
+            if best_choice is None or tie_key > best_choice[0]:
+                best_choice = (tie_key, candidate, reasons, candidate_features)
+
+        if best_choice is None:
+            continue
+
+        _, candidate, reasons, candidate_features = best_choice
+        sibling_doc = dict(candidate)
+        base_score = float(base_doc.get("retrieval_score", 0.0) or 0.0)
+        sibling_doc["retrieval_score"] = max(base_score - 1e-6, 0.0)
+        sibling_doc["_sibling_expansion"] = {
+            "selected_chunk_index": base_doc.get("chunk_index"),
+            "added_chunk_index": sibling_doc.get("chunk_index"),
+            "reasons": reasons,
+            "base_features": base_features,
+            "sibling_features": candidate_features,
+        }
+        expanded.append(sibling_doc)
+        existing_ids.add(_doc_unique_id(sibling_doc))
+        expanded_count_by_source[source_key] = expanded_count_by_source.get(source_key, 0) + 1
+        if expanded_count_by_source[source_key] == 1:
+            expanded_sources += 1
+        added_any_sibling = True
+
+        logger.info(
+            "Sibling expansion added chunk | path=%s | checksum=%s | selected_chunk=%s | sibling_chunk=%s | reasons=%s",
+            base_doc.get("path"),
+            base_doc.get("checksum"),
+            base_doc.get("chunk_index"),
+            sibling_doc.get("chunk_index"),
+            ",".join(reasons),
+        )
+
+    if not added_any_sibling:
+        return list(docs)
+
+    limited = _apply_source_limit(
+        expanded,
+        top_k=cfg.top_k,
+        max_chunks_per_source=cfg.sibling_expansion_max_chunks_per_source,
+    )
+    return limited
+
+
 def _cv_family_key(doc: DocHit) -> str | None:
     doc_type = str(doc.get("doc_type") or "").strip().lower()
     if doc_type not in _CV_FAMILY_DOC_TYPES:
@@ -1302,6 +1628,13 @@ def retrieve(
             "post_guard_final_candidates_sorted",
             docs_for_answer,
         )
+
+    docs_for_answer = _expand_profile_query_with_sibling_chunks(
+        exact_query,
+        docs_for_answer,
+        cfg,
+        sibling_chunk_fetcher=getattr(deps, "sibling_chunk_fetcher", None),
+    )
 
     if _should_abstain_for_out_of_corpus_query(query, docs_for_answer, cfg):
         logger.info(

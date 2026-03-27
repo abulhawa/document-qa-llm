@@ -192,12 +192,19 @@ def isolate_variants(monkeypatch):
     monkeypatch.setattr(pipeline, "generate_variants", lambda q: {"variants": [(q, 1.0)]})
 
 
-def _build_deps(vector_hits: List[Dict], bm25_hits: List[Dict], embedder=None, reranker=None):
+def _build_deps(
+    vector_hits: List[Dict],
+    bm25_hits: List[Dict],
+    embedder=None,
+    reranker=None,
+    sibling_fetcher=None,
+):
     return RetrievalDeps(
         semantic_retriever=lambda q, top_k: vector_hits,
         keyword_retriever=lambda q, top_k: bm25_hits,
         embed_texts=embedder,
         cross_encoder=reranker,
+        sibling_chunk_fetcher=sibling_fetcher,
     )
 
 
@@ -1541,6 +1548,270 @@ def test_retrieval_abstains_for_live_out_of_corpus_query_even_with_partial_overl
     assert result.clarify is None
 
 
+def test_retrieval_adds_temporal_sibling_for_profile_when_query():
+    vector_hits = [
+        {
+            "id": "cv-0",
+            "text": "Ali profile summary with education highlights.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "score": 1.0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "contract-1",
+            "text": "Contract details",
+            "path": "C:/docs/contract.pdf",
+            "chunk_index": 0,
+            "score": 0.85,
+            "checksum": "contract",
+            "doc_type": "contract",
+        },
+    ]
+
+    sibling_chunks = [
+        {
+            "id": "cv-0",
+            "_id": "cv-0",
+            "text": "Ali profile summary with education highlights.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "cv-7",
+            "_id": "cv-7",
+            "text": "PhD studies completed at Coventry University in 2010.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 7,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+    ]
+
+    cfg = RetrievalConfig(
+        top_k=3,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "When did Ali do his PhD studies?",
+        cfg=cfg,
+        deps=_build_deps(
+            vector_hits,
+            [],
+            sibling_fetcher=lambda doc, limit: sibling_chunks,  # noqa: ARG005
+        ),
+    )
+
+    ali_chunks = [doc for doc in result.documents if doc.get("checksum") == "ali-cv"]
+    assert [doc.get("chunk_index") for doc in ali_chunks] == [0, 7]
+    sibling_doc = ali_chunks[1]
+    assert sibling_doc.get("_sibling_expansion") is not None
+    assert "temporal_evidence" in sibling_doc["_sibling_expansion"]["reasons"]
+    assert len(result.documents) <= cfg.top_k
+
+
+def test_retrieval_adds_location_sibling_for_profile_where_query():
+    vector_hits = [
+        {
+            "id": "cv-0",
+            "text": "Ali profile summary and education overview.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "score": 1.0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        }
+    ]
+
+    sibling_chunks = [
+        {
+            "id": "cv-0",
+            "_id": "cv-0",
+            "text": "Ali profile summary and education overview.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "cv-5",
+            "_id": "cv-5",
+            "text": "MSc studies took place at University of Bonn.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 5,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+    ]
+
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "Where did Ali do his MSc studies?",
+        cfg=cfg,
+        deps=_build_deps(
+            vector_hits,
+            [],
+            sibling_fetcher=lambda doc, limit: sibling_chunks,  # noqa: ARG005
+        ),
+    )
+
+    assert [doc.get("chunk_index") for doc in result.documents] == [0, 5]
+    sibling_doc = result.documents[1]
+    assert "location_evidence" in sibling_doc["_sibling_expansion"]["reasons"]
+
+
+def test_retrieval_does_not_expand_siblings_for_non_profile_query():
+    calls = {"count": 0}
+
+    def _sibling_fetcher(doc, limit):  # noqa: ARG001
+        calls["count"] += 1
+        return []
+
+    vector_hits = [
+        {
+            "id": "doc-1",
+            "text": "Ali resume summary.",
+            "path": "C:/docs/ali_resume.pdf",
+            "chunk_index": 0,
+            "score": 1.0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        }
+    ]
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+    )
+    result = pipeline.retrieve(
+        "Summarize Ali's resume.",
+        cfg=cfg,
+        deps=_build_deps(vector_hits, [], sibling_fetcher=_sibling_fetcher),
+    )
+
+    assert [doc.get("id") for doc in result.documents] == ["doc-1"]
+    assert calls["count"] == 0
+
+
+def test_retrieval_sibling_expansion_keeps_same_file_chunks_bounded():
+    vector_hits = [
+        {
+            "id": "cv-0",
+            "text": "Ali profile summary with education highlights.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "score": 1.0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "support-1",
+            "text": "Project notes.",
+            "path": "C:/docs/project_notes.txt",
+            "chunk_index": 0,
+            "score": 0.8,
+            "checksum": "notes",
+        },
+    ]
+
+    sibling_chunks = [
+        {
+            "id": "cv-0",
+            "_id": "cv-0",
+            "text": "Ali profile summary with education highlights.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 0,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "cv-6",
+            "_id": "cv-6",
+            "text": "PhD research completed in 2010 at Coventry University.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 6,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+        {
+            "id": "cv-7",
+            "_id": "cv-7",
+            "text": "MSc completed in 2008 at another university.",
+            "path": "C:/docs/Resume - Ali 2016_11.docx",
+            "filename": "Resume - Ali 2016_11.docx",
+            "chunk_index": 7,
+            "checksum": "ali-cv",
+            "doc_type": "cv",
+            "person_name": "Ali",
+        },
+    ]
+
+    cfg = RetrievalConfig(
+        top_k=4,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        sibling_expansion_max_per_source=1,
+        sibling_expansion_max_chunks_per_source=2,
+    )
+    result = pipeline.retrieve(
+        "When did Ali do his PhD studies?",
+        cfg=cfg,
+        deps=_build_deps(
+            vector_hits,
+            [],
+            sibling_fetcher=lambda doc, limit: sibling_chunks,  # noqa: ARG005
+        ),
+    )
+
+    ali_docs = [doc for doc in result.documents if doc.get("checksum") == "ali-cv"]
+    assert len(ali_docs) == 2
+    assert [doc.get("chunk_index") for doc in ali_docs] == [0, 6]
+
+
 def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
     assert RetrievalConfig().canonical_anchored_sim_threshold == pytest.approx(0.94)
@@ -1570,5 +1841,10 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.cv_family_relevance_margin == pytest.approx(0.10)
     assert cfg.profile_intent_boost_enabled is True
     assert cfg.profile_intent_boost_weight == pytest.approx(0.10)
+    assert cfg.sibling_expansion_enabled is True
+    assert cfg.sibling_expansion_max_sources == 2
+    assert cfg.sibling_expansion_max_per_source == 1
+    assert cfg.sibling_expansion_candidate_limit == 12
+    assert cfg.sibling_expansion_max_chunks_per_source == 2
     assert cfg.abstention_enabled is True
     assert cfg.abstention_min_overlap_terms == 2

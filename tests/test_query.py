@@ -441,6 +441,46 @@ def test_retrieve_context_sources_prefer_pdf_over_list_artifacts(monkeypatch):
     ]
 
 
+def test_answer_question_uses_sibling_chunk_in_prompt_context(monkeypatch):
+    def mock_retrieve(query, top_k, retrieval_cfg=None):  # noqa: ARG001
+        return RetrievalResult(
+            query=query,
+            documents=[
+                RetrievedDocument(
+                    text="Ali profile summary and education highlights.",
+                    path="C:/docs/Resume - Ali 2016_11.docx",
+                    chunk_index=0,
+                    score=0.97,
+                ),
+                RetrievedDocument(
+                    text="PhD studies completed at Coventry University in 2010.",
+                    path="C:/docs/Resume - Ali 2016_11.docx",
+                    chunk_index=7,
+                    score=0.96,
+                ),
+            ],
+        )
+
+    def mock_rewrite(question, temperature=0.15, use_cache=True):  # noqa: ARG001
+        return QueryRewrite(rewritten=question)
+
+    def mock_generate(*args, **kwargs):
+        prompt_request = kwargs.get("prompt_request")
+        prompt_text = str(getattr(prompt_request, "prompt", ""))
+        return "2010" if "2010" in prompt_text else "I don't know."
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
+    monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
+
+    result = answer_question("When did Ali do his PhD studies?")
+
+    assert result.answer == "2010"
+    assert result.retrieval is not None
+    assert [doc.chunk_index for doc in result.retrieval.documents] == [0, 7]
+
+
 def test_qa_usecase_sources_prefer_pdf_over_list_artifacts_for_anchored_near_tie(monkeypatch):
     from app.schemas import QARequest
     from app.usecases import qa_usecase
