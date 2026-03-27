@@ -24,6 +24,7 @@ from core.retrieval.types import RetrievalConfig
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
+SENTENCE_SPLIT_RE = re.compile(r"[.!?\n]+")
 
 RANK_BUCKET_1 = "rank_1"
 RANK_BUCKET_2_3 = "rank_2_to_3"
@@ -37,12 +38,52 @@ POSSIBLY_CORRECT_SIMILAR = "possibly_correct_due_to_high_similarity"
 UNLIKELY_OR_UNKNOWN = "unlikely_or_unknown"
 
 DEFAULT_PROBE_DEPTH = 60
+DEFAULT_REVIEW_RANK_LIMIT = 5
 EQUIV_SUPPORT_CONTAINMENT_MIN = 0.82
 EQUIV_SUPPORT_SEQUENCE_MIN = 0.72
 EQUIV_SUPPORT_ALT_CONTAINMENT_MIN = 0.75
 EQUIV_SUPPORT_ALT_JACCARD_MIN = 0.50
 EQUIV_SUPPORT_ALT_SEQUENCE_MIN = 0.65
+REVIEW_QUERY_CONTAINMENT_MIN = 0.68
+REVIEW_QUERY_SEQUENCE_MIN = 0.58
+REVIEW_QUERY_JACCARD_MIN = 0.30
+REVIEW_ANCHOR_COVERAGE_MIN = 0.50
 DEFAULT_SUPPORT_LABELS_PATH = Path("tests/fixtures/retrieval_eval_answer_support_labels.json")
+COMMON_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "did",
+    "do",
+    "does",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "my",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "was",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "with",
+    "you",
+}
 
 
 def reciprocal_rank(rank: int | None) -> float:
@@ -107,6 +148,71 @@ def auto_answer_likelihood(
     return UNLIKELY_OR_UNKNOWN
 
 
+def query_anchor_tokens(query: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in TOKEN_RE.findall((query or "").lower()):
+        if len(token) < 3 or token in COMMON_STOPWORDS or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+def _anchor_conditioned_slice(
+    text: str,
+    anchors: Sequence[str],
+    *,
+    max_segments: int = 80,
+) -> tuple[str, float]:
+    if not text:
+        return "", 0.0
+    if not anchors:
+        return _sample_text(text, max_chars=8000), 0.0
+
+    selected: list[str] = []
+    covered: set[str] = set()
+    anchor_set = set(anchors)
+    for segment in SENTENCE_SPLIT_RE.split(text):
+        snippet = segment.strip()
+        if not snippet:
+            continue
+        tokens = set(TOKEN_RE.findall(snippet.lower()))
+        hits = tokens & anchor_set
+        if not hits:
+            continue
+        covered.update(hits)
+        selected.append(snippet)
+        if len(selected) >= max_segments:
+            break
+    if not selected:
+        return "", 0.0
+    coverage = len(covered) / float(len(anchor_set))
+    return _sample_text(" ".join(selected), max_chars=8000), round(coverage, 4)
+
+
+def query_conditioned_similarity_metrics(
+    *,
+    query: str,
+    candidate_text: str,
+    expected_text: str,
+) -> dict[str, Any] | None:
+    anchors = query_anchor_tokens(query)
+    candidate_slice, candidate_anchor_coverage = _anchor_conditioned_slice(
+        candidate_text, anchors
+    )
+    expected_slice, expected_anchor_coverage = _anchor_conditioned_slice(
+        expected_text, anchors
+    )
+    if not candidate_slice or not expected_slice:
+        return None
+    metrics = text_similarity_metrics(candidate_slice, expected_slice)
+    metrics["candidate_anchor_coverage"] = round(candidate_anchor_coverage, 4)
+    metrics["expected_anchor_coverage"] = round(expected_anchor_coverage, 4)
+    metrics["anchors"] = anchors
+    return metrics
+
+
 def is_equivalent_answer_support(similarity: Mapping[str, Any] | None) -> bool:
     if not similarity:
         return False
@@ -124,6 +230,25 @@ def is_equivalent_answer_support(similarity: Mapping[str, Any] | None) -> bool:
     ):
         return True
     return False
+
+
+def is_review_candidate_similarity(similarity: Mapping[str, Any] | None) -> bool:
+    if not similarity:
+        return False
+    if is_equivalent_answer_support(similarity):
+        return True
+    containment = float(similarity.get("containment_min", 0.0) or 0.0)
+    sequence_ratio = float(similarity.get("sequence_ratio", 0.0) or 0.0)
+    jaccard = float(similarity.get("jaccard", 0.0) or 0.0)
+    candidate_anchor_coverage = float(similarity.get("candidate_anchor_coverage", 0.0) or 0.0)
+    expected_anchor_coverage = float(similarity.get("expected_anchor_coverage", 0.0) or 0.0)
+    return (
+        containment >= REVIEW_QUERY_CONTAINMENT_MIN
+        and sequence_ratio >= REVIEW_QUERY_SEQUENCE_MIN
+        and jaccard >= REVIEW_QUERY_JACCARD_MIN
+        and candidate_anchor_coverage >= REVIEW_ANCHOR_COVERAGE_MIN
+        and expected_anchor_coverage >= REVIEW_ANCHOR_COVERAGE_MIN
+    )
 
 
 def _sample_text(text: str, max_chars: int = 20000) -> str:
@@ -368,6 +493,38 @@ def _best_similarity_to_expected(
     return best_expected_checksum, best_similarity
 
 
+def _best_query_conditioned_similarity_to_expected(
+    *,
+    query_text: str,
+    doc_text: str,
+    expected_checksums: Sequence[str],
+    expected_text_by_checksum: Mapping[str, str],
+) -> tuple[str | None, dict[str, Any] | None]:
+    best_expected_checksum: str | None = None
+    best_similarity: dict[str, Any] | None = None
+    for expected_checksum in expected_checksums:
+        expected_text = expected_text_by_checksum.get(expected_checksum) or ""
+        if not expected_text:
+            continue
+        similarity = query_conditioned_similarity_metrics(
+            query=query_text,
+            candidate_text=doc_text,
+            expected_text=expected_text,
+        )
+        if not similarity:
+            continue
+        if best_similarity is None:
+            best_similarity = similarity
+            best_expected_checksum = expected_checksum
+            continue
+        if float(similarity.get("containment_min", 0.0) or 0.0) > float(
+            best_similarity.get("containment_min", 0.0) or 0.0
+        ):
+            best_similarity = similarity
+            best_expected_checksum = expected_checksum
+    return best_expected_checksum, best_similarity
+
+
 def find_first_answer_support(
     *,
     docs: Sequence[Mapping[str, Any]],
@@ -424,6 +581,75 @@ def find_first_answer_support(
     }
 
 
+def build_answer_support_review_candidates(
+    *,
+    query_text: str,
+    docs: Sequence[Mapping[str, Any]],
+    support_expected_checksums: Sequence[str],
+    metadata_cache: Mapping[str, Mapping[str, Any] | None],
+    similarity_cache: dict[tuple[str, str], dict[str, float | bool]],
+    rank_limit: int,
+) -> list[dict[str, Any]]:
+    expected_set = set(support_expected_checksums)
+    expected_text_by_checksum: dict[str, str] = {}
+    for checksum in support_expected_checksums:
+        meta = metadata_cache.get(checksum) or {}
+        text = str(meta.get("text_full") or "")
+        if text:
+            expected_text_by_checksum[checksum] = text
+
+    out: list[dict[str, Any]] = []
+    for rank, doc in enumerate(docs, start=1):
+        if rank > rank_limit:
+            break
+        checksum = doc.get("checksum")
+        if not isinstance(checksum, str) or not checksum or checksum in expected_set:
+            continue
+        meta = metadata_cache.get(checksum) or {}
+        text = str(meta.get("text_full") or "")
+        if not text:
+            continue
+
+        best_expected_checksum, best_similarity = _best_similarity_to_expected(
+            doc_checksum=checksum,
+            doc_text=text,
+            expected_checksums=support_expected_checksums,
+            expected_text_by_checksum=expected_text_by_checksum,
+            similarity_cache=similarity_cache,
+        )
+        query_best_expected_checksum, query_similarity = _best_query_conditioned_similarity_to_expected(
+            query_text=query_text,
+            doc_text=text,
+            expected_checksums=support_expected_checksums,
+            expected_text_by_checksum=expected_text_by_checksum,
+        )
+
+        review_reason: str | None = None
+        if is_equivalent_answer_support(best_similarity):
+            review_reason = "equivalent_fulltext_threshold"
+        elif is_review_candidate_similarity(query_similarity):
+            review_reason = "query_conditioned_similarity_threshold"
+        if review_reason is None:
+            continue
+
+        out.append(
+            {
+                "rank": rank,
+                "checksum": checksum,
+                "path": meta.get("path"),
+                "doc_type": meta.get("doc_type"),
+                "review_reason": review_reason,
+                "fulltext_best_expected_checksum": best_expected_checksum,
+                "fulltext_similarity": best_similarity,
+                "query_conditioned_best_expected_checksum": query_best_expected_checksum,
+                "query_conditioned_similarity": query_similarity,
+                "reviewer_mark_answer_support": None,
+                "reviewer_notes": "",
+            }
+        )
+    return out
+
+
 def investigate_ranking_post_patha(
     *,
     patha_runbook_path: Path,
@@ -431,6 +657,7 @@ def investigate_ranking_post_patha(
     output_path: Path,
     probe_depth: int,
     support_labels_path: Path | None = DEFAULT_SUPPORT_LABELS_PATH,
+    review_rank_limit: int = DEFAULT_REVIEW_RANK_LIMIT,
 ) -> dict[str, Any]:
     runbook = _load_json(patha_runbook_path)
     _load_json(fixture_path)
@@ -475,6 +702,8 @@ def investigate_ranking_post_patha(
     support_top3_queries = 0
     preferred_source_top1_when_support_top1 = 0
     preferred_source_in_top3_when_support_top3 = 0
+    review_queue_rows: list[dict[str, Any]] = []
+    review_reason_counter: Counter[str] = Counter()
 
     for row in rows:
         query_id = str(row.get("query_id"))
@@ -531,6 +760,54 @@ def investigate_ranking_post_patha(
             support_top3_queries += 1
             if preferred_rank is not None and preferred_rank <= 3:
                 preferred_source_in_top3_when_support_top3 += 1
+
+        if not bool(row.get("hit_at_1")):
+            support_expected_set = set(support_expected)
+            review_top_docs = []
+            for review_rank, review_doc in enumerate(docs[: max(review_rank_limit, 1)], start=1):
+                review_checksum = review_doc.get("checksum")
+                review_top_docs.append(
+                    {
+                        "rank": review_rank,
+                        "checksum": review_checksum,
+                        "is_support_expected_checksum": (
+                            isinstance(review_checksum, str)
+                            and review_checksum in support_expected_set
+                        ),
+                        "features": _feature_snapshot(review_doc),
+                    }
+                )
+            review_candidates = build_answer_support_review_candidates(
+                query_text=query_text,
+                docs=docs,
+                support_expected_checksums=support_expected,
+                metadata_cache=metadata_cache,
+                similarity_cache=similarity_cache,
+                rank_limit=max(review_rank_limit, 1),
+            )
+            for candidate in review_candidates:
+                reason = candidate.get("review_reason")
+                if isinstance(reason, str) and reason:
+                    review_reason_counter[reason] += 1
+
+            review_queue_rows.append(
+                {
+                    "query_id": query_id,
+                    "query": query_text,
+                    "query_anchor_tokens": query_anchor_tokens(query_text),
+                    "archived_hit_at_1": bool(row.get("hit_at_1")),
+                    "archived_hit_at_3": bool(row.get("hit_at_3")),
+                    "strict_expected_checksums_probe": strict_expected,
+                    "answer_support_checksums_probe": support_expected,
+                    "expected_rank_probe": rank,
+                    "answer_support_rank_probe": support_rank,
+                    "top_docs_probe": review_top_docs,
+                    "suggested_candidate_docs": review_candidates,
+                    "reviewer_selected_answer_support_checksums": [],
+                    "reviewer_status": "pending",
+                    "reviewer_notes": "",
+                }
+            )
 
         per_query_rank_rows.append(
             {
@@ -713,6 +990,13 @@ def investigate_ranking_post_patha(
         )
 
     hard_negatives = _most_common_wrong_top1(failed_rows, metadata_cache)
+    review_queries_total = len(review_queue_rows)
+    review_queries_with_candidates = sum(
+        1 for row in review_queue_rows if row.get("suggested_candidate_docs")
+    )
+    review_candidates_total = sum(
+        len(row.get("suggested_candidate_docs") or []) for row in review_queue_rows
+    )
 
     output = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -740,6 +1024,13 @@ def investigate_ranking_post_patha(
                     "alt_containment_min": EQUIV_SUPPORT_ALT_CONTAINMENT_MIN,
                     "alt_jaccard_min": EQUIV_SUPPORT_ALT_JACCARD_MIN,
                     "alt_sequence_ratio_min": EQUIV_SUPPORT_ALT_SEQUENCE_MIN,
+                },
+                "review_candidate_policy": {
+                    "query_conditioned_containment_min": REVIEW_QUERY_CONTAINMENT_MIN,
+                    "query_conditioned_sequence_ratio_min": REVIEW_QUERY_SEQUENCE_MIN,
+                    "query_conditioned_jaccard_min": REVIEW_QUERY_JACCARD_MIN,
+                    "query_anchor_coverage_min": REVIEW_ANCHOR_COVERAGE_MIN,
+                    "review_rank_limit": max(review_rank_limit, 1),
                 },
             },
             "probe_depth": probe_depth,
@@ -824,6 +1115,26 @@ def investigate_ranking_post_patha(
             "failed_query_rows": similarity_rows,
             "repeated_wrong_top1_hard_negatives": hard_negatives,
         },
+        "answer_support_review_queue": {
+            "scope": "archived hit@1 failures",
+            "summary": {
+                "queries_in_queue": review_queries_total,
+                "queries_with_suggested_candidates": review_queries_with_candidates,
+                "queries_with_suggested_candidates_rate": round(
+                    (review_queries_with_candidates / review_queries_total), 4
+                )
+                if review_queries_total
+                else 0.0,
+                "suggested_candidate_docs_total": review_candidates_total,
+                "suggested_review_reason_counts": dict(review_reason_counter),
+                "instruction": (
+                    "Review suggested candidates and fill "
+                    "reviewer_selected_answer_support_checksums for queries where "
+                    "alternate sources should count as answer-support."
+                ),
+            },
+            "rows": review_queue_rows,
+        },
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -863,6 +1174,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--probe-depth", type=int, default=DEFAULT_PROBE_DEPTH)
+    parser.add_argument(
+        "--review-rank-limit",
+        type=int,
+        default=DEFAULT_REVIEW_RANK_LIMIT,
+        help="Top-N probe docs to include per failed query in answer-support review queue.",
+    )
     return parser.parse_args()
 
 
@@ -875,6 +1192,7 @@ def main() -> None:
         output_path=output_path,
         probe_depth=max(args.probe_depth, 1),
         support_labels_path=args.support_labels,
+        review_rank_limit=max(args.review_rank_limit, 1),
     )
     metrics = output.get("probe_ranking_metrics", {})
     print(f"Wrote: {output_path}")
