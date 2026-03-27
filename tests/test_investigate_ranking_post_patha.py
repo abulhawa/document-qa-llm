@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 import sys
 
@@ -161,3 +162,45 @@ def test_find_first_answer_support_strict_and_equivalent():
     assert equiv["rank"] == 1
     assert equiv["support_type"] == "equivalent"
     assert equiv["matched_expected_checksum"] == "expected-1"
+
+
+def test_resolve_support_expectations_merge_and_replace():
+    support_merge, preferred_merge = ranking_script.resolve_support_expectations(
+        strict_expected_checksums=["a", "b"],
+        label_override={
+            "answer_support_mode": "merge",
+            "answer_support_checksums": ["c", "a", "  "],
+            "preferred_checksum": "b",
+        },
+    )
+    assert support_merge == ["a", "b", "c"]
+    assert preferred_merge == "b"
+
+    support_replace, preferred_replace = ranking_script.resolve_support_expectations(
+        strict_expected_checksums=["a", "b"],
+        label_override={
+            "answer_support_mode": "replace",
+            "answer_support_checksums": ["x", "y", "x"],
+        },
+    )
+    assert support_replace == ["x", "y"]
+    assert preferred_replace == "a"
+
+
+def test_load_support_label_overrides(tmp_path):
+    labels = {
+        "meta": {"version": 1},
+        "overrides": {
+            "Q01": {
+                "answer_support_mode": "merge",
+                "answer_support_checksums": ["chk-1"],
+            },
+            "Q02": "invalid",
+        },
+    }
+    path = tmp_path / "labels.json"
+    path.write_text(json.dumps(labels), encoding="utf-8")
+
+    overrides = ranking_script._load_support_label_overrides(path)
+    assert "Q01" in overrides
+    assert "Q02" not in overrides

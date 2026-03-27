@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "description": "Optional deterministic answer-support overrides for retrieval evaluation.",
+    "version": 1,
+    "default_answer_support_mode": "merge",
+    "notes": [
+      "These labels are used only by investigation tooling; production retrieval behavior is unchanged.",
+      "Use overrides to add equivalent source checksums that can support correct answers even when strict expected checksums differ."
+    ]
+  },
+  "overrides": {}
+}
