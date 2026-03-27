@@ -526,6 +526,37 @@ def test_qa_usecase_sources_prefer_pdf_over_list_artifacts_for_anchored_near_tie
     )
 
 
+def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
+    from app.schemas import QARequest
+    from app.usecases import qa_usecase
+
+    captured = {}
+
+    def mock_answer_question(**kwargs):
+        captured["retrieval_cfg"] = kwargs.get("retrieval_cfg")
+        return types.SimpleNamespace(
+            answer="ok",
+            retrieval=None,
+            rewritten_question=None,
+            clarification=None,
+            is_grounded=None,
+            grounding_score=None,
+        )
+
+    monkeypatch.setattr(qa_usecase, "RETRIEVAL_ENABLE_RERANK", True)
+    monkeypatch.setattr(qa_usecase, "RETRIEVAL_RERANK_TOP_N", 4)
+    monkeypatch.setattr(qa_usecase, "RETRIEVAL_RERANK_CANDIDATE_POOL", 12)
+    monkeypatch.setattr(qa_usecase.qa_pipeline, "answer_question", mock_answer_question)
+
+    response = qa_usecase.answer(QARequest(question="question"))
+
+    assert response.answer == "ok"
+    cfg = captured["retrieval_cfg"]
+    assert cfg.enable_rerank is True
+    assert cfg.rerank_top_n == 4
+    assert cfg.rerank_candidate_pool == 12
+
+
 def test_answer_question_skips_grounding_when_flag_disabled(monkeypatch):
     called = {"count": 0}
 

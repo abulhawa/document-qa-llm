@@ -3,6 +3,7 @@ from typing import List, Optional
 from config import logger
 from core.retrieval.pipeline import retrieve
 from core.retrieval.types import RetrievalConfig, RetrievalDeps
+from core.retrieval.reranker import build_configured_reranker
 from core.embeddings import embed_texts
 from core.vector_store import retrieve_top_k as semantic_retriever
 from core.opensearch_store import search as keyword_retriever
@@ -18,7 +19,7 @@ def default_retrieval_deps() -> RetrievalDeps:
         semantic_retriever=semantic_retriever,
         keyword_retriever=keyword_retriever,
         embed_texts=embed_texts,
-        cross_encoder=None,
+        cross_encoder=build_configured_reranker(),
     )
 
 

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 import qa_pipeline
 from app.schemas import DocumentSnippet, QARequest, QAResponse
 from qa_pipeline import RetrievalConfig
-from config import logger
+from config import (
+    RETRIEVAL_ENABLE_RERANK,
+    RETRIEVAL_RERANK_CANDIDATE_POOL,
+    RETRIEVAL_RERANK_TOP_N,
+    logger,
+)
 
 
 _Q10_DEBUG_QUERY_TERMS = {"pem", "fuel", "cell", "sliding", "mode", "control"}
@@ -23,7 +29,12 @@ def _is_q10_debug_question(question: str) -> bool:
 
 def answer(req: QARequest) -> QAResponse:
     """Run the QA pipeline and normalize output for the UI."""
-    retrieval_cfg = RetrievalConfig()
+    retrieval_cfg = replace(
+        RetrievalConfig(),
+        enable_rerank=RETRIEVAL_ENABLE_RERANK,
+        rerank_top_n=RETRIEVAL_RERANK_TOP_N,
+        rerank_candidate_pool=RETRIEVAL_RERANK_CANDIDATE_POOL,
+    )
     try:
         context = qa_pipeline.answer_question(
             question=req.question,
