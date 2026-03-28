@@ -21,6 +21,7 @@ from qa_pipeline.handoff import (
     DEFAULT_DYNAMIC_MIN_CHUNKS,
     pack_docs_by_token_budget,
 )
+from qa_pipeline.financial_answer import build_financial_answer
 from qa_pipeline.llm_client import generate_answer
 from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
@@ -266,6 +267,40 @@ def answer_question(
             "handoff_packed_docs",
             len(context.retrieval.documents if context.retrieval else []),
         )
+
+        financial_query_mode = bool(
+            context.retrieval
+            and context.retrieval.stage_metadata.get("financial_query_mode")
+        )
+        if financial_query_mode and context.retrieval is not None:
+            target_year = context.retrieval.stage_metadata.get("target_year")
+            if not isinstance(target_year, int):
+                target_year = None
+            target_entity = context.retrieval.stage_metadata.get("target_entity")
+            if not isinstance(target_entity, str):
+                target_entity = None
+            target_concept = context.retrieval.stage_metadata.get("target_concept")
+            if not isinstance(target_concept, str):
+                target_concept = None
+            financial_answer, financial_meta = build_financial_answer(
+                retrieval=context.retrieval,
+                target_year=target_year,
+                target_entity=target_entity,
+                target_concept=target_concept,
+            )
+            context.financial_answer_metadata = financial_meta
+            context.answer = financial_answer
+            chain_span.set_attribute(
+                "financial_query_mode",
+                bool(financial_meta.get("financial_query_mode")),
+            )
+            chain_span.set_attribute(
+                "financial_sidecar_records",
+                int(financial_meta.get("sidecar_records_found", 0)),
+            )
+            chain_span.set_attribute(OUTPUT_VALUE, context.answer or "")
+            chain_span.set_status(STATUS_OK)
+            return context
 
         # Step 3: Build prompt
         context.prompt_request = build_prompt(
