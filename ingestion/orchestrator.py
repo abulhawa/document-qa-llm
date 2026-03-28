@@ -8,6 +8,9 @@ from typing import Any, Callable, Dict, Optional, Protocol, Sequence
 from config import logger
 from ingestion import io_loader, preprocess, storage
 from ingestion.doc_classifier import classify_document
+from ingestion.financial_extractor import extract_financial_enrichment
+from ingestion.financial_records_store import upsert_financial_records
+from utils.opensearch_utils import ensure_financial_metadata_mappings
 from utils.ingest_logging import IngestLogEmitter
 from utils.file_utils import choose_canonical_path
 from utils.timing import timed_block
@@ -92,6 +95,26 @@ def _merge_identity_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -
             target[key] = value
 
 
+def _merge_financial_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    for key in (
+        "is_financial_document",
+        "document_date",
+        "mentioned_years",
+        "transaction_dates",
+        "tax_years_referenced",
+        "amounts",
+        "counterparties",
+        "tax_relevance_signals",
+        "expense_category",
+        "financial_record_type",
+        "financial_metadata_version",
+        "financial_metadata_source",
+    ):
+        value = metadata.get(key)
+        if value is not None:
+            target[key] = value
+
+
 def ingest_one(
     path: str,
     *,
@@ -118,6 +141,8 @@ def ingest_one(
     inventory_writer = inventory_writer or DefaultInventoryWriter()
     log = log_factory(normalized_path, op, source)
     doc_metadata: Dict[str, Any] = {}
+    financial_metadata: Dict[str, Any] = {}
+    financial_records: list[Dict[str, Any]] = []
 
     with log:
         checksum, size_bytes, timestamps = io_loader.file_fingerprint(io_path)
@@ -351,6 +376,27 @@ def ingest_one(
         chunk["location_percent"] = round((i / max(len(chunks) - 1, 1)) * 100)
         _merge_identity_metadata(chunk, doc_metadata)
 
+    try:
+        ensure_financial_metadata_mappings()
+        financial_result = extract_financial_enrichment(
+            path=canonical_path,
+            full_text=full_text,
+            chunks=chunks,
+            doc_type=str(doc_metadata.get("doc_type") or ""),
+            checksum=checksum,
+            document_id=str(full_doc.get("id") or checksum),
+            enable_llm_fallback=True,
+        )
+        financial_metadata = financial_result.document_metadata
+        financial_records = list(financial_result.records)
+        _merge_financial_metadata(full_doc, financial_metadata)
+        for chunk in chunks:
+            _merge_financial_metadata(chunk, financial_metadata)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Financial enrichment skipped for %s: %s", normalized_path, exc)
+        financial_metadata = {}
+        financial_records = []
+
     if force and replace:
         storage.replace_existing_artifacts(canonical_path)
 
@@ -383,6 +429,23 @@ def ingest_one(
         raise RuntimeError(
             f"OpenSearch full-text indexing failed for {normalized_path}: {e}"
         ) from e
+
+    if financial_records:
+        try:
+            upsert_stats = upsert_financial_records(financial_records)
+            log.set(
+                financial_records_processed=upsert_stats.get("processed", 0),
+                financial_records_created=upsert_stats.get("created", 0),
+                financial_records_updated=upsert_stats.get("updated", 0),
+                financial_records_errors=upsert_stats.get("errors", 0),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Financial sidecar upsert failed for path=%s checksum=%s: %s",
+                normalized_path,
+                checksum,
+                exc,
+            )
 
     inventory_writer.set_number_of_chunks(canonical_path, len(chunks))
     inventory_writer.set_last_indexed(canonical_path, indexed_at)
