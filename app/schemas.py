@@ -48,6 +48,7 @@ class QAResponse:
     documents: List[DocumentSnippet] = field(default_factory=list)
     rewritten_question: Optional[str] = None
     clarification: Optional[str] = None
+    financial_answer_metadata: Optional[Dict[str, Any]] = None
     is_grounded: Optional[bool] = None
     grounding_score: Optional[float] = None
     error: Optional[str] = None

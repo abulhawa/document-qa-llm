@@ -93,6 +93,7 @@ class AnswerContext:
     retrieval: Optional[RetrievalResult] = None
     prompt_request: Optional[PromptRequest] = None
     answer: Optional[str] = None
+    financial_answer_metadata: Optional[Dict[str, Any]] = None
     is_grounded: Optional[bool] = None
     grounding_score: Optional[float] = None
 

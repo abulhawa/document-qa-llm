@@ -135,6 +135,7 @@ def answer(req: QARequest) -> QAResponse:
         documents=documents,
         rewritten_question=context.rewritten_question,
         clarification=context.clarification,
+        financial_answer_metadata=getattr(context, "financial_answer_metadata", None),
         is_grounded=context.is_grounded,
         grounding_score=context.grounding_score,
     )

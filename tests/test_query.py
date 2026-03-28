@@ -603,6 +603,59 @@ def test_answer_question_uses_sibling_chunk_in_prompt_context(monkeypatch):
     assert [doc.chunk_index for doc in result.retrieval.documents] == [0, 7]
 
 
+def test_answer_question_financial_mode_returns_evidence_answer(monkeypatch):
+    def mock_retrieve(query, top_k, retrieval_cfg=None, query_plan=None):  # noqa: ARG001
+        assert query_plan is not None
+        assert query_plan.financial_query_mode is True
+        return RetrievalResult(
+            query=query,
+            documents=[
+                RetrievedDocument(
+                    text="Invoice paid in 2022 amount EUR 100",
+                    path="invoice.pdf",
+                    checksum="chk-1",
+                    is_financial_document=True,
+                )
+            ],
+            stage_metadata={
+                "financial_query_mode": True,
+                "target_year": 2022,
+                "target_entity": "Ali",
+                "target_concept": "expenses",
+                "fallback_used": False,
+            },
+        )
+
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.rewrite_question",
+        lambda question, temperature=0.15, use_cache=True: QueryRewrite(rewritten=question),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.build_financial_answer",
+        lambda retrieval, target_year, target_entity, target_concept: (
+            "financial answer",
+            {
+                "financial_query_mode": True,
+                "target_year": target_year,
+                "target_entity": target_entity,
+                "target_concept": target_concept,
+                "sidecar_records_found": 1,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.generate_answer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should be bypassed")),
+    )
+
+    result = answer_question("What expenses did Ali make in 2022?")
+
+    assert result.answer == "financial answer"
+    assert result.financial_answer_metadata is not None
+    assert result.financial_answer_metadata["financial_query_mode"] is True
+
+
 def test_qa_usecase_sources_prefer_pdf_over_list_artifacts_for_anchored_near_tie(monkeypatch):
     from app.schemas import QARequest
     from app.usecases import qa_usecase
