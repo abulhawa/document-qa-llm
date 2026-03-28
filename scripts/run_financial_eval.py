@@ -93,7 +93,7 @@ def _ensure_stubbed_runtime_deps() -> None:
         qdrant_module.models = types.ModuleType("qdrant_client.models")
         sys.modules["qdrant_client"] = qdrant_module
 
-    if "qdrant_client.http.models" not in sys.modules:
+    if not _module_available("qdrant_client.http.models"):
         qdrant_http_models = types.ModuleType("qdrant_client.http.models")
         qdrant_http_models.PointStruct = type("PointStruct", (), {})
         qdrant_http_models.PointIdsList = type("PointIdsList", (), {})
@@ -142,7 +142,9 @@ SUPPRESSED_FAMILIES: Set[str] = {
 }
 
 DEFAULT_FIXTURE_PATH = Path("tests/fixtures/financial_eval_queries.json")
+DEFAULT_LIVE_FIXTURE_PATH = Path("tests/fixtures/retrieval_eval_queries.json")
 DEFAULT_OUTPUT_DIR = Path("docs/runbooks")
+DEFAULT_LIVE_TARGET_AREAS: Sequence[str] = ("tax_docs", "finance_docs")
 
 
 def _utc_now_iso() -> str:
@@ -168,6 +170,87 @@ def _int_or_none(value: Any) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _normalized_set(values: Optional[Sequence[str]]) -> Set[str]:
+    normalized: Set[str] = set()
+    if not values:
+        return normalized
+    for item in values:
+        token = str(item or "").strip().lower()
+        if token:
+            normalized.add(token)
+    return normalized
+
+
+def _load_live_query_rows(
+    fixture_path: Path,
+    *,
+    target_areas: Optional[Sequence[str]],
+    query_ids: Optional[Sequence[str]],
+    limit: Optional[int],
+    top_k: int,
+    fallback_budget: int,
+) -> List[Dict[str, Any]]:
+    payload = _load_fixture(fixture_path)
+    rows = payload.get("queries") or []
+    if not isinstance(rows, list):
+        raise ValueError(f"Expected 'queries' list in {fixture_path}")
+
+    target_area_set = _normalized_set(target_areas)
+    query_id_set = _normalized_set(query_ids)
+    selected: List[Dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, Mapping):
+            continue
+        query = str(item.get("query") or "").strip()
+        if not query:
+            continue
+
+        query_id = str(item.get("id") or "").strip()
+        if query_id_set and query_id.lower() not in query_id_set:
+            continue
+
+        mode = str(item.get("mode") or "").strip().lower()
+        if mode and mode != "positive":
+            continue
+
+        item_areas = _normalized_set(item.get("target_areas"))
+        if target_area_set and not (item_areas & target_area_set):
+            continue
+
+        detected = detect_financial_query(query)
+        if not detected.financial_query_mode and not (item_areas & _normalized_set(DEFAULT_LIVE_TARGET_AREAS)):
+            continue
+
+        target_entity = item.get("target_entity")
+        if not isinstance(target_entity, str):
+            target_entity = detected.target_entity
+        target_concept = item.get("target_concept")
+        if not isinstance(target_concept, str):
+            target_concept = detected.target_concept
+        target_year = _int_or_none(item.get("target_year"))
+        if target_year is None:
+            target_year = detected.target_year
+
+        selected.append(
+            {
+                "id": query_id or f"live-{len(selected) + 1}",
+                "query": query,
+                "target_entity": target_entity,
+                "target_year": target_year,
+                "target_concept": target_concept,
+                "top_k": max(int(top_k), 1),
+                "fallback_residual_budget": max(int(fallback_budget), 0),
+                "target_areas": sorted(item_areas),
+            }
+        )
+        if limit is not None and len(selected) >= max(int(limit), 1):
+            break
+
+    if not selected:
+        raise ValueError("No live finance query rows matched the requested filters.")
+    return selected
 
 
 def _family(doc: Mapping[str, Any]) -> str:
@@ -257,7 +340,12 @@ def _build_deps(candidates: Sequence[Mapping[str, Any]]) -> RetrievalDeps:
     )
 
 
-def _run_single(row: Mapping[str, Any], *, financial_enable_gating: bool) -> Dict[str, Any]:
+def _run_single(
+    row: Mapping[str, Any],
+    *,
+    financial_enable_gating: bool,
+    use_live_backends: bool = False,
+) -> Dict[str, Any]:
     query_id = str(row.get("id") or "")
     top_k = _int_or_none(row.get("top_k")) or 5
     fallback_budget = _int_or_none(row.get("fallback_residual_budget")) or 2
@@ -267,13 +355,20 @@ def _run_single(row: Mapping[str, Any], *, financial_enable_gating: bool) -> Dic
         fallback_budget=fallback_budget,
         financial_enable_gating=financial_enable_gating,
     )
-    deps = _build_deps(row.get("candidates") or [])
-    output = retrieve(
-        str(row.get("query") or ""),
-        cfg=cfg,
-        deps=deps,
-        query_plan=plan,
-    )
+    if use_live_backends:
+        output = retrieve(
+            str(row.get("query") or ""),
+            cfg=cfg,
+            query_plan=plan,
+        )
+    else:
+        deps = _build_deps(row.get("candidates") or [])
+        output = retrieve(
+            str(row.get("query") or ""),
+            cfg=cfg,
+            deps=deps,
+            query_plan=plan,
+        )
     docs = list(output.documents)[:top_k]
     families = [_family(doc) for doc in docs]
     preferred_topk = sum(1 for value in families if value in PREFERRED_FAMILIES)
@@ -377,7 +472,84 @@ def evaluate_fixture(fixture_path: Path) -> Dict[str, Any]:
 
     return {
         "generated_at_utc": _utc_now_iso(),
+        "mode": "fixture",
         "fixture": str(fixture_path),
+        "baseline": {
+            "config": {"financial_enable_gating": False},
+            "summary": baseline_summary,
+            "rows": baseline_rows,
+        },
+        "gated": {
+            "config": {"financial_enable_gating": True},
+            "summary": gated_summary,
+            "rows": gated_rows,
+        },
+        "deltas": {
+            "suppressed_docs_topk_total_delta": int(gated_summary["suppressed_docs_topk_total"])
+            - int(baseline_summary["suppressed_docs_topk_total"]),
+            "avg_preferred_ratio_topk_delta": round(
+                float(gated_summary["avg_preferred_ratio_topk"])
+                - float(baseline_summary["avg_preferred_ratio_topk"]),
+                4,
+            ),
+            "year_leakage_docs_topk_total_delta": int(gated_summary["year_leakage_docs_topk_total"])
+            - int(baseline_summary["year_leakage_docs_topk_total"]),
+        },
+        "gates": gate_results,
+    }
+
+
+def evaluate_live_corpus(
+    fixture_path: Path,
+    *,
+    target_areas: Optional[Sequence[str]],
+    query_ids: Optional[Sequence[str]],
+    limit: Optional[int],
+    top_k: int,
+    fallback_budget: int,
+) -> Dict[str, Any]:
+    query_rows = _load_live_query_rows(
+        fixture_path,
+        target_areas=target_areas,
+        query_ids=query_ids,
+        limit=limit,
+        top_k=top_k,
+        fallback_budget=fallback_budget,
+    )
+
+    baseline_rows = [
+        _run_single(
+            row,
+            financial_enable_gating=False,
+            use_live_backends=True,
+        )
+        for row in query_rows
+    ]
+    gated_rows = [
+        _run_single(
+            row,
+            financial_enable_gating=True,
+            use_live_backends=True,
+        )
+        for row in query_rows
+    ]
+
+    baseline_summary = _summarize(baseline_rows)
+    gated_summary = _summarize(gated_rows)
+    gate_results = _gate_checks(baseline_summary, gated_summary)
+
+    return {
+        "generated_at_utc": _utc_now_iso(),
+        "mode": "live",
+        "live_query_source_fixture": str(fixture_path),
+        "live_query_filters": {
+            "target_areas": sorted(_normalized_set(target_areas)),
+            "query_ids": sorted(_normalized_set(query_ids)),
+            "limit": None if limit is None else max(int(limit), 1),
+            "top_k": max(int(top_k), 1),
+            "fallback_budget": max(int(fallback_budget), 0),
+        },
+        "query_ids": [str(row.get("id") or "") for row in query_rows],
         "baseline": {
             "config": {"financial_enable_gating": False},
             "summary": baseline_summary,
@@ -411,14 +583,66 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run finance retrieval benchmark (baseline vs finance-gated)."
     )
+    parser.add_argument(
+        "--mode",
+        choices=("fixture", "live"),
+        default="fixture",
+        help="fixture: synthetic deterministic fixture harness; live: run against active retrieval backends.",
+    )
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE_PATH)
+    parser.add_argument(
+        "--live-fixture",
+        type=Path,
+        default=DEFAULT_LIVE_FIXTURE_PATH,
+        help="Fixture used to source finance/tax query rows for live-backend evaluation.",
+    )
+    parser.add_argument(
+        "--live-target-areas",
+        nargs="*",
+        default=list(DEFAULT_LIVE_TARGET_AREAS),
+        help="Target-area filters used to select finance/tax query rows from --live-fixture.",
+    )
+    parser.add_argument(
+        "--live-query-ids",
+        nargs="*",
+        default=None,
+        help="Optional explicit query ids to evaluate in live mode.",
+    )
+    parser.add_argument(
+        "--live-limit",
+        type=int,
+        default=None,
+        help="Optional cap on selected live query rows.",
+    )
+    parser.add_argument(
+        "--live-top-k",
+        type=int,
+        default=5,
+        help="Top-k used per query in live mode.",
+    )
+    parser.add_argument(
+        "--live-fallback-budget",
+        type=int,
+        default=2,
+        help="Residual fallback budget used per query in live mode.",
+    )
     parser.add_argument("--output", type=Path, default=_default_output_path())
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    payload = evaluate_fixture(args.fixture)
+    if args.mode == "live":
+        payload = evaluate_live_corpus(
+            args.live_fixture,
+            target_areas=args.live_target_areas,
+            query_ids=args.live_query_ids,
+            limit=args.live_limit,
+            top_k=args.live_top_k,
+            fallback_budget=args.live_fallback_budget,
+        )
+    else:
+        payload = evaluate_fixture(args.fixture)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, indent=2)

@@ -1,0 +1,315 @@
+{
+  "generated_at_utc": "2026-03-28T21:06:10.813862+00:00",
+  "mode": "live",
+  "live_query_source_fixture": "tests/fixtures/retrieval_eval_queries.json",
+  "live_query_filters": {
+    "target_areas": [
+      "finance_docs",
+      "tax_docs"
+    ],
+    "query_ids": [],
+    "limit": null,
+    "top_k": 5,
+    "fallback_budget": 2
+  },
+  "query_ids": [
+    "Q18",
+    "Q19",
+    "Q20"
+  ],
+  "baseline": {
+    "config": {
+      "financial_enable_gating": false
+    },
+    "summary": {
+      "total_queries": 3,
+      "queries_with_suppressed_topk": 3,
+      "suppressed_docs_topk_total": 8,
+      "queries_with_non_preferred_topk": 3,
+      "avg_preferred_ratio_topk": 0.2,
+      "year_scoped_queries": 2,
+      "year_leakage_queries": 2,
+      "year_leakage_docs_topk_total": 3,
+      "fallback_used_count": 0,
+      "fallback_logged_count": 0
+    },
+    "rows": [
+      {
+        "query_id": "Q18",
+        "query": "In the annual tax statement document for 2023, what date range is covered?",
+        "target_year": 2023,
+        "top_k": 5,
+        "selected_count": 5,
+        "selected_checksums": [
+          "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+          "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+          "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "14671c78fc7de99d83bb9e52e2d5b335d4756066925e67df1a25c0e272133aad",
+          "3309bac445542b06ba06c4de1f5c485cb0c5df9025fadec17ec1322c014efd92"
+        ],
+        "selected_families": [
+          "other",
+          "research_paper",
+          "other",
+          "research_paper",
+          "archive_misc"
+        ],
+        "preferred_topk": 0,
+        "suppressed_topk": 1,
+        "non_preferred_topk": 5,
+        "preferred_ratio_topk": 0.0,
+        "cross_year_topk": 2,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      },
+      {
+        "query_id": "Q19",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "target_year": null,
+        "top_k": 5,
+        "selected_count": 5,
+        "selected_checksums": [
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "a8253437272eea02d57b77806bcdc4c7a87e1b992e548c7f4aa47cfbff7de3e3",
+          "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+          "ea5727316779974307f511e8782428482ba8dff75f4d88179e82b146714388ce",
+          "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517"
+        ],
+        "selected_families": [
+          "archive_misc",
+          "archive_misc",
+          "archive_misc",
+          "archive_misc",
+          "archive_misc"
+        ],
+        "preferred_topk": 0,
+        "suppressed_topk": 5,
+        "non_preferred_topk": 5,
+        "preferred_ratio_topk": 0.0,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      },
+      {
+        "query_id": "Q20",
+        "query": "In the remittance receipt from 2020, what payment amount is shown?",
+        "target_year": 2020,
+        "top_k": 5,
+        "selected_count": 5,
+        "selected_checksums": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+          "344053e565ae19b83c8c54af4f21560859a052eef3248bd484f925b081004b60",
+          "58a2d48fe4ef607353cfe6e210a21e47259aab3963de1c3100c43fb6a0a6689d",
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a"
+        ],
+        "selected_families": [
+          "invoice",
+          "invoice",
+          "invoice",
+          "archive_misc",
+          "archive_misc"
+        ],
+        "preferred_topk": 3,
+        "suppressed_topk": 2,
+        "non_preferred_topk": 2,
+        "preferred_ratio_topk": 0.6,
+        "cross_year_topk": 1,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      }
+    ]
+  },
+  "gated": {
+    "config": {
+      "financial_enable_gating": true
+    },
+    "summary": {
+      "total_queries": 3,
+      "queries_with_suppressed_topk": 0,
+      "suppressed_docs_topk_total": 0,
+      "queries_with_non_preferred_topk": 0,
+      "avg_preferred_ratio_topk": 1.0,
+      "year_scoped_queries": 2,
+      "year_leakage_queries": 1,
+      "year_leakage_docs_topk_total": 2,
+      "fallback_used_count": 1,
+      "fallback_logged_count": 3
+    },
+    "rows": [
+      {
+        "query_id": "Q18",
+        "query": "In the annual tax statement document for 2023, what date range is covered?",
+        "target_year": 2023,
+        "top_k": 5,
+        "selected_count": 4,
+        "selected_checksums": [
+          "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "24a9dd6e2268dae52d1fbccc8bb052a01ddf87ac43ec6a4079b17f99129639b1"
+        ],
+        "selected_families": [
+          "tax_document",
+          "receipt",
+          "tax_document",
+          "tax_document"
+        ],
+        "preferred_topk": 4,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 2,
+        "fallback_used": true,
+        "fallback_logged": true,
+        "fallback_stage": "fallback_relax_year",
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": null,
+          "target_year": 2023,
+          "target_concept": "tax_relevant_items",
+          "strict_budget": 3,
+          "strict_selected": 2,
+          "strict_candidates": 2,
+          "fallback_budget": 2,
+          "year_relaxation_allowed": true,
+          "fallback_selected": 2,
+          "selected_count": 4,
+          "fallback_used": true,
+          "fallback_stage": "fallback_relax_year",
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      },
+      {
+        "query_id": "Q19",
+        "query": "In the tax-related invoice PDF, who is the issuing company?",
+        "target_year": null,
+        "top_k": 5,
+        "selected_count": 4,
+        "selected_checksums": [
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "a8253437272eea02d57b77806bcdc4c7a87e1b992e548c7f4aa47cfbff7de3e3",
+          "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+          "aed5df5a9080975e40e6bb28245c08388175681d06dd55d1749a5167405515ee"
+        ],
+        "selected_families": [
+          "receipt",
+          "tax_document",
+          "tax_document",
+          "invoice"
+        ],
+        "preferred_topk": 4,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": true,
+        "fallback_stage": null,
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": "PDF",
+          "target_year": null,
+          "target_concept": "expenses",
+          "strict_budget": 3,
+          "strict_selected": 4,
+          "strict_candidates": 4,
+          "fallback_budget": 2,
+          "year_relaxation_allowed": false,
+          "fallback_selected": 0,
+          "selected_count": 4,
+          "fallback_used": false,
+          "fallback_stage": null,
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      },
+      {
+        "query_id": "Q20",
+        "query": "In the remittance receipt from 2020, what payment amount is shown?",
+        "target_year": 2020,
+        "top_k": 5,
+        "selected_count": 5,
+        "selected_checksums": [
+          "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+          "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+          "344053e565ae19b83c8c54af4f21560859a052eef3248bd484f925b081004b60",
+          "58a2d48fe4ef607353cfe6e210a21e47259aab3963de1c3100c43fb6a0a6689d",
+          "a8253437272eea02d57b77806bcdc4c7a87e1b992e548c7f4aa47cfbff7de3e3"
+        ],
+        "selected_families": [
+          "invoice",
+          "receipt",
+          "invoice",
+          "tax_document",
+          "tax_document"
+        ],
+        "preferred_topk": 5,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": true,
+        "fallback_stage": null,
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": null,
+          "target_year": 2020,
+          "target_concept": "expenses",
+          "strict_budget": 3,
+          "strict_selected": 5,
+          "strict_candidates": 6,
+          "fallback_budget": 2,
+          "year_relaxation_allowed": false,
+          "fallback_selected": 0,
+          "selected_count": 5,
+          "fallback_used": false,
+          "fallback_stage": null,
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      }
+    ]
+  },
+  "deltas": {
+    "suppressed_docs_topk_total_delta": -8,
+    "avg_preferred_ratio_topk_delta": 0.8,
+    "year_leakage_docs_topk_total_delta": -1
+  },
+  "gates": {
+    "overall_pass": true,
+    "checks": {
+      "suppressed_removed_from_topk": true,
+      "suppressed_reduced_vs_baseline": true,
+      "preferred_family_dominance_improved": true,
+      "year_leakage_not_worse": true,
+      "fallback_logging_complete": true
+    }
+  }
+}

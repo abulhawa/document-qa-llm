@@ -26,9 +26,25 @@ if "langchain_core" not in sys.modules:
     sys.modules["langchain_core"] = langchain_core
 if "tracing" not in sys.modules:
     tracing_module = types.ModuleType("tracing")
-    tracing_module.get_current_span = lambda *args, **kwargs: types.SimpleNamespace(
-        set_attribute=lambda *a, **k: None
+    _span = types.SimpleNamespace(
+        set_attribute=lambda *a, **k: None,
+        set_status=lambda *a, **k: None,
+        record_exception=lambda *a, **k: None,
     )
+    tracing_module.get_current_span = lambda *args, **kwargs: _span
+    tracing_module.start_span = lambda *args, **kwargs: types.SimpleNamespace(
+        __enter__=lambda: _span,
+        __exit__=lambda exc_type, exc, tb: None,
+    )
+    tracing_module.record_span_error = lambda *args, **kwargs: None
+    tracing_module.STATUS_OK = "OK"
+    tracing_module.RETRIEVER = "RETRIEVER"
+    tracing_module.INPUT_VALUE = "INPUT_VALUE"
+    tracing_module.OUTPUT_VALUE = "OUTPUT_VALUE"
+    tracing_module.CHAIN = "CHAIN"
+    tracing_module.TOOL = "TOOL"
+    tracing_module.LLM = "LLM"
+    tracing_module.EMBEDDING = "EMBEDDING"
     sys.modules["tracing"] = tracing_module
 
 
@@ -259,3 +275,92 @@ def test_backfill_financial_metadata_apply_updates_indices_and_sidecar(monkeypat
     assert len(fake_client.updated_docs) == 1
     assert len(fake_client.chunk_updates) == 1
     assert len(fake_qdrant.set_payload_calls) == 1
+
+
+def test_backfill_financial_metadata_skip_and_limit(monkeypatch):
+    fulltext_hits = [
+        {
+            "_id": "doc-1",
+            "_source": {
+                "checksum": "chk-1",
+                "path": "C:/docs/first.pdf",
+                "filetype": "pdf",
+                "doc_type": "invoice",
+                "text_full": "Invoice 1",
+            },
+        },
+        {
+            "_id": "doc-2",
+            "_source": {
+                "checksum": "chk-2",
+                "path": "C:/docs/second.pdf",
+                "filetype": "pdf",
+                "doc_type": "invoice",
+                "text_full": "Invoice 2",
+            },
+        },
+        {
+            "_id": "doc-3",
+            "_source": {
+                "checksum": "chk-3",
+                "path": "C:/docs/third.pdf",
+                "filetype": "pdf",
+                "doc_type": "invoice",
+                "text_full": "Invoice 3",
+            },
+        },
+    ]
+    chunk_hits = {
+        "chk-3": [
+            {
+                "_id": "chk-3:0",
+                "_source": {"id": "chk-3:0", "text": "Invoice 3"},
+            }
+        ]
+    }
+    fake_client = _FakeOpenSearchClient(fulltext_hits, chunk_hits)
+    fake_qdrant = _FakeQdrantClient()
+    extracted_paths: List[str] = []
+
+    monkeypatch.setattr(backfill_financial_metadata, "get_client", lambda: fake_client)
+    monkeypatch.setattr(
+        backfill_financial_metadata,
+        "_get_qdrant_components",
+        lambda: (fake_qdrant, _FakeQdrantModels),
+    )
+    monkeypatch.setattr(backfill_financial_metadata, "ensure_financial_metadata_mappings", lambda: None)
+    monkeypatch.setattr(backfill_financial_metadata, "ensure_financial_records_index", lambda: None)
+
+    def _extractor(**kwargs):
+        extracted_paths.append(str(kwargs.get("path") or ""))
+        out = _fake_extraction()
+        record = dict(out.records[0])
+        record["checksum"] = "chk-3"
+        record["document_id"] = "doc-3"
+        return types.SimpleNamespace(
+            source_family=out.source_family,
+            document_metadata=out.document_metadata,
+            records=[record],
+        )
+
+    monkeypatch.setattr(backfill_financial_metadata, "extract_financial_enrichment", _extractor)
+    monkeypatch.setattr(
+        backfill_financial_metadata,
+        "upsert_financial_records",
+        lambda records: {"processed": len(records), "created": len(records), "updated": 0, "errors": 0},
+    )
+
+    stats = backfill_financial_metadata.backfill_financial_metadata(
+        batch_size=10,
+        skip=2,
+        limit=1,
+        dry_run=False,
+        overwrite=False,
+    )
+
+    assert stats["scanned_fulltext_docs"] == 1
+    assert stats["processed_docs"] == 1
+    assert stats["fulltext_updates"] == 1
+    assert stats["sidecar_records_processed"] == 1
+    assert extracted_paths == ["C:/docs/third.pdf"]
+    assert fake_client._scroll_reads == 0

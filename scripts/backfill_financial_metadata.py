@@ -103,7 +103,14 @@ def _chunk_update_body(
     }
 
 
-def _iter_fulltext_hits(client, *, batch_size: int, limit: int | None) -> Iterable[Dict[str, Any]]:
+def _iter_fulltext_hits(
+    client,
+    *,
+    batch_size: int,
+    limit: int | None,
+    skip: int = 0,
+    scroll_keepalive: str = "30m",
+) -> Iterable[Dict[str, Any]]:
     response = client.search(
         index=FULLTEXT_INDEX,
         body={
@@ -120,24 +127,34 @@ def _iter_fulltext_hits(client, *, batch_size: int, limit: int | None) -> Iterab
             ],
             "sort": [{"_id": "asc"}],
         },
-        params={"scroll": "2m"},
+        params={"scroll": scroll_keepalive},
     )
     scroll_id = response.get("_scroll_id", "")
-    processed = 0
+    seen = 0
+    emitted = 0
     try:
         while True:
             hits = response.get("hits", {}).get("hits", []) or []
             if not hits:
                 break
             for hit in hits:
-                if limit is not None and processed >= limit:
+                seen += 1
+                if skip > 0 and seen <= skip:
+                    continue
+                if limit is not None and emitted >= limit:
                     return
-                processed += 1
+                emitted += 1
                 yield hit
+            if limit is not None and emitted >= limit:
+                break
             if not scroll_id:
                 break
-            response = client.scroll(scroll_id=scroll_id, params={"scroll": "2m"})
-            scroll_id = response.get("_scroll_id", scroll_id)
+            try:
+                response = client.scroll(scroll_id=scroll_id, params={"scroll": scroll_keepalive})
+                scroll_id = response.get("_scroll_id", scroll_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Scroll read failed (continuing with processed subset): %s", exc)
+                break
     finally:
         if scroll_id:
             try:
@@ -240,6 +257,8 @@ def backfill_financial_metadata(
     *,
     batch_size: int = 100,
     limit: int | None = None,
+    skip: int = 0,
+    scroll_keepalive: str = "30m",
     dry_run: bool = False,
     overwrite: bool = False,
     ensure_mappings: bool = True,
@@ -276,7 +295,13 @@ def backfill_financial_metadata(
         "errors": 0,
     }
 
-    for hit in _iter_fulltext_hits(client, batch_size=max(1, batch_size), limit=limit):
+    for hit in _iter_fulltext_hits(
+        client,
+        batch_size=max(1, batch_size),
+        limit=limit,
+        skip=max(0, int(skip)),
+        scroll_keepalive=str(scroll_keepalive or "30m"),
+    ):
         source = hit.get("_source") or {}
         doc_id = hit.get("_id")
         checksum = str(source.get("checksum") or "").strip()
@@ -386,6 +411,13 @@ def main() -> None:
     )
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--skip", type=int, default=0)
+    parser.add_argument(
+        "--scroll-keepalive",
+        type=str,
+        default="30m",
+        help="OpenSearch scroll keepalive window.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
@@ -415,6 +447,8 @@ def main() -> None:
     stats = backfill_financial_metadata(
         batch_size=max(1, int(args.batch_size)),
         limit=args.limit,
+        skip=max(0, int(args.skip)),
+        scroll_keepalive=str(args.scroll_keepalive or "30m"),
         dry_run=args.dry_run,
         overwrite=args.overwrite,
         ensure_mappings=not args.skip_ensure_mappings,
