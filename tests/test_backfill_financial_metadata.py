@@ -6,68 +6,88 @@ import sys
 import types
 from typing import Any, Dict, List
 
-if "opensearchpy" not in sys.modules:
-    opensearch_module = types.ModuleType("opensearchpy")
-    opensearch_module.OpenSearch = type("OpenSearch", (), {})
-    opensearch_module.helpers = types.SimpleNamespace()
-    opensearch_module.exceptions = types.SimpleNamespace(
-        OpenSearchException=Exception,
-        NotFoundError=Exception,
-    )
-    sys.modules["opensearchpy"] = opensearch_module
-
-if "langchain_core.documents" not in sys.modules:
-    langchain_docs = types.ModuleType("langchain_core.documents")
-    langchain_docs.Document = type("Document", (), {})
-    sys.modules["langchain_core.documents"] = langchain_docs
-if "langchain_core" not in sys.modules:
-    langchain_core = types.ModuleType("langchain_core")
-    langchain_core.documents = sys.modules["langchain_core.documents"]
-    sys.modules["langchain_core"] = langchain_core
-if "tracing" not in sys.modules:
-    tracing_module = types.ModuleType("tracing")
-    _span = types.SimpleNamespace(
-        set_attribute=lambda *a, **k: None,
-        set_status=lambda *a, **k: None,
-        record_exception=lambda *a, **k: None,
-    )
-    tracing_module.get_current_span = lambda *args, **kwargs: _span
-    tracing_module.start_span = lambda *args, **kwargs: types.SimpleNamespace(
-        __enter__=lambda: _span,
-        __exit__=lambda exc_type, exc, tb: None,
-    )
-    tracing_module.record_span_error = lambda *args, **kwargs: None
-    tracing_module.STATUS_OK = "OK"
-    tracing_module.RETRIEVER = "RETRIEVER"
-    tracing_module.INPUT_VALUE = "INPUT_VALUE"
-    tracing_module.OUTPUT_VALUE = "OUTPUT_VALUE"
-    tracing_module.CHAIN = "CHAIN"
-    tracing_module.TOOL = "TOOL"
-    tracing_module.LLM = "LLM"
-    tracing_module.EMBEDDING = "EMBEDDING"
-    sys.modules["tracing"] = tracing_module
+import pytest
 
 
 _SCRIPT_PATH = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "backfill_financial_metadata.py"
-_SPEC = importlib.util.spec_from_file_location("backfill_financial_metadata", _SCRIPT_PATH)
-if _SPEC is None or _SPEC.loader is None:
-    raise RuntimeError("Failed to load backfill_financial_metadata.py")
-backfill_financial_metadata = importlib.util.module_from_spec(_SPEC)
-sys.modules.setdefault("backfill_financial_metadata", backfill_financial_metadata)
-_SPEC.loader.exec_module(backfill_financial_metadata)
+
+
+def _install_runtime_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
+    if "opensearchpy" not in sys.modules:
+        opensearch_module = types.ModuleType("opensearchpy")
+        opensearch_module.OpenSearch = type("OpenSearch", (), {})
+        opensearch_module.helpers = types.SimpleNamespace()
+        opensearch_module.exceptions = types.SimpleNamespace(
+            OpenSearchException=Exception,
+            NotFoundError=Exception,
+        )
+        monkeypatch.setitem(sys.modules, "opensearchpy", opensearch_module)
+
+    if "langchain_core" not in sys.modules and "langchain_core.documents" not in sys.modules:
+        langchain_docs = types.ModuleType("langchain_core.documents")
+        langchain_docs.Document = type("Document", (), {})
+        monkeypatch.setitem(sys.modules, "langchain_core.documents", langchain_docs)
+
+    if "langchain_core" not in sys.modules and "langchain_core.documents" in sys.modules:
+        langchain_core = types.ModuleType("langchain_core")
+        langchain_core.documents = sys.modules["langchain_core.documents"]
+        monkeypatch.setitem(sys.modules, "langchain_core", langchain_core)
+
+    if "tracing" not in sys.modules:
+        tracing_module = types.ModuleType("tracing")
+        _span = types.SimpleNamespace(
+            set_attribute=lambda *a, **k: None,
+            set_status=lambda *a, **k: None,
+            record_exception=lambda *a, **k: None,
+        )
+        tracing_module.get_current_span = lambda *args, **kwargs: _span
+        tracing_module.start_span = lambda *args, **kwargs: types.SimpleNamespace(
+            __enter__=lambda: _span,
+            __exit__=lambda exc_type, exc, tb: None,
+        )
+        tracing_module.record_span_error = lambda *args, **kwargs: None
+        tracing_module.STATUS_OK = "OK"
+        tracing_module.RETRIEVER = "RETRIEVER"
+        tracing_module.INPUT_VALUE = "INPUT_VALUE"
+        tracing_module.OUTPUT_VALUE = "OUTPUT_VALUE"
+        tracing_module.CHAIN = "CHAIN"
+        tracing_module.TOOL = "TOOL"
+        tracing_module.LLM = "LLM"
+        tracing_module.EMBEDDING = "EMBEDDING"
+        monkeypatch.setitem(sys.modules, "tracing", tracing_module)
+
+
+@pytest.fixture
+def backfill_financial_metadata(monkeypatch: pytest.MonkeyPatch):
+    _install_runtime_stubs(monkeypatch)
+    module_name = "_test_backfill_financial_metadata"
+    spec = importlib.util.spec_from_file_location(module_name, _SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Failed to load backfill_financial_metadata.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, module)
+    spec.loader.exec_module(module)
+    return module
 
 
 class _FakeOpenSearchClient:
-    def __init__(self, fulltext_hits: List[Dict[str, Any]], chunk_hits: Dict[str, List[Dict[str, Any]]]) -> None:
+    def __init__(
+        self,
+        fulltext_hits: List[Dict[str, Any]],
+        chunk_hits: Dict[str, List[Dict[str, Any]]],
+        *,
+        fulltext_index: str,
+    ) -> None:
         self._fulltext_hits = fulltext_hits
         self._chunk_hits = chunk_hits
+        self._fulltext_index = fulltext_index
         self._scroll_reads = 0
         self.updated_docs: List[Dict[str, Any]] = []
         self.chunk_updates: List[Dict[str, Any]] = []
         self.cleared_scroll_ids: List[str] = []
 
     def search(self, index: str, body: Dict[str, Any], params: Dict[str, Any] | None = None):
-        if index == backfill_financial_metadata.FULLTEXT_INDEX:
+        if index == self._fulltext_index:
             return {"_scroll_id": "scroll-1", "hits": {"hits": list(self._fulltext_hits)}}
 
         checksum = body.get("query", {}).get("term", {}).get("checksum", {}).get("value")
@@ -165,7 +185,7 @@ def _fake_extraction():
     )
 
 
-def test_backfill_financial_metadata_dry_run(monkeypatch):
+def test_backfill_financial_metadata_dry_run(backfill_financial_metadata, monkeypatch):
     fulltext_hits = [
         {
             "_id": "doc-1",
@@ -186,7 +206,11 @@ def test_backfill_financial_metadata_dry_run(monkeypatch):
             }
         ]
     }
-    fake_client = _FakeOpenSearchClient(fulltext_hits, chunk_hits)
+    fake_client = _FakeOpenSearchClient(
+        fulltext_hits,
+        chunk_hits,
+        fulltext_index=backfill_financial_metadata.FULLTEXT_INDEX,
+    )
     fake_qdrant = _FakeQdrantClient()
 
     monkeypatch.setattr(backfill_financial_metadata, "get_client", lambda: fake_client)
@@ -219,7 +243,7 @@ def test_backfill_financial_metadata_dry_run(monkeypatch):
     assert fake_client.cleared_scroll_ids == ["scroll-1"]
 
 
-def test_backfill_financial_metadata_apply_updates_indices_and_sidecar(monkeypatch):
+def test_backfill_financial_metadata_apply_updates_indices_and_sidecar(backfill_financial_metadata, monkeypatch):
     fulltext_hits = [
         {
             "_id": "doc-1",
@@ -240,7 +264,11 @@ def test_backfill_financial_metadata_apply_updates_indices_and_sidecar(monkeypat
             }
         ]
     }
-    fake_client = _FakeOpenSearchClient(fulltext_hits, chunk_hits)
+    fake_client = _FakeOpenSearchClient(
+        fulltext_hits,
+        chunk_hits,
+        fulltext_index=backfill_financial_metadata.FULLTEXT_INDEX,
+    )
     fake_qdrant = _FakeQdrantClient()
 
     monkeypatch.setattr(backfill_financial_metadata, "get_client", lambda: fake_client)
@@ -277,7 +305,7 @@ def test_backfill_financial_metadata_apply_updates_indices_and_sidecar(monkeypat
     assert len(fake_qdrant.set_payload_calls) == 1
 
 
-def test_backfill_financial_metadata_skip_and_limit(monkeypatch):
+def test_backfill_financial_metadata_skip_and_limit(backfill_financial_metadata, monkeypatch):
     fulltext_hits = [
         {
             "_id": "doc-1",
@@ -318,7 +346,11 @@ def test_backfill_financial_metadata_skip_and_limit(monkeypatch):
             }
         ]
     }
-    fake_client = _FakeOpenSearchClient(fulltext_hits, chunk_hits)
+    fake_client = _FakeOpenSearchClient(
+        fulltext_hits,
+        chunk_hits,
+        fulltext_index=backfill_financial_metadata.FULLTEXT_INDEX,
+    )
     fake_qdrant = _FakeQdrantClient()
     extracted_paths: List[str] = []
 

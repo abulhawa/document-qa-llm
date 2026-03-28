@@ -6,33 +6,45 @@ import sys
 import types
 from typing import Any, Dict, List
 
-if "opensearchpy" not in sys.modules:
-    opensearch_module = types.ModuleType("opensearchpy")
-    opensearch_module.OpenSearch = type("OpenSearch", (), {})
-    opensearch_module.helpers = types.SimpleNamespace()
-    opensearch_module.exceptions = types.SimpleNamespace(
-        OpenSearchException=Exception,
-        NotFoundError=Exception,
-    )
-    sys.modules["opensearchpy"] = opensearch_module
-
-if "langchain_core.documents" not in sys.modules:
-    langchain_docs = types.ModuleType("langchain_core.documents")
-    langchain_docs.Document = type("Document", (), {})
-    sys.modules["langchain_core.documents"] = langchain_docs
-if "langchain_core" not in sys.modules:
-    langchain_core = types.ModuleType("langchain_core")
-    langchain_core.documents = sys.modules["langchain_core.documents"]
-    sys.modules["langchain_core"] = langchain_core
+import pytest
 
 
 _SCRIPT_PATH = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "backfill_identity_metadata.py"
-_SPEC = importlib.util.spec_from_file_location("backfill_identity_metadata", _SCRIPT_PATH)
-if _SPEC is None or _SPEC.loader is None:
-    raise RuntimeError("Failed to load backfill_identity_metadata.py")
-backfill_identity_metadata = importlib.util.module_from_spec(_SPEC)
-sys.modules.setdefault("backfill_identity_metadata", backfill_identity_metadata)
-_SPEC.loader.exec_module(backfill_identity_metadata)
+
+
+def _install_runtime_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
+    if "opensearchpy" not in sys.modules:
+        opensearch_module = types.ModuleType("opensearchpy")
+        opensearch_module.OpenSearch = type("OpenSearch", (), {})
+        opensearch_module.helpers = types.SimpleNamespace()
+        opensearch_module.exceptions = types.SimpleNamespace(
+            OpenSearchException=Exception,
+            NotFoundError=Exception,
+        )
+        monkeypatch.setitem(sys.modules, "opensearchpy", opensearch_module)
+
+    if "langchain_core" not in sys.modules and "langchain_core.documents" not in sys.modules:
+        langchain_docs = types.ModuleType("langchain_core.documents")
+        langchain_docs.Document = type("Document", (), {})
+        monkeypatch.setitem(sys.modules, "langchain_core.documents", langchain_docs)
+
+    if "langchain_core" not in sys.modules and "langchain_core.documents" in sys.modules:
+        langchain_core = types.ModuleType("langchain_core")
+        langchain_core.documents = sys.modules["langchain_core.documents"]
+        monkeypatch.setitem(sys.modules, "langchain_core", langchain_core)
+
+
+@pytest.fixture
+def backfill_identity_metadata(monkeypatch: pytest.MonkeyPatch):
+    _install_runtime_stubs(monkeypatch)
+    module_name = "_test_backfill_identity_metadata"
+    spec = importlib.util.spec_from_file_location(module_name, _SCRIPT_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Failed to load backfill_identity_metadata.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, module)
+    spec.loader.exec_module(module)
+    return module
 
 
 class _FakeOpenSearchClient:
@@ -67,7 +79,7 @@ class _FakeOpenSearchClient:
         return {"updated": 3}
 
 
-def test_build_fulltext_patch_respects_overwrite():
+def test_build_fulltext_patch_respects_overwrite(backfill_identity_metadata):
     source = {"doc_type": "cv", "person_name": None}
     classified = {"doc_type": "cover_letter", "person_name": "Jane Doe", "authority_rank": 0.9}
 
@@ -90,7 +102,7 @@ def test_build_fulltext_patch_respects_overwrite():
     }
 
 
-def test_backfill_identity_metadata_updates_fulltext_and_chunks(monkeypatch):
+def test_backfill_identity_metadata_updates_fulltext_and_chunks(backfill_identity_metadata, monkeypatch):
     hits = [
         {
             "_id": "doc-1",
@@ -146,7 +158,7 @@ def test_backfill_identity_metadata_updates_fulltext_and_chunks(monkeypatch):
     assert fake_client.cleared_scroll_ids == ["scroll-1"]
 
 
-def test_backfill_identity_metadata_dry_run_skips_writes(monkeypatch):
+def test_backfill_identity_metadata_dry_run_skips_writes(backfill_identity_metadata, monkeypatch):
     hits = [
         {
             "_id": "doc-2",
@@ -191,7 +203,7 @@ def test_backfill_identity_metadata_dry_run_skips_writes(monkeypatch):
     assert fake_client.chunk_updates == []
 
 
-def test_backfill_identity_metadata_respects_target_doc_type_cohort(monkeypatch):
+def test_backfill_identity_metadata_respects_target_doc_type_cohort(backfill_identity_metadata, monkeypatch):
     hits = [
         {
             "_id": "doc-1",
