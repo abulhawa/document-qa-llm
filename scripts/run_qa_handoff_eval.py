@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 # Ensure repo root is on sys.path when run directly.
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +18,11 @@ if str(ROOT) not in sys.path:
 
 from core.query_rewriter import has_strong_query_anchors
 from core.retrieval.types import RetrievalConfig
+from qa_pipeline.handoff import (
+    DEFAULT_DYNAMIC_MIN_CHUNKS,
+    estimate_tokens,
+    pack_docs_by_token_budget,
+)
 from qa_pipeline.llm_client import generate_answer
 from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
@@ -29,7 +34,6 @@ DEFAULT_SUPPORT_LABELS_PATH = Path("tests/fixtures/retrieval_eval_answer_support
 DEFAULT_OUTPUT_DIR = Path("docs/runbooks")
 DEFAULT_SOFT_TIMEOUT_SECONDS = 45.0
 DEFAULT_DYNAMIC_TOKEN_BUDGET = 1200
-DEFAULT_DYNAMIC_MIN_CHUNKS = 3
 DEFAULT_DYNAMIC_RETRIEVAL_TOP_K = 7
 
 PROFILE_DOC_TYPES = {"cv", "resume", "cover_letter", "reference_letter", "profile"}
@@ -142,46 +146,156 @@ def is_profile_when_where_query(row: Mapping[str, Any]) -> bool:
     return has_profile_scope
 
 
-def estimate_tokens(text: str) -> int:
-    normalized = str(text or "")
-    if not normalized:
-        return 0
-    return max(1, len(normalized) // 4)
+def _normalize_doc_type(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip().lower()
 
 
-def pack_docs_by_token_budget(
-    docs: Sequence[RetrievedDocument],
+def _intended_doc_types_for_integrity(row: Mapping[str, Any]) -> list[str]:
+    expected_doc_types = sorted(
+        {
+            _normalize_doc_type(item)
+            for item in (row.get("expected_doc_types") or [])
+            if isinstance(item, str) and _normalize_doc_type(item) not in {"", "__missing__"}
+        }
+    )
+    if expected_doc_types:
+        return expected_doc_types
+
+    target_areas = {
+        str(item).strip().lower()
+        for item in (row.get("target_areas") or [])
+        if isinstance(item, str)
+    }
+    if "career_cv_docs" in target_areas:
+        return ["cv", "resume"]
+    return []
+
+
+def _default_fulltext_fetcher(checksum: str) -> Optional[dict[str, Any]]:
+    try:
+        from utils.opensearch_utils import get_fulltext_by_checksum
+    except Exception:
+        return None
+
+    try:
+        payload = get_fulltext_by_checksum(checksum)
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    return dict(payload)
+
+
+def build_benchmark_integrity_diagnostics(
+    fixture_rows: Sequence[Mapping[str, Any]],
     *,
-    token_budget: int,
-    min_chunks: int = DEFAULT_DYNAMIC_MIN_CHUNKS,
-    max_chunks: Optional[int] = None,
-) -> tuple[list[RetrievedDocument], int]:
-    if token_budget <= 0:
-        return list(docs), sum(estimate_tokens(doc.text) for doc in docs)
+    fulltext_fetcher: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+) -> dict[str, Any]:
+    fetcher = fulltext_fetcher or _default_fulltext_fetcher
+    metadata_cache: dict[str, Optional[dict[str, Any]]] = {}
 
-    packed: list[RetrievedDocument] = []
-    used_tokens = 0
-    min_chunks = max(0, int(min_chunks))
+    query_diagnostics: dict[str, dict[str, Any]] = {}
+    status_counts = {
+        "pass": 0,
+        "drift": 0,
+        "unresolved": 0,
+        "not_applicable": 0,
+    }
+    integrity_failure_query_ids: list[str] = []
+    checked_positive_queries = 0
 
-    for doc in docs:
-        if max_chunks is not None and len(packed) >= max_chunks:
-            break
-        doc_tokens = estimate_tokens(doc.text)
-        if len(packed) < min_chunks:
-            packed.append(doc)
-            used_tokens += doc_tokens
-            continue
-        if used_tokens + doc_tokens > token_budget:
-            continue
-        packed.append(doc)
-        used_tokens += doc_tokens
+    for row in fixture_rows:
+        query_id = str(row.get("id") or "")
+        mode = str(row.get("mode") or "").strip().lower()
+        expected_checksums = _dedupe_checksums(row.get("expected_checksums") or [])
+        intended_doc_types = _intended_doc_types_for_integrity(row)
 
-    if not packed and docs:
-        first = docs[0]
-        packed = [first]
-        used_tokens = estimate_tokens(first.text)
+        status = "not_applicable"
+        reason = "query not in integrity check scope"
+        resolved_checksums: list[str] = []
+        matching_checksums: list[str] = []
+        missing_checksums: list[str] = []
+        checksum_diagnostics: list[dict[str, Any]] = []
 
-    return packed, used_tokens
+        if mode != "positive":
+            reason = "non-positive benchmark mode"
+        elif not expected_checksums:
+            reason = "no expected checksums"
+        elif not intended_doc_types:
+            reason = "no intended doc family in fixture metadata"
+        else:
+            checked_positive_queries += 1
+            for checksum in expected_checksums:
+                if checksum not in metadata_cache:
+                    metadata_cache[checksum] = fetcher(checksum)
+                metadata = metadata_cache[checksum] or {}
+                doc_type = _normalize_doc_type(metadata.get("doc_type"))
+                path = str(metadata.get("path") or "")
+                filename = str(metadata.get("filename") or "")
+                exists = bool(metadata)
+                matches_family = exists and (doc_type in intended_doc_types)
+
+                if exists:
+                    resolved_checksums.append(checksum)
+                else:
+                    missing_checksums.append(checksum)
+                if matches_family:
+                    matching_checksums.append(checksum)
+
+                checksum_diagnostics.append(
+                    {
+                        "checksum": checksum,
+                        "exists_in_snapshot": exists,
+                        "doc_type": doc_type or None,
+                        "path": path or None,
+                        "filename": filename or None,
+                        "matches_intended_family": matches_family,
+                    }
+                )
+
+            if matching_checksums:
+                status = "pass"
+                reason = "at least one expected checksum resolves to intended doc family"
+            elif resolved_checksums:
+                status = "drift"
+                reason = "expected checksums resolve, but not to intended doc family"
+            else:
+                status = "unresolved"
+                reason = "expected checksums not found in current index snapshot"
+
+        if status in {"drift", "unresolved"} and query_id:
+            integrity_failure_query_ids.append(query_id)
+        status_counts[status] += 1
+
+        query_diagnostics[query_id] = {
+            "query_id": query_id,
+            "mode": mode,
+            "expected_checksums": expected_checksums,
+            "intended_doc_types": intended_doc_types,
+            "status": status,
+            "reason": reason,
+            "integrity_failure": status in {"drift", "unresolved"},
+            "resolved_checksums": resolved_checksums,
+            "matching_checksums": matching_checksums,
+            "missing_checksums": missing_checksums,
+            "checksums": checksum_diagnostics,
+        }
+
+    return {
+        "generated_at_utc": _utc_now_iso(),
+        "summary": {
+            "checked_positive_queries": checked_positive_queries,
+            "pass_count": status_counts["pass"],
+            "drift_count": status_counts["drift"],
+            "unresolved_count": status_counts["unresolved"],
+            "not_applicable_count": status_counts["not_applicable"],
+            "integrity_failure_count": len(integrity_failure_query_ids),
+            "integrity_failure_query_ids": integrity_failure_query_ids,
+        },
+        "queries": query_diagnostics,
+    }
 
 
 def _expected_rank(docs: Sequence[RetrievedDocument], expected_checksums: Sequence[str]) -> Optional[int]:
@@ -193,6 +307,19 @@ def _expected_rank(docs: Sequence[RetrievedDocument], expected_checksums: Sequen
         if checksum and checksum in expected:
             return idx
     return None
+
+
+def _percentile(values: Sequence[float], pct: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(float(v) for v in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = max(0.0, min(1.0, pct / 100.0)) * (len(ordered) - 1)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    weight = rank - low
+    return ordered[low] * (1.0 - weight) + ordered[high] * weight
 
 
 def _normalize_answer(answer: str) -> str:
@@ -231,6 +358,7 @@ def _run_query(
     *,
     strategy: StrategyConfig,
     support_overrides: Mapping[str, Mapping[str, Any]],
+    benchmark_integrity_by_query_id: Mapping[str, Mapping[str, Any]],
     run_date: str,
     top_k_each: int,
     soft_timeout_seconds: float,
@@ -244,6 +372,15 @@ def _run_query(
     strict_expected = _dedupe_checksums(row.get("expected_checksums") or [])
     support_expected = resolve_support_checksums(strict_expected, support_overrides.get(query_id))
     targeted = is_profile_when_where_query(row)
+    integrity_diag = benchmark_integrity_by_query_id.get(query_id, {})
+    integrity_status = str(integrity_diag.get("status") or "not_applicable")
+    integrity_reason = str(integrity_diag.get("reason") or "")
+    integrity_failure = bool(integrity_diag.get("integrity_failure"))
+    intended_doc_types = [
+        str(item)
+        for item in (integrity_diag.get("intended_doc_types") or [])
+        if isinstance(item, str)
+    ]
 
     query_start = time.perf_counter()
     error: Optional[str] = None
@@ -252,6 +389,7 @@ def _run_query(
     packed_docs: list[RetrievedDocument] = []
     retrieved_docs_count = 0
     packed_tokens = 0
+    packing_duration_ms = 0.0
     rewritten_question = query_text
     prompt_mode = mode
 
@@ -284,12 +422,14 @@ def _run_query(
             retrieved_docs_count = len(retrieval.documents)
 
             if strategy.dynamic_token_budget is not None:
+                pack_start = time.perf_counter()
                 packed_docs, packed_tokens = pack_docs_by_token_budget(
                     retrieval.documents,
                     token_budget=strategy.dynamic_token_budget,
                     min_chunks=strategy.dynamic_min_chunks,
                     max_chunks=strategy.dynamic_max_chunks,
                 )
+                packing_duration_ms = (time.perf_counter() - pack_start) * 1000.0
             else:
                 packed_docs = list(retrieval.documents)
                 packed_tokens = sum(estimate_tokens(doc.text) for doc in packed_docs)
@@ -338,6 +478,10 @@ def _run_query(
         "query": query_text,
         "rewritten_question": rewritten_question,
         "target_profile_when_where": targeted,
+        "benchmark_integrity_status": integrity_status,
+        "benchmark_integrity_reason": integrity_reason,
+        "benchmark_integrity_failure": integrity_failure,
+        "benchmark_intended_doc_types": intended_doc_types,
         "expected_checksums": strict_expected,
         "support_expected_checksums": support_expected,
         "retrieval_top_k": strategy.retrieval_top_k,
@@ -345,6 +489,7 @@ def _run_query(
         "retrieved_docs_count": retrieved_docs_count,
         "packed_docs_count": len(packed_docs),
         "packed_context_tokens_est": packed_tokens,
+        "packing_duration_ms": round(packing_duration_ms, 3),
         "packed_checksums": [str(doc.checksum or "") for doc in packed_docs],
         "strict_rank": strict_rank,
         "support_rank": support_rank,
@@ -362,10 +507,12 @@ def _run_query(
 
 
 def _summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    total_rows = len(rows)
     positive_rows = [row for row in rows if row.get("mode") == "positive"]
     control_rows = [row for row in rows if row.get("mode") == "control"]
     targeted_rows = [row for row in positive_rows if bool(row.get("target_profile_when_where"))]
     errored_rows = [row for row in rows if bool(row.get("is_error")) or bool(row.get("error"))]
+    fallback_rows = [row for row in rows if bool(row.get("is_fallback"))]
     timeout_rows = [row for row in rows if bool(row.get("timeout_exceeded"))]
 
     positive_total = len(positive_rows)
@@ -378,6 +525,28 @@ def _summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         if bool(row.get("answered_without_error")) and bool(row.get("support_context_hit"))
     )
 
+    integrity_failure_rows = [
+        row for row in positive_rows if bool(row.get("benchmark_integrity_failure"))
+    ]
+    integrity_clean_rows = [
+        row for row in positive_rows if not bool(row.get("benchmark_integrity_failure"))
+    ]
+    integrity_clean_total = len(integrity_clean_rows)
+    integrity_clean_answered = sum(
+        1 for row in integrity_clean_rows if bool(row.get("answered_without_error"))
+    )
+    integrity_clean_support_hits = sum(
+        1 for row in integrity_clean_rows if bool(row.get("support_context_hit"))
+    )
+    integrity_clean_answered_with_support = sum(
+        1
+        for row in integrity_clean_rows
+        if bool(row.get("answered_without_error")) and bool(row.get("support_context_hit"))
+    )
+    retrieval_failure_rows = [
+        row for row in integrity_clean_rows if not bool(row.get("support_context_hit"))
+    ]
+
     targeted_total = len(targeted_rows)
     targeted_answered = sum(1 for row in targeted_rows if bool(row.get("answered_without_error")))
     targeted_support_hits = sum(1 for row in targeted_rows if bool(row.get("support_context_hit")))
@@ -386,21 +555,33 @@ def _summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     control_answered = sum(1 for row in control_rows if bool(row.get("answered_without_error")))
     control_fallback = sum(1 for row in control_rows if bool(row.get("is_fallback")))
 
-    avg_duration = (
-        sum(float(row.get("query_duration_ms") or 0.0) for row in rows) / len(rows)
-        if rows
+    duration_samples = [float(row.get("query_duration_ms") or 0.0) for row in rows]
+    avg_duration = (sum(duration_samples) / total_rows) if total_rows else 0.0
+    p95_duration = _percentile(duration_samples, 95.0) if duration_samples else 0.0
+    avg_packing_duration = (
+        sum(float(row.get("packing_duration_ms") or 0.0) for row in rows) / total_rows
+        if total_rows
         else 0.0
     )
     avg_packed_docs = (
-        sum(int(row.get("packed_docs_count") or 0) for row in rows) / len(rows)
-        if rows
+        sum(int(row.get("packed_docs_count") or 0) for row in rows) / total_rows
+        if total_rows
         else 0.0
     )
     avg_packed_tokens = (
-        sum(float(row.get("packed_context_tokens_est") or 0.0) for row in rows) / len(rows)
-        if rows
+        sum(float(row.get("packed_context_tokens_est") or 0.0) for row in rows) / total_rows
+        if total_rows
         else 0.0
     )
+
+    positive_error_count = sum(
+        1 for row in positive_rows if bool(row.get("is_error")) or bool(row.get("error"))
+    )
+    positive_fallback_count = sum(1 for row in positive_rows if bool(row.get("is_fallback")))
+    overall_error_rate = (len(errored_rows) / total_rows) if total_rows else 0.0
+    overall_fallback_rate = (len(fallback_rows) / total_rows) if total_rows else 0.0
+    positive_error_rate = (positive_error_count / positive_total) if positive_total else 0.0
+    positive_fallback_rate = (positive_fallback_count / positive_total) if positive_total else 0.0
 
     return {
         "positive_total": positive_total,
@@ -422,6 +603,33 @@ def _summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         )
         if positive_total
         else 0.0,
+        "positive_integrity_failures": len(integrity_failure_rows),
+        "positive_integrity_failure_query_ids": [
+            str(row.get("query_id") or "") for row in integrity_failure_rows
+        ],
+        "positive_integrity_clean_total": integrity_clean_total,
+        "positive_integrity_clean_answered_without_error": integrity_clean_answered,
+        "positive_integrity_clean_answered_without_error_rate": round(
+            (integrity_clean_answered / integrity_clean_total), 4
+        )
+        if integrity_clean_total
+        else 0.0,
+        "positive_integrity_clean_support_context_hits": integrity_clean_support_hits,
+        "positive_integrity_clean_support_context_hit_rate": round(
+            (integrity_clean_support_hits / integrity_clean_total), 4
+        )
+        if integrity_clean_total
+        else 0.0,
+        "positive_integrity_clean_answered_with_support": integrity_clean_answered_with_support,
+        "positive_integrity_clean_answered_with_support_rate": round(
+            (integrity_clean_answered_with_support / integrity_clean_total), 4
+        )
+        if integrity_clean_total
+        else 0.0,
+        "positive_true_retrieval_failures_excluding_integrity": len(retrieval_failure_rows),
+        "positive_true_retrieval_failure_query_ids": [
+            str(row.get("query_id") or "") for row in retrieval_failure_rows
+        ],
         "target_profile_when_where_total": targeted_total,
         "target_profile_when_where_query_ids": [
             str(row.get("query_id") or "") for row in targeted_rows
@@ -445,9 +653,17 @@ def _summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "query_error_ids": [str(row.get("query_id") or "") for row in errored_rows],
         "queries_exceeding_soft_timeout": len(timeout_rows),
         "timeout_query_ids": [str(row.get("query_id") or "") for row in timeout_rows],
+        "overall_error_rate": round(overall_error_rate, 4),
+        "overall_fallback_rate": round(overall_fallback_rate, 4),
+        "positive_error_rate": round(positive_error_rate, 4),
+        "positive_fallback_rate": round(positive_fallback_rate, 4),
         "avg_query_duration_ms": round(avg_duration, 3),
+        "p95_query_duration_ms": round(p95_duration, 3),
+        "avg_packing_duration_ms": round(avg_packing_duration, 3),
         "avg_packed_docs_count": round(avg_packed_docs, 3),
         "avg_packed_context_tokens_est": round(avg_packed_tokens, 3),
+        "avg_chunks_passed": round(avg_packed_docs, 3),
+        "avg_token_usage_est": round(avg_packed_tokens, 3),
     }
 
 
@@ -467,11 +683,15 @@ def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         "query",
         "rewritten_question",
         "target_profile_when_where",
+        "benchmark_integrity_status",
+        "benchmark_integrity_failure",
+        "benchmark_integrity_reason",
         "retrieval_top_k",
         "dynamic_token_budget",
         "retrieved_docs_count",
         "packed_docs_count",
         "packed_context_tokens_est",
+        "packing_duration_ms",
         "strict_rank",
         "support_rank",
         "strict_context_hit",
@@ -526,6 +746,8 @@ def _run_strategy(
     *,
     strategy: StrategyConfig,
     support_overrides: Mapping[str, Mapping[str, Any]],
+    benchmark_integrity_by_query_id: Mapping[str, Mapping[str, Any]],
+    benchmark_integrity_summary: Mapping[str, Any],
     top_k_each: int,
     soft_timeout_seconds: float,
     mode: str,
@@ -542,6 +764,7 @@ def _run_strategy(
                 row,
                 strategy=strategy,
                 support_overrides=support_overrides,
+                benchmark_integrity_by_query_id=benchmark_integrity_by_query_id,
                 run_date=run_date,
                 top_k_each=top_k_each,
                 soft_timeout_seconds=soft_timeout_seconds,
@@ -565,6 +788,7 @@ def _run_strategy(
             "dynamic_min_chunks": strategy.dynamic_min_chunks,
         },
         "summary": _summarize(rows),
+        "benchmark_integrity_summary": dict(benchmark_integrity_summary),
         "rows": rows,
         "run_duration_ms": round(run_duration_ms, 3),
     }
@@ -572,6 +796,10 @@ def _run_strategy(
 
 def _delta(after: Mapping[str, Any], before: Mapping[str, Any], key: str) -> int:
     return int(after.get(key, 0)) - int(before.get(key, 0))
+
+
+def _delta_float(after: Mapping[str, Any], before: Mapping[str, Any], key: str) -> float:
+    return round(float(after.get(key, 0.0) or 0.0) - float(before.get(key, 0.0) or 0.0), 4)
 
 
 def _compare_strategies(strategy_artifacts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
@@ -618,6 +846,43 @@ def _compare_strategies(strategy_artifacts: Mapping[str, Mapping[str, Any]]) -> 
                 "positive_answered_with_support",
             ),
         },
+        "operational_dynamic_vs_top5": {
+            "avg_chunks_passed_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "avg_chunks_passed",
+            ),
+            "avg_token_usage_est_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "avg_token_usage_est",
+            ),
+            "avg_query_duration_ms_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "avg_query_duration_ms",
+            ),
+            "p95_query_duration_ms_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "p95_query_duration_ms",
+            ),
+            "overall_error_rate_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "overall_error_rate",
+            ),
+            "overall_fallback_rate_delta": _delta_float(
+                dynamic_summary,
+                top5_summary,
+                "overall_fallback_rate",
+            ),
+            "positive_integrity_failures_delta": _delta(
+                dynamic_summary,
+                top5_summary,
+                "positive_integrity_failures",
+            ),
+        },
         "run_duration_ms": {
             name: artifact.get("run_duration_ms", 0)
             for name, artifact in strategy_artifacts.items()
@@ -630,7 +895,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compare end-to-end QA handoff policies (top3 vs top5 vs token-budgeted dynamic packing) "
-            "with sibling expansion ON and rerank OFF."
+            "with sibling expansion ON, rerank OFF, and benchmark-integrity diagnostics."
         )
     )
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE_PATH)
@@ -668,6 +933,9 @@ def main() -> None:
         dict(row) for row in fixture_rows_raw if isinstance(row, Mapping)
     ]
     support_overrides = _load_support_overrides(args.support_labels)
+    benchmark_integrity = build_benchmark_integrity_diagnostics(fixture_rows)
+    benchmark_integrity_by_query_id = benchmark_integrity.get("queries", {})
+    benchmark_integrity_summary = benchmark_integrity.get("summary", {})
 
     strategy_names = [part.strip() for part in str(args.strategies).split(",") if part.strip()]
     strategies = [
@@ -686,6 +954,8 @@ def main() -> None:
             fixture_rows,
             strategy=strategy,
             support_overrides=support_overrides,
+            benchmark_integrity_by_query_id=benchmark_integrity_by_query_id,
+            benchmark_integrity_summary=benchmark_integrity_summary,
             top_k_each=max(int(args.top_k_each), 1),
             soft_timeout_seconds=max(float(args.soft_query_timeout_seconds), 0.0),
             mode=str(args.mode),
@@ -707,6 +977,7 @@ def main() -> None:
         "fixture": str(args.fixture),
         "support_labels": str(args.support_labels),
         "strategies": [strategy.name for strategy in strategies],
+        "benchmark_integrity": benchmark_integrity,
         "comparison": _compare_strategies(strategy_artifacts),
         "artifacts": {
             name: {

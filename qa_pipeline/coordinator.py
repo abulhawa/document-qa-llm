@@ -16,11 +16,15 @@ from tracing import (
 )
 
 from qa_pipeline.grounding import evaluate_grounding
+from qa_pipeline.handoff import (
+    DEFAULT_DYNAMIC_MIN_CHUNKS,
+    pack_docs_by_token_budget,
+)
 from qa_pipeline.llm_client import generate_answer
 from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
 from qa_pipeline.rewrite import rewrite_question
-from qa_pipeline.types import AnswerContext
+from qa_pipeline.types import AnswerContext, RetrievalResult
 
 
 AttributePrimitive = str | bool | int | float
@@ -51,6 +55,10 @@ def answer_question(
     retrieval_cfg: RetrievalConfig | None = None,
     use_cache: bool = True,
     require_grounding: bool = False,
+    handoff_strategy: str = "top5",
+    handoff_dynamic_token_budget: Optional[int] = None,
+    handoff_dynamic_min_chunks: int = DEFAULT_DYNAMIC_MIN_CHUNKS,
+    handoff_dynamic_max_chunks: Optional[int] = None,
 ) -> AnswerContext:
     """Orchestrate the QA pipeline to answer a question."""
 
@@ -69,6 +77,7 @@ def answer_question(
         chain_span.set_attribute("temperature", temperature)
         chain_span.set_attribute("model", model or "unknown")
         chain_span.set_attribute("require_grounding", require_grounding)
+        chain_span.set_attribute("handoff_strategy", handoff_strategy)
 
         # Step 1: Rewrite query or request clarification
         try:
@@ -146,6 +155,30 @@ def answer_question(
             chain_span.set_attribute(OUTPUT_VALUE, context.answer)
             chain_span.set_status(STATUS_OK)
             return context
+
+        retrieved_documents = list(context.retrieval.documents)
+        handoff_policy = str(handoff_strategy or "top5").strip().lower()
+        packed_documents = retrieved_documents
+        if handoff_policy == "dynamic":
+            token_budget = int(handoff_dynamic_token_budget or 0)
+            packed_documents, packed_tokens = pack_docs_by_token_budget(
+                retrieved_documents,
+                token_budget=token_budget,
+                min_chunks=handoff_dynamic_min_chunks,
+                max_chunks=handoff_dynamic_max_chunks,
+            )
+            chain_span.set_attribute("handoff_packed_tokens_est", packed_tokens)
+
+        if len(packed_documents) != len(retrieved_documents):
+            context.retrieval = RetrievalResult(
+                query=context.retrieval.query,
+                documents=packed_documents,
+            )
+        chain_span.set_attribute("handoff_retrieved_docs", len(retrieved_documents))
+        chain_span.set_attribute(
+            "handoff_packed_docs",
+            len(context.retrieval.documents if context.retrieval else []),
+        )
 
         # Step 3: Build prompt
         context.prompt_request = build_prompt(

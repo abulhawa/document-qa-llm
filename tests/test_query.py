@@ -577,6 +577,10 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
     def mock_answer_question(**kwargs):
         captured["retrieval_cfg"] = kwargs.get("retrieval_cfg")
         captured["top_k"] = kwargs.get("top_k")
+        captured["handoff_strategy"] = kwargs.get("handoff_strategy")
+        captured["handoff_dynamic_token_budget"] = kwargs.get("handoff_dynamic_token_budget")
+        captured["handoff_dynamic_min_chunks"] = kwargs.get("handoff_dynamic_min_chunks")
+        captured["handoff_dynamic_max_chunks"] = kwargs.get("handoff_dynamic_max_chunks")
         return types.SimpleNamespace(
             answer="ok",
             retrieval=None,
@@ -589,16 +593,56 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
     monkeypatch.setattr(qa_usecase, "RETRIEVAL_ENABLE_RERANK", True)
     monkeypatch.setattr(qa_usecase, "RETRIEVAL_RERANK_TOP_N", 4)
     monkeypatch.setattr(qa_usecase, "RETRIEVAL_RERANK_CANDIDATE_POOL", 12)
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_POLICY", "dynamic")
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_RETRIEVAL_TOP_K", 7)
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_TOKEN_BUDGET", 1200)
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_MIN_CHUNKS", 3)
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_MAX_CHUNKS", 0)
     monkeypatch.setattr(qa_usecase.qa_pipeline, "answer_question", mock_answer_question)
 
     response = qa_usecase.answer(QARequest(question="question"))
 
     assert response.answer == "ok"
     cfg = captured["retrieval_cfg"]
-    assert captured["top_k"] == 5
+    assert captured["top_k"] == 7
+    assert captured["handoff_strategy"] == "dynamic"
+    assert captured["handoff_dynamic_token_budget"] == 1200
+    assert captured["handoff_dynamic_min_chunks"] == 3
+    assert captured["handoff_dynamic_max_chunks"] is None
     assert cfg.enable_rerank is True
     assert cfg.rerank_top_n == 4
     assert cfg.rerank_candidate_pool == 12
+
+
+def test_qa_usecase_supports_top5_handoff_fallback(monkeypatch):
+    from app.schemas import QARequest
+    from app.usecases import qa_usecase
+
+    captured = {}
+
+    def mock_answer_question(**kwargs):
+        captured["top_k"] = kwargs.get("top_k")
+        captured["handoff_strategy"] = kwargs.get("handoff_strategy")
+        captured["handoff_dynamic_token_budget"] = kwargs.get("handoff_dynamic_token_budget")
+        return types.SimpleNamespace(
+            answer="ok",
+            retrieval=None,
+            rewritten_question=None,
+            clarification=None,
+            is_grounded=None,
+            grounding_score=None,
+        )
+
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_POLICY", "top5")
+    monkeypatch.setattr(qa_usecase, "QA_HANDOFF_FIXED_TOP_K", 5)
+    monkeypatch.setattr(qa_usecase.qa_pipeline, "answer_question", mock_answer_question)
+
+    response = qa_usecase.answer(QARequest(question="question"))
+
+    assert response.answer == "ok"
+    assert captured["top_k"] == 5
+    assert captured["handoff_strategy"] == "top5"
+    assert captured["handoff_dynamic_token_budget"] is None
 
 
 def test_answer_question_skips_grounding_when_flag_disabled(monkeypatch):
