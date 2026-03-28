@@ -2213,3 +2213,71 @@ def test_retrieval_financial_mode_without_entity_does_not_require_entity_filter(
     assert len(result.documents) == 2
     assert result.stage_metadata is not None
     assert result.stage_metadata.get("target_entity") is None
+
+
+def test_retrieval_financial_fallback_does_not_relax_year_when_strict_budget_met():
+    vector_hits = [
+        {
+            "id": "invoice-2022-a",
+            "text": "Invoice paid in 2022 amount EUR 100",
+            "score": 1.0,
+            "checksum": "inv-2022-a",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+        {
+            "id": "invoice-2022-b",
+            "text": "Invoice paid in 2022 amount EUR 200",
+            "score": 0.99,
+            "checksum": "inv-2022-b",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+        {
+            "id": "invoice-2021",
+            "text": "Invoice paid in 2021 amount EUR 300",
+            "score": 0.98,
+            "checksum": "inv-2021",
+            "doc_type": "invoice",
+            "mentioned_years": [2021],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=3,
+        financial_fallback_residual_budget=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    plan = QueryPlan(
+        raw_query="What expenses were paid in 2022?",
+        semantic_query="What expenses were paid in 2022?",
+        bm25_query="What expenses were paid in 2022?",
+        financial_query_mode=True,
+        target_entity=None,
+        target_year=2022,
+        target_concept="expenses",
+    )
+
+    result = pipeline.retrieve(
+        plan.raw_query,
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+        query_plan=plan,
+    )
+
+    checksums = [doc.get("checksum") for doc in result.documents]
+    assert checksums == ["inv-2022-a", "inv-2022-b"]
+    assert result.stage_metadata is not None
+    assert result.stage_metadata.get("year_relaxation_allowed") is False
+    assert result.stage_metadata.get("fallback_used") is False

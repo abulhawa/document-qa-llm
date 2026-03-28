@@ -1,0 +1,357 @@
+{
+  "generated_at_utc": "2026-03-28T15:41:19.262432+00:00",
+  "fixture": "tests\\fixtures\\financial_eval_queries.json",
+  "baseline": {
+    "config": {
+      "financial_enable_gating": false
+    },
+    "summary": {
+      "total_queries": 4,
+      "queries_with_suppressed_topk": 3,
+      "suppressed_docs_topk_total": 4,
+      "queries_with_non_preferred_topk": 4,
+      "avg_preferred_ratio_topk": 0.5667,
+      "year_scoped_queries": 3,
+      "year_leakage_queries": 2,
+      "year_leakage_docs_topk_total": 3,
+      "fallback_used_count": 0,
+      "fallback_logged_count": 0
+    },
+    "rows": [
+      {
+        "query_id": "FQ01",
+        "query": "What expenses did Ali make in 2022 for tax returns?",
+        "target_year": 2022,
+        "top_k": 5,
+        "selected_count": 5,
+        "selected_checksums": [
+          "fq01-course",
+          "fq01-cv",
+          "fq01-invoice-2022",
+          "fq01-receipt-2022",
+          "fq01-invoice-2021"
+        ],
+        "selected_families": [
+          "course_material",
+          "cv",
+          "invoice",
+          "receipt",
+          "invoice"
+        ],
+        "preferred_topk": 3,
+        "suppressed_topk": 2,
+        "non_preferred_topk": 2,
+        "preferred_ratio_topk": 0.6,
+        "cross_year_topk": 1,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      },
+      {
+        "query_id": "FQ02",
+        "query": "What payments were made in 2023?",
+        "target_year": 2023,
+        "top_k": 4,
+        "selected_count": 4,
+        "selected_checksums": [
+          "fq02-publication",
+          "fq02-bank-2022",
+          "fq02-payment-2022",
+          "fq02-official-2023"
+        ],
+        "selected_families": [
+          "research_paper",
+          "bank_statement",
+          "payment_confirmation",
+          "government_form"
+        ],
+        "preferred_topk": 2,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 2,
+        "preferred_ratio_topk": 0.5,
+        "cross_year_topk": 2,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      },
+      {
+        "query_id": "FQ03",
+        "query": "List Ali tax relevant expenses.",
+        "target_year": null,
+        "top_k": 4,
+        "selected_count": 4,
+        "selected_checksums": [
+          "fq03-reference",
+          "fq03-invoice-a",
+          "fq03-receipt-a",
+          "fq03-book"
+        ],
+        "selected_families": [
+          "reference_letter",
+          "invoice",
+          "receipt",
+          "book"
+        ],
+        "preferred_topk": 2,
+        "suppressed_topk": 1,
+        "non_preferred_topk": 2,
+        "preferred_ratio_topk": 0.5,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      },
+      {
+        "query_id": "FQ04",
+        "query": "What expenses were paid in 2022?",
+        "target_year": 2022,
+        "top_k": 3,
+        "selected_count": 3,
+        "selected_checksums": [
+          "fq04-cv",
+          "fq04-invoice-2022-a",
+          "fq04-invoice-2022-b"
+        ],
+        "selected_families": [
+          "cv",
+          "invoice",
+          "invoice"
+        ],
+        "preferred_topk": 2,
+        "suppressed_topk": 1,
+        "non_preferred_topk": 1,
+        "preferred_ratio_topk": 0.6667,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": false,
+        "fallback_stage": null,
+        "stage_metadata": {}
+      }
+    ]
+  },
+  "gated": {
+    "config": {
+      "financial_enable_gating": true
+    },
+    "summary": {
+      "total_queries": 4,
+      "queries_with_suppressed_topk": 0,
+      "suppressed_docs_topk_total": 0,
+      "queries_with_non_preferred_topk": 0,
+      "avg_preferred_ratio_topk": 1.0,
+      "year_scoped_queries": 3,
+      "year_leakage_queries": 2,
+      "year_leakage_docs_topk_total": 3,
+      "fallback_used_count": 2,
+      "fallback_logged_count": 4
+    },
+    "rows": [
+      {
+        "query_id": "FQ01",
+        "query": "What expenses did Ali make in 2022 for tax returns?",
+        "target_year": 2022,
+        "top_k": 5,
+        "selected_count": 3,
+        "selected_checksums": [
+          "fq01-invoice-2022",
+          "fq01-receipt-2022",
+          "fq01-invoice-2021"
+        ],
+        "selected_families": [
+          "invoice",
+          "receipt",
+          "invoice"
+        ],
+        "preferred_topk": 3,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 1,
+        "fallback_used": true,
+        "fallback_logged": true,
+        "fallback_stage": "fallback_relax_year",
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": "Ali",
+          "target_year": 2022,
+          "target_concept": "expenses",
+          "strict_budget": 3,
+          "strict_selected": 2,
+          "strict_candidates": 2,
+          "fallback_budget": 2,
+          "year_relaxation_allowed": true,
+          "fallback_selected": 1,
+          "selected_count": 3,
+          "fallback_used": true,
+          "fallback_stage": "fallback_relax_year",
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      },
+      {
+        "query_id": "FQ02",
+        "query": "What payments were made in 2023?",
+        "target_year": 2023,
+        "top_k": 4,
+        "selected_count": 3,
+        "selected_checksums": [
+          "fq02-official-2023",
+          "fq02-bank-2022",
+          "fq02-payment-2022"
+        ],
+        "selected_families": [
+          "official_letter",
+          "bank_statement",
+          "payment_confirmation"
+        ],
+        "preferred_topk": 3,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 2,
+        "fallback_used": true,
+        "fallback_logged": true,
+        "fallback_stage": "fallback_relax_year",
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": null,
+          "target_year": 2023,
+          "target_concept": "payments",
+          "strict_budget": 2,
+          "strict_selected": 1,
+          "strict_candidates": 1,
+          "fallback_budget": 2,
+          "year_relaxation_allowed": true,
+          "fallback_selected": 2,
+          "selected_count": 3,
+          "fallback_used": true,
+          "fallback_stage": "fallback_relax_year",
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      },
+      {
+        "query_id": "FQ03",
+        "query": "List Ali tax relevant expenses.",
+        "target_year": null,
+        "top_k": 4,
+        "selected_count": 2,
+        "selected_checksums": [
+          "fq03-invoice-a",
+          "fq03-receipt-a"
+        ],
+        "selected_families": [
+          "invoice",
+          "receipt"
+        ],
+        "preferred_topk": 2,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": true,
+        "fallback_stage": null,
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": "Ali",
+          "target_year": null,
+          "target_concept": "expenses",
+          "strict_budget": 3,
+          "strict_selected": 2,
+          "strict_candidates": 2,
+          "fallback_budget": 1,
+          "year_relaxation_allowed": true,
+          "fallback_selected": 0,
+          "selected_count": 2,
+          "fallback_used": false,
+          "fallback_stage": null,
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      },
+      {
+        "query_id": "FQ04",
+        "query": "What expenses were paid in 2022?",
+        "target_year": 2022,
+        "top_k": 3,
+        "selected_count": 2,
+        "selected_checksums": [
+          "fq04-invoice-2022-a",
+          "fq04-invoice-2022-b"
+        ],
+        "selected_families": [
+          "invoice",
+          "invoice"
+        ],
+        "preferred_topk": 2,
+        "suppressed_topk": 0,
+        "non_preferred_topk": 0,
+        "preferred_ratio_topk": 1.0,
+        "cross_year_topk": 0,
+        "fallback_used": false,
+        "fallback_logged": true,
+        "fallback_stage": null,
+        "stage_metadata": {
+          "financial_query_mode": true,
+          "target_entity": null,
+          "target_year": 2022,
+          "target_concept": "expenses",
+          "strict_budget": 2,
+          "strict_selected": 2,
+          "strict_candidates": 2,
+          "fallback_budget": 1,
+          "year_relaxation_allowed": false,
+          "fallback_selected": 0,
+          "selected_count": 2,
+          "fallback_used": false,
+          "fallback_stage": null,
+          "suppressed_families_active": [
+            "archive_misc",
+            "book",
+            "course_material",
+            "cv",
+            "publication",
+            "reference"
+          ]
+        }
+      }
+    ]
+  },
+  "deltas": {
+    "suppressed_docs_topk_total_delta": -4,
+    "avg_preferred_ratio_topk_delta": 0.4333,
+    "year_leakage_docs_topk_total_delta": 0
+  },
+  "gates": {
+    "overall_pass": true,
+    "checks": {
+      "suppressed_removed_from_topk": true,
+      "suppressed_reduced_vs_baseline": true,
+      "preferred_family_dominance_improved": true,
+      "year_leakage_not_worse": true,
+      "fallback_logging_complete": true
+    }
+  }
+}
