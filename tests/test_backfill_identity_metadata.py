@@ -3,7 +3,27 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import sys
+import types
 from typing import Any, Dict, List
+
+if "opensearchpy" not in sys.modules:
+    opensearch_module = types.ModuleType("opensearchpy")
+    opensearch_module.OpenSearch = type("OpenSearch", (), {})
+    opensearch_module.helpers = types.SimpleNamespace()
+    opensearch_module.exceptions = types.SimpleNamespace(
+        OpenSearchException=Exception,
+        NotFoundError=Exception,
+    )
+    sys.modules["opensearchpy"] = opensearch_module
+
+if "langchain_core.documents" not in sys.modules:
+    langchain_docs = types.ModuleType("langchain_core.documents")
+    langchain_docs.Document = type("Document", (), {})
+    sys.modules["langchain_core.documents"] = langchain_docs
+if "langchain_core" not in sys.modules:
+    langchain_core = types.ModuleType("langchain_core")
+    langchain_core.documents = sys.modules["langchain_core.documents"]
+    sys.modules["langchain_core"] = langchain_core
 
 
 _SCRIPT_PATH = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "backfill_identity_metadata.py"
