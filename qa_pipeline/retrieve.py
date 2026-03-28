@@ -41,9 +41,15 @@ def retrieve_context(
         output = retrieve(query, cfg=cfg, deps=deps)
 
     documents: List[RetrievedDocument] = []
+    output_stage_metadata = getattr(output, "stage_metadata", None) or {}
     if output.clarify:
         logger.info("Retriever requested clarification: %s", output.clarify)
-        return RetrievalResult(query=query, documents=documents, clarify=output.clarify)
+        return RetrievalResult(
+            query=query,
+            documents=documents,
+            clarify=output.clarify,
+            stage_metadata=output_stage_metadata,
+        )
 
     for result in output.documents:
         retrieval_score = result.get("retrieval_score")
@@ -62,7 +68,20 @@ def retrieve_context(
                 query_variant=result.get("_query_variant"),
                 query_text=result.get("_query_text"),
                 query_channel=result.get("_query_channel"),
+                source_family=result.get("_financial_source_family"),
+                is_financial_document=result.get("is_financial_document"),
+                document_date=result.get("document_date"),
+                mentioned_years=result.get("mentioned_years"),
+                transaction_dates=result.get("transaction_dates"),
+                tax_years_referenced=result.get("tax_years_referenced"),
+                financial_record_type=result.get("financial_record_type"),
+                financial_metadata_source=result.get("financial_metadata_source"),
+                financial_retrieval_stage=result.get("_financial_retrieval_stage"),
             )
         )
 
-    return RetrievalResult(query=query, documents=documents)
+    return RetrievalResult(
+        query=query,
+        documents=documents,
+        stage_metadata=output_stage_metadata,
+    )
