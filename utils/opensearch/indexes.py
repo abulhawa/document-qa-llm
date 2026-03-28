@@ -2,6 +2,7 @@ from core.opensearch_client import get_client
 from config import (
     CHUNKS_INDEX,
     FULLTEXT_INDEX,
+    FINANCIAL_RECORDS_INDEX,
     INGEST_LOG_INDEX,
     WATCH_INVENTORY_INDEX,
     WATCHLIST_INDEX,
@@ -10,6 +11,7 @@ from config import (
 from utils.opensearch_utils import (
     CHUNKS_INDEX_SETTINGS,
     FULLTEXT_INDEX_SETTINGS,
+    FINANCIAL_RECORDS_INDEX_SETTINGS,
     INGEST_LOGS_INDEX_SETTINGS,
 )
 
@@ -20,6 +22,8 @@ def ensure_index_exists(index: str) -> None:
         body = CHUNKS_INDEX_SETTINGS
     elif index == FULLTEXT_INDEX:
         body = FULLTEXT_INDEX_SETTINGS
+    elif index == FINANCIAL_RECORDS_INDEX:
+        body = FINANCIAL_RECORDS_INDEX_SETTINGS
     elif index == INGEST_LOG_INDEX:
         body = INGEST_LOGS_INDEX_SETTINGS
     elif index == WATCH_INVENTORY_INDEX:
