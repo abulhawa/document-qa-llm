@@ -2,6 +2,21 @@ from __future__ import annotations
 from typing import Dict, List, Iterable, Sequence
 from core.retrieval.types import DocHit
 
+
+def _merge_query_provenance(target: DocHit, source: DocHit) -> None:
+    source_provenance = source.get("_query_provenance")
+    if isinstance(source_provenance, list):
+        existing = target.get("_query_provenance")
+        if not isinstance(existing, list):
+            existing = []
+        for item in source_provenance:
+            if isinstance(item, dict) and item not in existing:
+                existing.append(item)
+        target["_query_provenance"] = existing
+    for key in ("_query_variant", "_query_text", "_query_channel"):
+        if key not in target and key in source:
+            target[key] = source[key]
+
 def _normalize(scores: Iterable[float]) -> List[float]:
     scores = list(scores)
     if not scores:
@@ -28,7 +43,21 @@ def fuse_semantic_and_bm25(
         key = r.get("id")
         if not key:
             continue
-        combined[str(key)] = {**r, "score_vector": s, "score_bm25": 0.0, "source": "semantic"}
+        key_str = str(key)
+        if key_str in combined:
+            _merge_query_provenance(combined[key_str], r)
+            if s >= combined[key_str].get("score_vector", 0.0):
+                existing_bm25 = combined[key_str].get("score_bm25", 0.0)
+                existing_source = combined[key_str].get("source", "semantic")
+                combined[key_str] = {
+                    **r,
+                    "score_vector": s,
+                    "score_bm25": existing_bm25,
+                    "source": existing_source,
+                }
+                _merge_query_provenance(combined[key_str], r)
+        else:
+            combined[key_str] = {**r, "score_vector": s, "score_bm25": 0.0, "source": "semantic"}
 
     for r, s in zip(bm25_results, b_norm):
         key = r.get("_id")
@@ -38,6 +67,11 @@ def fuse_semantic_and_bm25(
         if key_str in combined:
             combined[key_str]["score_bm25"] = s
             combined[key_str]["source"] = "semantic/keyword"
+            if "_bm25_variant_weight" in r:
+                combined[key_str]["_bm25_variant_weight"] = r["_bm25_variant_weight"]
+            if "_variant_rank" in r:
+                combined[key_str]["_variant_rank"] = r["_variant_rank"]
+            _merge_query_provenance(combined[key_str], r)
         else:
             combined[key_str] = {**r, "score_vector": 0.0, "score_bm25": s, "source": "keyword"}
 

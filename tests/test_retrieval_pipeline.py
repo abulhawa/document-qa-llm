@@ -183,7 +183,7 @@ def _stub_tracing(monkeypatch):
 
 
 from core.retrieval import pipeline
-from core.retrieval.types import RetrievalConfig, RetrievalDeps
+from core.retrieval.types import QueryPlan, RetrievalConfig, RetrievalDeps
 
 
 @pytest.fixture(autouse=True)
@@ -324,6 +324,243 @@ def test_retrieval_uses_variants_for_non_anchored_query(monkeypatch):
     assert calls["semantic"] == ["exact-query", "rewrite-query"]
     assert calls["keyword"] == ["exact-query", "rewrite-query"]
     assert len(result.documents) == 1
+
+
+def test_retrieval_query_planning_routes_raw_semantic_and_bm25():
+    calls = {"semantic": [], "keyword": []}
+
+    def fake_semantic_retriever(query, top_k):  # noqa: ARG001
+        calls["semantic"].append(query)
+        return [
+            {
+                "id": f"v-{query}",
+                "path": f"v-{query}",
+                "text": query,
+                "score": 1.0,
+                "checksum": f"v-{query}",
+            }
+        ]
+
+    def fake_keyword_retriever(query, top_k):  # noqa: ARG001
+        calls["keyword"].append(query)
+        return [
+            {
+                "_id": f"k-{query}",
+                "path": f"k-{query}",
+                "text": query,
+                "score": 1.0,
+                "checksum": f"k-{query}",
+            }
+        ]
+
+    cfg = RetrievalConfig(
+        top_k=6,
+        top_k_each=1,
+        enable_query_planning=True,
+        enable_hyde=False,
+        enable_mmr=False,
+        fusion_weight_vector=0.5,
+        fusion_weight_bm25=0.5,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    plan = QueryPlan(
+        raw_query="raw question",
+        semantic_query="semantic rewrite",
+        bm25_query="bm25 rewrite",
+        hyde_passage=None,
+        clarify=None,
+    )
+    result = pipeline.retrieve(
+        "raw question",
+        cfg=cfg,
+        deps=RetrievalDeps(
+            semantic_retriever=fake_semantic_retriever,
+            keyword_retriever=fake_keyword_retriever,
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+        query_plan=plan,
+    )
+
+    assert calls["semantic"] == ["raw question", "semantic rewrite"]
+    assert calls["keyword"] == ["raw question", "bm25 rewrite"]
+    variants_seen = {
+        entry.get("variant")
+        for doc in result.documents
+        for entry in doc.get("_query_provenance", [])
+        if isinstance(entry, dict)
+    }
+    assert {"raw_query", "semantic_query", "bm25_query"} <= variants_seen
+
+
+def test_retrieval_query_planning_hyde_path_is_gated():
+    calls = {"semantic": []}
+
+    def fake_semantic_retriever(query, top_k):  # noqa: ARG001
+        calls["semantic"].append(query)
+        return []
+
+    deps = RetrievalDeps(
+        semantic_retriever=fake_semantic_retriever,
+        keyword_retriever=lambda q, top_k: [],
+        embed_texts=None,
+        cross_encoder=None,
+    )
+    plan = QueryPlan(
+        raw_query="raw",
+        semantic_query="semantic",
+        bm25_query="bm25",
+        hyde_passage="synthetic passage",
+        clarify=None,
+    )
+
+    off_cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_query_planning=True,
+        enable_hyde=False,
+        enable_mmr=False,
+    )
+    on_cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_query_planning=True,
+        enable_hyde=True,
+        enable_mmr=False,
+    )
+
+    pipeline.retrieve("raw", cfg=off_cfg, deps=deps, query_plan=plan)
+    pipeline.retrieve("raw", cfg=on_cfg, deps=deps, query_plan=plan)
+
+    assert calls["semantic"] == ["raw", "semantic", "raw", "semantic", "synthetic passage"]
+
+
+def test_retrieval_query_planning_preserves_anchored_exact_only():
+    calls = {"semantic": [], "keyword": []}
+
+    def fake_semantic_retriever(query, top_k):  # noqa: ARG001
+        calls["semantic"].append(query)
+        return []
+
+    def fake_keyword_retriever(query, top_k):  # noqa: ARG001
+        calls["keyword"].append(query)
+        return []
+
+    query = "In Ali's latest CV, what is his most recent role?"
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_query_planning=True,
+        anchored_exact_only=True,
+        enable_mmr=False,
+    )
+    plan = QueryPlan(
+        raw_query=query,
+        semantic_query="ali latest cv role title",
+        bm25_query="ali cv latest role",
+        hyde_passage="synthetic cv role paragraph",
+        clarify=None,
+    )
+
+    pipeline.retrieve(
+        query,
+        cfg=cfg,
+        deps=RetrievalDeps(
+            semantic_retriever=fake_semantic_retriever,
+            keyword_retriever=fake_keyword_retriever,
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+        query_plan=plan,
+    )
+
+    assert calls["semantic"] == [query]
+    assert calls["keyword"] == [query]
+
+
+def test_retrieval_query_planning_bypasses_variant_rewrite(monkeypatch):
+    calls = {"variants": 0}
+
+    def fake_generate_variants(query):  # noqa: ARG001
+        calls["variants"] += 1
+        return {"variants": [("rewrite", 0.6)]}
+
+    monkeypatch.setattr(pipeline, "generate_variants", fake_generate_variants)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_query_planning=True,
+        enable_mmr=False,
+    )
+    plan = QueryPlan(
+        raw_query="raw",
+        semantic_query="semantic",
+        bm25_query="bm25",
+        hyde_passage=None,
+        clarify=None,
+    )
+    pipeline.retrieve(
+        "raw",
+        cfg=cfg,
+        deps=RetrievalDeps(
+            semantic_retriever=lambda q, top_k: [],
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+        query_plan=plan,
+    )
+
+    assert calls["variants"] == 0
+
+
+def test_retrieval_baseline_path_unchanged_when_planning_disabled(monkeypatch):
+    calls = {"variants": 0, "semantic": [], "keyword": []}
+
+    def fake_generate_variants(query):  # noqa: ARG001
+        calls["variants"] += 1
+        return {"variants": [("exact-query", 1.0), ("rewrite-query", 0.6)]}
+
+    def fake_semantic_retriever(query, top_k):  # noqa: ARG001
+        calls["semantic"].append(query)
+        return []
+
+    def fake_keyword_retriever(query, top_k):  # noqa: ARG001
+        calls["keyword"].append(query)
+        return []
+
+    monkeypatch.setattr(pipeline, "generate_variants", fake_generate_variants)
+
+    cfg = RetrievalConfig(
+        top_k=1,
+        top_k_each=1,
+        enable_query_planning=False,
+        enable_mmr=False,
+    )
+    pipeline.retrieve(
+        "raw",
+        cfg=cfg,
+        deps=RetrievalDeps(
+            semantic_retriever=fake_semantic_retriever,
+            keyword_retriever=fake_keyword_retriever,
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+        query_plan=QueryPlan(
+            raw_query="raw",
+            semantic_query="semantic",
+            bm25_query="bm25",
+            hyde_passage=None,
+            clarify=None,
+        ),
+    )
+
+    assert calls["variants"] == 1
+    assert calls["semantic"] == ["exact-query", "rewrite-query"]
+    assert calls["keyword"] == ["exact-query", "rewrite-query"]
 
 
 def test_retrieval_prefers_bm25_for_anchored_query_when_lexical_bias_enabled():
@@ -1816,6 +2053,8 @@ def test_retrieval_config_sim_threshold_default():
     assert RetrievalConfig().sim_threshold == pytest.approx(0.82)
     assert RetrievalConfig().canonical_anchored_sim_threshold == pytest.approx(0.94)
     cfg = RetrievalConfig()
+    assert cfg.enable_query_planning is False
+    assert cfg.enable_hyde is False
     assert cfg.anchored_exact_only is True
     assert cfg.anchored_lexical_bias_enabled is True
     assert cfg.anchored_fusion_weight_vector == pytest.approx(0.4)

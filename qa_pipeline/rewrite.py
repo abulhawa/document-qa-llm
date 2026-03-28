@@ -1,5 +1,6 @@
 from config import logger
-from core.query_rewriter import rewrite_query
+from core.query_rewriter import build_query_plan, rewrite_query
+from core.retrieval.types import QueryPlan
 from qa_pipeline.types import QueryRewrite
 
 
@@ -30,3 +31,29 @@ def rewrite_question(
         logger.warning("Rewrite result was not a dict: %s", rewritten_data)
 
     return query_rewrite
+
+
+def plan_question(
+    original_query: str,
+    *,
+    temperature: float = 0.15,
+    use_cache: bool = True,
+    enable_hyde: bool = False,
+) -> QueryPlan:
+    try:
+        return build_query_plan(
+            original_query,
+            temperature=temperature,
+            use_cache=use_cache,
+            enable_hyde=enable_hyde,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Query planning failed", exc_info=exc)
+        query = (original_query or "").strip()
+        return QueryPlan(
+            raw_query=query,
+            semantic_query=query,
+            bm25_query=query,
+            hyde_passage=None,
+            clarify=None,
+        )

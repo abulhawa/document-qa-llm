@@ -21,6 +21,9 @@ class RetrievedDocument:
     person_name: Optional[str] = None
     authority_rank: Optional[float] = None
     checksum: Optional[str] = None
+    query_variant: Optional[str] = None
+    query_text: Optional[str] = None
+    query_channel: Optional[str] = None
 
     @property
     def source_label(self) -> str:
@@ -35,6 +38,7 @@ class RetrievedDocument:
 class RetrievalResult:
     query: str
     documents: List[RetrievedDocument] = field(default_factory=list)
+    clarify: Optional[str] = None
 
     @property
     def context_chunks(self) -> List[str]:

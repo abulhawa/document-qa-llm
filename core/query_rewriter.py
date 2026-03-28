@@ -2,6 +2,7 @@ from typing import Any
 import re
 from config import logger
 from core.llm import ask_llm
+from core.retrieval.types import QueryPlan
 import json
 
 
@@ -138,3 +139,97 @@ def rewrite_query(
     except Exception:
         logger.exception("Query rewriting failed")
         return {"Error": "Query rewriting failed. Please try again or rephrase."}
+
+
+def _generate_hyde_passage(
+    query_text: str,
+    *,
+    temperature: float,
+    use_cache: bool,
+) -> str | None:
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "Write one short factual passage (3-5 sentences) that could answer the query. "
+                "Do not use markdown or bullet points."
+            ),
+        },
+        {"role": "user", "content": query_text},
+    ]
+    try:
+        response = ask_llm(
+            prompt=prompt,
+            temperature=temperature,
+            mode="chat",
+            max_tokens=220,
+            use_cache=use_cache,
+        )
+    except Exception:
+        logger.exception("HyDE generation failed")
+        return None
+    text = str(response or "").strip()
+    return text or None
+
+
+def build_query_plan(
+    original_query: str,
+    *,
+    temperature: float = 0.15,
+    use_cache: bool = True,
+    enable_hyde: bool = False,
+) -> QueryPlan:
+    raw_query = (original_query or "").strip()
+    if not raw_query:
+        return QueryPlan(
+            raw_query="",
+            semantic_query="",
+            bm25_query="",
+            hyde_passage=None,
+            clarify=None,
+        )
+
+    rewritten_data = rewrite_query(
+        raw_query,
+        temperature=temperature,
+        use_cache=use_cache,
+    )
+
+    anchored_query = has_strong_query_anchors(raw_query)
+    rewritten = ""
+    clarify = None
+    if isinstance(rewritten_data, dict):
+        rewritten = str(rewritten_data.get("rewritten") or "").strip()
+        clarify = str(rewritten_data.get("clarify") or "").strip() or None
+
+    if clarify and anchored_query:
+        logger.info(
+            "Planning clarification bypassed due to strong anchors; using raw query."
+        )
+        clarify = None
+
+    semantic_query = rewritten or raw_query
+    bm25_query = rewritten or raw_query
+
+    if anchored_query and (semantic_query != raw_query or bm25_query != raw_query):
+        logger.info(
+            "Planning produced alternate text for anchored query; using exact query for retrieval."
+        )
+        semantic_query = raw_query
+        bm25_query = raw_query
+
+    hyde_passage: str | None = None
+    if enable_hyde and not clarify:
+        hyde_passage = _generate_hyde_passage(
+            semantic_query or raw_query,
+            temperature=temperature,
+            use_cache=use_cache,
+        )
+
+    return QueryPlan(
+        raw_query=raw_query,
+        semantic_query=semantic_query or raw_query,
+        bm25_query=bm25_query or raw_query,
+        hyde_passage=hyde_passage,
+        clarify=clarify,
+    )

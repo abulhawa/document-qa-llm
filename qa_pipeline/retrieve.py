@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from config import logger
 from core.retrieval.pipeline import retrieve
-from core.retrieval.types import RetrievalConfig, RetrievalDeps
+from core.retrieval.types import QueryPlan, RetrievalConfig, RetrievalDeps
 from core.retrieval.reranker import build_configured_reranker
 from core.embeddings import embed_texts
 from core.vector_store import retrieve_top_k as semantic_retriever
@@ -29,17 +29,21 @@ def retrieve_context(
     top_k: int,
     retrieval_cfg: Optional[RetrievalConfig] = None,
     deps: Optional[RetrievalDeps] = None,
+    query_plan: Optional[QueryPlan] = None,
 ) -> RetrievalResult:
     cfg = retrieval_cfg.with_top_k(top_k) if retrieval_cfg else default_retrieval_config(top_k)
     deps = deps or default_retrieval_deps()
 
     logger.info("🔍 Running retrieval for user question...")
-    output = retrieve(query, cfg=cfg, deps=deps)
+    if query_plan is not None:
+        output = retrieve(query, cfg=cfg, deps=deps, query_plan=query_plan)
+    else:
+        output = retrieve(query, cfg=cfg, deps=deps)
 
     documents: List[RetrievedDocument] = []
     if output.clarify:
         logger.info("Retriever requested clarification: %s", output.clarify)
-        return RetrievalResult(query=query, documents=documents)
+        return RetrievalResult(query=query, documents=documents, clarify=output.clarify)
 
     for result in output.documents:
         retrieval_score = result.get("retrieval_score")
@@ -55,6 +59,9 @@ def retrieve_context(
                 person_name=result.get("person_name"),
                 authority_rank=result.get("authority_rank"),
                 checksum=result.get("checksum"),
+                query_variant=result.get("_query_variant"),
+                query_text=result.get("_query_text"),
+                query_channel=result.get("_query_channel"),
             )
         )
 

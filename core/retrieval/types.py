@@ -6,10 +6,21 @@ DocHit = Dict[str, Any]
 
 
 @dataclass
+class QueryPlan:
+    raw_query: str
+    semantic_query: str
+    bm25_query: str
+    hyde_passage: Optional[str] = None
+    clarify: Optional[str] = None
+
+
+@dataclass
 class RetrievalConfig:
     top_k: int = 5
     top_k_each: int = 20
     enable_variants: bool = True
+    enable_query_planning: bool = False
+    enable_hyde: bool = False
     max_variants: int = 2
     anchored_exact_only: bool = True
     variant_weights: Dict[str, float] = field(default_factory=dict)
