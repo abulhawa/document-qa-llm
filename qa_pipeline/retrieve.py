@@ -54,6 +54,7 @@ def retrieve_context(
                 doc_type=result.get("doc_type"),
                 person_name=result.get("person_name"),
                 authority_rank=result.get("authority_rank"),
+                checksum=result.get("checksum"),
             )
         )
 

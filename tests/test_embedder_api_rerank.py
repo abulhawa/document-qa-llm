@@ -91,7 +91,7 @@ def _load_embedder_app(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", _build_torch_stub())
     sentence_transformers_stub, cross_encoder_cls = _build_sentence_transformers_stub()
     monkeypatch.setitem(sys.modules, "sentence_transformers", sentence_transformers_stub)
-    sys.modules.pop("config", None)
+    monkeypatch.delitem(sys.modules, "config", raising=False)
 
     module_name = "embedder_api_multilingual_app_test"
     sys.modules.pop(module_name, None)

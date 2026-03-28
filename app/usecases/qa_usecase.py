@@ -18,6 +18,7 @@ from config import (
 
 _Q10_DEBUG_QUERY_TERMS = {"pem", "fuel", "cell", "sliding", "mode", "control"}
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+QA_HANDOFF_TOP_K = 5
 
 
 def _is_q10_debug_question(question: str) -> bool:
@@ -38,6 +39,7 @@ def answer(req: QARequest) -> QAResponse:
     try:
         context = qa_pipeline.answer_question(
             question=req.question,
+            top_k=QA_HANDOFF_TOP_K,
             mode=req.mode,
             temperature=req.temperature,
             model=req.model,
