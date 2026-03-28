@@ -27,6 +27,7 @@ This plan is intentionally structured as the first domain-specific implementatio
 10. Finance/tax remains the only implemented domain schema in v1; future domains should plug into the same framework rather than trigger a full redesign.
 11. Fallback retrieval uses residual-budget contribution only; strict pass owns the primary candidate budget.
 12. Confidence-to-bucket assignment is explicit and conservative; duplicate merging must not auto-inflate confidence.
+13. v1 deterministic extraction is optimized for currently observed text-first formats; broader multilingual/RTL extraction support is deferred unless already supported by chosen extraction components.
 
 ## Reusable Core vs Domain-Specific Scope
 
@@ -73,7 +74,7 @@ Do not attempt a universal semantic metadata schema that tries to serve finance,
 1. `doc_type`
 2. `is_financial_document`
 3. `document_date`
-4. `mentioned_years` or `content_years`
+4. `mentioned_years`
 5. `transaction_dates` (document-level summary when derivable)
 6. `amounts` (document-level summary)
 7. `counterparties` (document-level summary)
@@ -130,9 +131,9 @@ Exit criteria:
 
 1. Add a dedicated financial extraction module under ingestion boundaries.
 2. Hybrid extraction policy:
-3. Deterministic parsing first for dates, amounts, currencies, counterparties.
-4. LLM fallback only when key fields are missing/low confidence.
-5. Conflict policy: deterministic values win for numeric/date conflicts; LLM fills semantic gaps.
+3. Deterministic extraction is sufficient when at least one valid date and one valid monetary amount are found and document-family classification is confidently financial/admin.
+4. Trigger LLM fallback when key fields are missing, document family is ambiguous, counterparty extraction is empty for a likely financial document, or extracted fields conflict materially.
+5. Deterministic values remain authoritative for numeric/date conflicts unless explicitly rejected by validation rules.
 6. Persist outputs separately:
 7. Document-level metadata to fulltext + chunk payloads.
 8. Normalized financial records to sidecar store with document/chunk linkage.
@@ -209,6 +210,9 @@ Exit criteria:
 13. `clearly supported 2022 expenses` requires direct evidence linkage and at least medium confidence.
 14. Low-confidence records may only appear in `possible but ambiguous 2022 expenses`.
 15. Duplicate merging must not inflate confidence automatically.
+16. Graceful degradation during partial backfill:
+17. If sidecar normalized financial records are incomplete or absent for candidate documents, fall back to chunk/document evidence synthesis rather than returning an empty structured response.
+18. Responses must disclose when normalized record coverage is incomplete so completeness is not overstated.
 
 Exit criteria:
 
@@ -225,17 +229,19 @@ Exit criteria:
 6. Finance query-class parsing outputs, including no-entity behavior when `financial_query_mode=true`.
 7. Retrieval family gating, fallback ladder, and suppression behavior.
 8. Prompt output conformance to evidence-first buckets and honesty rule.
-9. Add canary benchmark criteria beyond generic accuracy:
-10. Top-k finance query results are dominated by preferred financial/admin families.
-11. Irrelevant academic/reference/archive sources are sharply reduced.
-12. For finance evidence queries, irrelevant non-financial docs should not appear in top-5, ideally not top-10.
-13. Year-scoped queries show reduced cross-year leakage.
-14. Fallback usage is logged, reviewable, and explainable.
-15. Rollout order:
-16. Phase 1 and Phase 2.
-17. Phase 3 canary then full.
-18. Phase 4 and Phase 5.
-19. Final regression sweep.
+9. Create and maintain a small hand-labeled finance-query evaluation set before rollout of Phase 4/5.
+10. The labeled eval set must include expected relevant documents/evidence and negative examples for junk-source suppression.
+11. Add canary benchmark criteria beyond generic accuracy:
+12. Top-k finance query results are dominated by preferred financial/admin families.
+13. Irrelevant academic/reference/archive sources are sharply reduced.
+14. For finance evidence queries, irrelevant non-financial docs should not appear in top-5, ideally not top-10.
+15. Year-scoped queries show reduced cross-year leakage.
+16. Fallback usage is logged, reviewable, and explainable.
+17. Rollout order:
+18. Phase 1 and Phase 2.
+19. Phase 3 canary then full.
+20. Phase 4 and Phase 5.
+21. Final regression sweep.
 
 Exit criteria:
 
