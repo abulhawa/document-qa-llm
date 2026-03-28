@@ -160,6 +160,9 @@ def _build_tracing_module():
     return tracing_module
 
 
+sys.modules.setdefault("tracing", _build_tracing_module())
+
+
 @pytest.fixture(autouse=True)
 def _stub_tracing(monkeypatch):
     """Provide a scoped tracing stub so other tests can import real tracing."""

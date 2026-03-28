@@ -1,7 +1,7 @@
 from typing import Any
 import re
 from config import logger
-from core.llm import ask_llm
+from core.financial_query import detect_financial_query
 from core.retrieval.types import QueryPlan
 import json
 
@@ -32,6 +32,12 @@ _STRONG_ANCHOR_TERMS = {
     "msc",
     "bsc",
 }
+
+
+def _ask_llm(*args: Any, **kwargs: Any) -> str:
+    from core.llm import ask_llm
+
+    return ask_llm(*args, **kwargs)
 
 
 def has_strong_query_anchors(original_query: str) -> bool:
@@ -120,7 +126,7 @@ def rewrite_query(
     ]
 
     try:
-        rewritten = ask_llm(
+        rewritten = _ask_llm(
             prompt=messages,
             temperature=temperature,
             mode="chat",
@@ -158,7 +164,7 @@ def _generate_hyde_passage(
         {"role": "user", "content": query_text},
     ]
     try:
-        response = ask_llm(
+        response = _ask_llm(
             prompt=prompt,
             temperature=temperature,
             mode="chat",
@@ -187,6 +193,10 @@ def build_query_plan(
             bm25_query="",
             hyde_passage=None,
             clarify=None,
+            financial_query_mode=False,
+            target_entity=None,
+            target_year=None,
+            target_concept=None,
         )
 
     rewritten_data = rewrite_query(
@@ -226,10 +236,16 @@ def build_query_plan(
             use_cache=use_cache,
         )
 
+    financial_intent = detect_financial_query(raw_query)
+
     return QueryPlan(
         raw_query=raw_query,
         semantic_query=semantic_query or raw_query,
         bm25_query=bm25_query or raw_query,
         hyde_passage=hyde_passage,
         clarify=clarify,
+        financial_query_mode=financial_intent.financial_query_mode,
+        target_entity=financial_intent.target_entity,
+        target_year=financial_intent.target_year,
+        target_concept=financial_intent.target_concept,
     )

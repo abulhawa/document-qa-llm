@@ -175,6 +175,9 @@ def _build_tracing_module():
     return tracing_module
 
 
+sys.modules.setdefault("tracing", _build_tracing_module())
+
+
 @pytest.fixture(autouse=True)
 def _stub_tracing(monkeypatch):
     """Provide a scoped tracing stub so other tests can use the real module."""
@@ -2087,3 +2090,126 @@ def test_retrieval_config_sim_threshold_default():
     assert cfg.sibling_expansion_max_chunks_per_source == 2
     assert cfg.abstention_enabled is True
     assert cfg.abstention_min_overlap_terms == 2
+
+
+def test_retrieval_financial_gating_suppresses_irrelevant_families():
+    vector_hits = [
+        {
+            "id": "course",
+            "text": "course material with taxes mention",
+            "score": 1.0,
+            "checksum": "s-course",
+            "doc_type": "course_material",
+            "mentioned_years": [2022],
+            "is_financial_document": False,
+        },
+        {
+            "id": "invoice",
+            "text": "invoice payment made in 2022 for office chair",
+            "score": 0.95,
+            "checksum": "s-invoice",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+        {
+            "id": "cv",
+            "text": "Ali CV profile",
+            "score": 0.92,
+            "checksum": "s-cv",
+            "doc_type": "cv",
+            "mentioned_years": [2022],
+            "is_financial_document": False,
+        },
+    ]
+
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    plan = QueryPlan(
+        raw_query="What expenses did Ali make in 2022 for taxes?",
+        semantic_query="What expenses did Ali make in 2022 for taxes?",
+        bm25_query="What expenses did Ali make in 2022 for taxes?",
+        financial_query_mode=True,
+        target_entity="Ali",
+        target_year=2022,
+        target_concept="expenses",
+    )
+
+    result = pipeline.retrieve(
+        plan.raw_query,
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+        query_plan=plan,
+    )
+
+    checksums = [doc.get("checksum") for doc in result.documents]
+    assert "s-invoice" in checksums
+    assert "s-course" not in checksums
+    assert "s-cv" not in checksums
+    assert result.stage_metadata is not None
+    assert result.stage_metadata.get("financial_query_mode") is True
+    assert result.stage_metadata.get("selected_count") == len(result.documents)
+
+
+def test_retrieval_financial_mode_without_entity_does_not_require_entity_filter():
+    vector_hits = [
+        {
+            "id": "invoice-1",
+            "text": "Invoice paid in 2022 amount EUR 100",
+            "score": 1.0,
+            "checksum": "inv-1",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+        {
+            "id": "invoice-2",
+            "text": "Invoice paid in 2022 amount EUR 200",
+            "score": 0.99,
+            "checksum": "inv-2",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        },
+    ]
+    cfg = RetrievalConfig(
+        top_k=2,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    plan = QueryPlan(
+        raw_query="What expenses were paid in 2022?",
+        semantic_query="What expenses were paid in 2022?",
+        bm25_query="What expenses were paid in 2022?",
+        financial_query_mode=True,
+        target_entity=None,
+        target_year=2022,
+        target_concept="expenses",
+    )
+
+    result = pipeline.retrieve(
+        plan.raw_query,
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+        query_plan=plan,
+    )
+
+    assert len(result.documents) == 2
+    assert result.stage_metadata is not None
+    assert result.stage_metadata.get("target_entity") is None

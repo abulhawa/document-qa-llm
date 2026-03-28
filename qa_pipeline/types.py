@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -24,6 +24,15 @@ class RetrievedDocument:
     query_variant: Optional[str] = None
     query_text: Optional[str] = None
     query_channel: Optional[str] = None
+    source_family: Optional[str] = None
+    is_financial_document: Optional[bool] = None
+    document_date: Optional[str] = None
+    mentioned_years: Optional[List[int]] = None
+    transaction_dates: Optional[List[str]] = None
+    tax_years_referenced: Optional[List[int]] = None
+    financial_record_type: Optional[str] = None
+    financial_metadata_source: Optional[str] = None
+    financial_retrieval_stage: Optional[str] = None
 
     @property
     def source_label(self) -> str:
@@ -39,6 +48,7 @@ class RetrievalResult:
     query: str
     documents: List[RetrievedDocument] = field(default_factory=list)
     clarify: Optional[str] = None
+    stage_metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def context_chunks(self) -> List[str]:

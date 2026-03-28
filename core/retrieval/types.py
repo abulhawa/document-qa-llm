@@ -12,6 +12,10 @@ class QueryPlan:
     bm25_query: str
     hyde_passage: Optional[str] = None
     clarify: Optional[str] = None
+    financial_query_mode: bool = False
+    target_entity: Optional[str] = None
+    target_year: Optional[int] = None
+    target_concept: Optional[str] = None
 
 
 @dataclass
@@ -75,6 +79,8 @@ class RetrievalConfig:
     sibling_expansion_max_chunks_per_source: int = 2
     abstention_enabled: bool = True
     abstention_min_overlap_terms: int = 2
+    financial_enable_gating: bool = True
+    financial_fallback_residual_budget: int = 2
 
     def with_top_k(self, top_k: int) -> "RetrievalConfig":
         return replace(self, top_k=top_k)
@@ -93,3 +99,4 @@ class RetrievalDeps:
 class RetrievalOutput:
     documents: List[DocHit]
     clarify: Optional[str] = None
+    stage_metadata: Optional[Dict[str, Any]] = None

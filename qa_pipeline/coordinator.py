@@ -2,6 +2,7 @@ from typing import Any, List, Optional
 
 from config import QA_GROUNDING_ENABLED, QA_GROUNDING_THRESHOLD, logger
 from core.query_rewriter import has_strong_query_anchors
+from core.financial_query import detect_financial_query
 from core.retrieval.types import QueryPlan, RetrievalConfig
 from tracing import (
     CHAIN,
@@ -118,6 +119,10 @@ def answer_question(
                                 "bm25_query": query_plan.bm25_query,
                                 "hyde_enabled": bool(query_plan.hyde_passage),
                                 "clarify": query_plan.clarify or "",
+                                "financial_query_mode": query_plan.financial_query_mode,
+                                "target_entity": query_plan.target_entity or "",
+                                "target_year": query_plan.target_year or "",
+                                "target_concept": query_plan.target_concept or "",
                             }
                         ),
                     )
@@ -171,6 +176,23 @@ def answer_question(
                     if planning_enabled and query_plan is not None
                     else context.rewritten_question
                 )
+                finance_query_plan: QueryPlan | None = None
+                if (
+                    not planning_enabled
+                    and retrieval_query
+                ):
+                    financial_intent = detect_financial_query(retrieval_query)
+                    if financial_intent.financial_query_mode:
+                        finance_query_plan = QueryPlan(
+                            raw_query=retrieval_query,
+                            semantic_query=retrieval_query,
+                            bm25_query=retrieval_query,
+                            clarify=None,
+                            financial_query_mode=True,
+                            target_entity=financial_intent.target_entity,
+                            target_year=financial_intent.target_year,
+                            target_concept=financial_intent.target_concept,
+                        )
                 retrieval_span.set_attribute(INPUT_VALUE, retrieval_query)
                 if planning_enabled and query_plan is not None:
                     retrieval = retrieve_context(
@@ -178,6 +200,13 @@ def answer_question(
                         top_k,
                         retrieval_cfg=retrieval_cfg,
                         query_plan=query_plan,
+                    )
+                elif finance_query_plan is not None:
+                    retrieval = retrieve_context(
+                        retrieval_query,
+                        top_k,
+                        retrieval_cfg=retrieval_cfg,
+                        query_plan=finance_query_plan,
                     )
                 else:
                     retrieval = retrieve_context(
@@ -230,6 +259,7 @@ def answer_question(
                 query=context.retrieval.query,
                 documents=packed_documents,
                 clarify=context.retrieval.clarify,
+                stage_metadata=context.retrieval.stage_metadata,
             )
         chain_span.set_attribute("handoff_retrieved_docs", len(retrieved_documents))
         chain_span.set_attribute(

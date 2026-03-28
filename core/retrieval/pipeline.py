@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from config import logger
 
@@ -301,6 +301,28 @@ _Q10_DEBUG_CORE_TERMS: Set[str] = {
     "sliding",
     "mode",
     "control",
+}
+_FINANCIAL_PREFERRED_FAMILIES: Set[str] = {
+    "tax_document",
+    "bank_statement",
+    "receipt",
+    "invoice",
+    "payment_confirmation",
+    "school_fee_letter",
+    "official_letter",
+}
+_FINANCIAL_SUPPRESSED_FAMILIES: Set[str] = {
+    "book",
+    "course_material",
+    "publication",
+    "cv",
+    "reference",
+    "archive_misc",
+}
+_FINANCIAL_CONCEPT_TERMS: Dict[str, Set[str]] = {
+    "expenses": {"expense", "expenses", "receipt", "receipts", "invoice", "invoices", "paid", "payment"},
+    "payments": {"payment", "payments", "paid", "transfer", "transfers", "refund"},
+    "tax_relevant_items": {"tax", "vat", "deductible", "deduction", "expense"},
 }
 
 
@@ -1510,6 +1532,184 @@ def _should_abstain_for_out_of_corpus_query(
     return max_overlap_terms < max(cfg.abstention_min_overlap_terms, 1)
 
 
+def _financial_family_from_doc(doc: DocHit) -> str:
+    existing = str(doc.get("source_family") or "").strip().lower()
+    if existing:
+        return existing
+
+    doc_type = str(doc.get("doc_type") or "").strip().lower()
+    if doc_type == "invoice":
+        return "invoice"
+    if doc_type == "receipt":
+        return "receipt"
+    if doc_type in {"government_form", "insurance_letter", "payroll"}:
+        return "official_letter"
+    if doc_type in {"course_material"}:
+        return "course_material"
+    if doc_type in {"research_paper", "technical_report"}:
+        return "publication"
+    if doc_type in {"cv", "resume"}:
+        return "cv"
+    if doc_type in {"reference_letter"}:
+        return "reference"
+
+    path = str(doc.get("path") or "").lower()
+    text = str(doc.get("text") or "").lower()
+    if "invoice" in path:
+        return "invoice"
+    if "receipt" in path or "receipt" in text:
+        return "receipt"
+    if "tax" in path or "tax" in text or "steuer" in path or "steuer" in text:
+        return "tax_document"
+    if "bank statement" in path or "iban" in text or "kontoauszug" in text:
+        return "bank_statement"
+    if "payment confirmation" in path or "payment received" in text:
+        return "payment_confirmation"
+    if "tuition" in path or "school fee" in text:
+        return "school_fee_letter"
+    if "book" in path:
+        return "book"
+    return "archive_misc"
+
+
+def _financial_years_from_doc(doc: DocHit) -> Set[int]:
+    years: Set[int] = set()
+    for field in ("mentioned_years", "tax_years_referenced"):
+        value = doc.get(field)
+        if isinstance(value, list):
+            for item in value:
+                try:
+                    years.add(int(item))
+                except (TypeError, ValueError):
+                    continue
+        elif value is not None:
+            try:
+                years.add(int(value))
+            except (TypeError, ValueError):
+                pass
+
+    for field in ("document_date",):
+        value = str(doc.get(field) or "").strip()
+        if len(value) >= 4 and value[:4].isdigit():
+            years.add(int(value[:4]))
+
+    transaction_dates = doc.get("transaction_dates")
+    if isinstance(transaction_dates, list):
+        for raw_date in transaction_dates:
+            value = str(raw_date or "").strip()
+            if len(value) >= 4 and value[:4].isdigit():
+                years.add(int(value[:4]))
+    return years
+
+
+def _doc_matches_financial_concept(doc: DocHit, concept: Optional[str]) -> bool:
+    if not concept:
+        return True
+    terms = _FINANCIAL_CONCEPT_TERMS.get(concept, set())
+    if not terms:
+        return True
+    text = " ".join(
+        str(doc.get(field) or "")
+        for field in ("text", "financial_record_type", "tax_relevance_signals")
+    ).lower()
+    tokens = _tokenize_lower(text)
+    return bool(tokens & terms)
+
+
+def _apply_financial_retrieval_gating(
+    docs: Sequence[DocHit],
+    *,
+    cfg: RetrievalConfig,
+    query_plan: QueryPlan,
+) -> tuple[List[DocHit], Dict[str, Any]]:
+    top_k = max(int(cfg.top_k), 1)
+    fallback_budget = max(
+        0,
+        min(int(cfg.financial_fallback_residual_budget), top_k),
+    )
+    strict_budget = max(top_k - fallback_budget, 1)
+    target_year = query_plan.target_year
+    target_concept = (query_plan.target_concept or "").strip() or None
+
+    strict_pool: List[DocHit] = []
+    fallback_stage_1: List[DocHit] = []
+    fallback_stage_2: List[DocHit] = []
+    fallback_stage_3: List[DocHit] = []
+
+    for doc in docs:
+        family = _financial_family_from_doc(doc)
+        if family in _FINANCIAL_SUPPRESSED_FAMILIES:
+            continue
+        doc["_financial_source_family"] = family
+
+        years = _financial_years_from_doc(doc)
+        year_match = (target_year is None) or (target_year in years)
+        concept_match = _doc_matches_financial_concept(doc, target_concept)
+
+        if family in _FINANCIAL_PREFERRED_FAMILIES and year_match and concept_match:
+            strict_pool.append(doc)
+            continue
+
+        if year_match and concept_match:
+            fallback_stage_1.append(doc)
+            continue
+
+        if family in _FINANCIAL_PREFERRED_FAMILIES and concept_match:
+            fallback_stage_2.append(doc)
+            continue
+
+        fallback_stage_3.append(doc)
+
+    selected: List[DocHit] = []
+    used_stage = "strict"
+    strict_selected = strict_pool[:top_k]
+    for item in strict_selected:
+        item["_financial_retrieval_stage"] = "strict"
+        selected.append(item)
+
+    fallback_remaining = max(top_k - len(selected), 0)
+    fallback_selected = 0
+    if fallback_remaining > 0 and fallback_budget > 0:
+        fallback_remaining = min(fallback_remaining, fallback_budget)
+        fallback_sources = [
+            ("fallback_relax_family", fallback_stage_1),
+            ("fallback_relax_year", fallback_stage_2),
+            ("fallback_relax_family_and_year", fallback_stage_3),
+        ]
+        seen = {id(doc) for doc in selected}
+        for stage_name, stage_docs in fallback_sources:
+            if fallback_remaining <= 0:
+                break
+            for doc in stage_docs:
+                if id(doc) in seen:
+                    continue
+                doc["_financial_retrieval_stage"] = stage_name
+                selected.append(doc)
+                seen.add(id(doc))
+                fallback_remaining -= 1
+                fallback_selected += 1
+                used_stage = stage_name
+                if fallback_remaining <= 0:
+                    break
+
+    metadata = {
+        "financial_query_mode": True,
+        "target_entity": query_plan.target_entity,
+        "target_year": target_year,
+        "target_concept": target_concept,
+        "strict_budget": strict_budget,
+        "strict_selected": len(strict_selected),
+        "strict_candidates": len(strict_pool),
+        "fallback_budget": fallback_budget,
+        "fallback_selected": fallback_selected,
+        "selected_count": len(selected),
+        "fallback_used": used_stage != "strict",
+        "fallback_stage": used_stage if used_stage != "strict" else None,
+        "suppressed_families_active": sorted(_FINANCIAL_SUPPRESSED_FAMILIES),
+    }
+    return selected[:top_k], metadata
+
+
 def retrieve(
     query: str,
     *,
@@ -1698,101 +1898,119 @@ def retrieve(
             keep_limit=cfg.collapse_keep_limit,
         )
 
-    # 5) MMR (optional) for diversity
+    financial_mode = bool(
+        query_plan is not None
+        and query_plan.financial_query_mode
+        and cfg.financial_enable_gating
+    )
+    stage_metadata: Dict[str, Any] | None = None
+
+    # 5) Candidate selection (finance-gated path or baseline MMR path)
     docs_for_answer: List[DocHit]
-    if cfg.enable_mmr and deps.embed_texts is not None:
-        docs_for_answer = mmr_select(
-            query,
+    if financial_mode and query_plan is not None:
+        docs_for_answer, stage_metadata = _apply_financial_retrieval_gating(
             kept,
-            embed=deps.embed_texts,
-            k=min(cfg.mmr_k or cfg.top_k, cfg.top_k),
-            lambda_mult=cfg.mmr_lambda,
+            cfg=cfg,
+            query_plan=query_plan,
         )
     else:
-        docs_for_answer = kept[: cfg.top_k]
+        if cfg.enable_mmr and deps.embed_texts is not None:
+            docs_for_answer = mmr_select(
+                query,
+                kept,
+                embed=deps.embed_texts,
+                k=min(cfg.mmr_k or cfg.top_k, cfg.top_k),
+                lambda_mult=cfg.mmr_lambda,
+            )
+        else:
+            docs_for_answer = kept[: cfg.top_k]
 
-    # If short, top-up from remaining non-duplicate kept docs first.
-    if len(docs_for_answer) < cfg.top_k and kept:
-        selected_doc_ids = {id(doc) for doc in docs_for_answer}
-        need = cfg.top_k - len(docs_for_answer)
-        remaining_kept = [doc for doc in kept if id(doc) not in selected_doc_ids]
-        if remaining_kept:
-            docs_for_answer.extend(remaining_kept[:need])
+        # If short, top-up from remaining non-duplicate kept docs first.
+        if len(docs_for_answer) < cfg.top_k and kept:
+            selected_doc_ids = {id(doc) for doc in docs_for_answer}
+            need = cfg.top_k - len(docs_for_answer)
+            remaining_kept = [doc for doc in kept if id(doc) not in selected_doc_ids]
+            if remaining_kept:
+                docs_for_answer.extend(remaining_kept[:need])
 
-    # Optionally top-up from duplicates only when unique docs are insufficient.
-    if (
-        cfg.include_dups_if_needed
-        and len(kept) < cfg.top_k
-        and len(docs_for_answer) < cfg.top_k
-        and dups
-    ):
-        need = cfg.top_k - len(docs_for_answer)
-        docs_for_answer.extend(dups[:need])
+        # Optionally top-up from duplicates only when unique docs are insufficient.
+        if (
+            cfg.include_dups_if_needed
+            and len(kept) < cfg.top_k
+            and len(docs_for_answer) < cfg.top_k
+            and dups
+        ):
+            need = cfg.top_k - len(docs_for_answer)
+            docs_for_answer.extend(dups[:need])
 
-    # Optional cross-encoder rerank
-    if cfg.enable_rerank and deps.cross_encoder is not None and docs_for_answer:
-        rerank_input = docs_for_answer
-        if cfg.rerank_candidate_pool > 0 and kept:
-            pool_size = min(len(kept), max(cfg.top_k, cfg.rerank_candidate_pool))
-            rerank_input = kept[:pool_size]
+        # Optional cross-encoder rerank
+        if cfg.enable_rerank and deps.cross_encoder is not None and docs_for_answer:
+            rerank_input = docs_for_answer
+            if cfg.rerank_candidate_pool > 0 and kept:
+                pool_size = min(len(kept), max(cfg.top_k, cfg.rerank_candidate_pool))
+                rerank_input = kept[:pool_size]
 
-        top_n = min(cfg.rerank_top_n, cfg.top_k, len(rerank_input))
-        if top_n > 0:
-            try:
-                docs_for_answer = deps.cross_encoder.rerank(
-                    query,
-                    rerank_input,
-                    top_n=top_n,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Rerank stage failed; keeping pre-rerank order: %s", exc)
+            top_n = min(cfg.rerank_top_n, cfg.top_k, len(rerank_input))
+            if top_n > 0:
+                try:
+                    docs_for_answer = deps.cross_encoder.rerank(
+                        query,
+                        rerank_input,
+                        top_n=top_n,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Rerank stage failed; keeping pre-rerank order: %s", exc)
 
-    _debug_evidence_quality_ranking(exact_query, "pre_guard_final_candidates", docs_for_answer)
-    citation_guard_relevant = _apply_content_evidence_quality_guard(
-        exact_query,
-        docs_for_answer,
-        cfg,
-    )
-    _apply_anchored_content_near_tie_break(
-        exact_query,
-        docs_for_answer,
-        cfg,
-        anchored_query=anchored_query,
-    )
-    _debug_evidence_quality_ranking(exact_query, "post_guard_final_candidates", docs_for_answer)
-    if citation_guard_relevant:
-        docs_for_answer = sorted(
-            docs_for_answer,
-            key=lambda doc: (
-                doc.get("_evidence_quality_class")
-                != _NON_EVIDENCE_ARTIFACT_CLASS,
-                float(doc.get("retrieval_score", 0.0) or 0.0),
-                str(doc.get("modified_at", "")),
-            ),
-            reverse=True,
-        )
-        _debug_evidence_quality_ranking(
+        _debug_evidence_quality_ranking(exact_query, "pre_guard_final_candidates", docs_for_answer)
+        citation_guard_relevant = _apply_content_evidence_quality_guard(
             exact_query,
-            "post_guard_final_candidates_sorted",
             docs_for_answer,
+            cfg,
         )
+        _apply_anchored_content_near_tie_break(
+            exact_query,
+            docs_for_answer,
+            cfg,
+            anchored_query=anchored_query,
+        )
+        _debug_evidence_quality_ranking(exact_query, "post_guard_final_candidates", docs_for_answer)
+        if citation_guard_relevant:
+            docs_for_answer = sorted(
+                docs_for_answer,
+                key=lambda doc: (
+                    doc.get("_evidence_quality_class")
+                    != _NON_EVIDENCE_ARTIFACT_CLASS,
+                    float(doc.get("retrieval_score", 0.0) or 0.0),
+                    str(doc.get("modified_at", "")),
+                ),
+                reverse=True,
+            )
+            _debug_evidence_quality_ranking(
+                exact_query,
+                "post_guard_final_candidates_sorted",
+                docs_for_answer,
+            )
 
-    docs_for_answer = _expand_profile_query_with_sibling_chunks(
-        exact_query,
-        docs_for_answer,
-        cfg,
-        sibling_chunk_fetcher=getattr(deps, "sibling_chunk_fetcher", None),
-    )
+        docs_for_answer = _expand_profile_query_with_sibling_chunks(
+            exact_query,
+            docs_for_answer,
+            cfg,
+            sibling_chunk_fetcher=getattr(deps, "sibling_chunk_fetcher", None),
+        )
 
     if _should_abstain_for_out_of_corpus_query(query, docs_for_answer, cfg):
         logger.info(
             "Abstention gate triggered: suppressing low-overlap results for out-of-corpus style query."
         )
-        return RetrievalOutput(documents=[], clarify=None)
+        return RetrievalOutput(documents=[], clarify=None, stage_metadata=stage_metadata)
 
     logger.info(
         "Retrieval returned %s results after fusion/rewrites/MMR",
         len(docs_for_answer),
     )
 
-    return RetrievalOutput(documents=docs_for_answer, clarify=clarify_msg)
+    return RetrievalOutput(
+        documents=docs_for_answer,
+        clarify=clarify_msg,
+        stage_metadata=stage_metadata,
+    )
