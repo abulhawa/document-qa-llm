@@ -1538,20 +1538,31 @@ def _financial_family_from_doc(doc: DocHit) -> str:
         return existing
 
     doc_type = str(doc.get("doc_type") or "").strip().lower()
-    if doc_type == "invoice":
-        return "invoice"
-    if doc_type == "receipt":
-        return "receipt"
-    if doc_type in {"government_form", "insurance_letter", "payroll"}:
-        return "official_letter"
-    if doc_type in {"course_material"}:
-        return "course_material"
-    if doc_type in {"research_paper", "technical_report"}:
-        return "publication"
-    if doc_type in {"cv", "resume"}:
-        return "cv"
-    if doc_type in {"reference_letter"}:
-        return "reference"
+    doc_type_map = {
+        "invoice": "invoice",
+        "receipt": "receipt",
+        "tax_document": "tax_document",
+        "bank_statement": "bank_statement",
+        "payment_confirmation": "payment_confirmation",
+        "school_fee_letter": "school_fee_letter",
+        "official_letter": "official_letter",
+        "government_form": "official_letter",
+        "insurance_letter": "official_letter",
+        "payroll": "official_letter",
+        "course_material": "course_material",
+        "research_paper": "publication",
+        "technical_report": "publication",
+        "publication": "publication",
+        "cv": "cv",
+        "resume": "cv",
+        "reference_letter": "reference",
+        "reference": "reference",
+        "book": "book",
+        "archive_misc": "archive_misc",
+    }
+    mapped = doc_type_map.get(doc_type)
+    if mapped:
+        return mapped
 
     path = str(doc.get("path") or "").lower()
     text = str(doc.get("text") or "").lower()
@@ -1671,11 +1682,17 @@ def _apply_financial_retrieval_gating(
     fallback_selected = 0
     if fallback_remaining > 0 and fallback_budget > 0:
         fallback_remaining = min(fallback_remaining, fallback_budget)
+        allow_year_relax = len(strict_selected) < strict_budget
         fallback_sources = [
             ("fallback_relax_family", fallback_stage_1),
-            ("fallback_relax_year", fallback_stage_2),
-            ("fallback_relax_family_and_year", fallback_stage_3),
         ]
+        if allow_year_relax:
+            fallback_sources.extend(
+                [
+                    ("fallback_relax_year", fallback_stage_2),
+                    ("fallback_relax_family_and_year", fallback_stage_3),
+                ]
+            )
         seen = {id(doc) for doc in selected}
         for stage_name, stage_docs in fallback_sources:
             if fallback_remaining <= 0:
@@ -1701,6 +1718,7 @@ def _apply_financial_retrieval_gating(
         "strict_selected": len(strict_selected),
         "strict_candidates": len(strict_pool),
         "fallback_budget": fallback_budget,
+        "year_relaxation_allowed": len(strict_selected) < strict_budget,
         "fallback_selected": fallback_selected,
         "selected_count": len(selected),
         "fallback_used": used_stage != "strict",
