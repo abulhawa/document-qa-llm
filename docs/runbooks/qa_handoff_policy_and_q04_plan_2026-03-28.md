@@ -58,12 +58,15 @@ Targeted profile/timeline when/where subset (`Q01`):
 - answered_without_error: `1/1` for `top3`, `top5`, `dynamic`.
 
 ## Policy Recommendation
-- Keep **top-5** as the default production-like handoff policy now (already explicit in `app/usecases/qa_usecase.py`).
-- Treat dynamic packing as the leading next candidate (it outperformed top-5 in this evaluation), but gate rollout behind a small focused validation/soak pass.
+- Promote dynamic token-budget packing as the default QA handoff policy with the measured winning configuration:
+  - retrieval depth: `7`
+  - token budget: `1200` (estimated)
+  - min chunks: `3`
+- Keep top-5 available as a configurable fallback policy, but not the default while dynamic remains superior.
 
 ## Q04 Stage Isolation
 Query:
-- `Q04`: “In Ali's most recent CV contact section, which city is listed?”
+- `Q04`: "In Ali's most recent CV contact section, which city is listed?"
 
 Observed stage behavior (`rerank off`, sibling expansion on):
 - Final top-7 has expected checksum only at rank 6 in benchmark labels.
@@ -73,12 +76,16 @@ Observed stage behavior (`rerank off`, sibling expansion on):
 - Current benchmark `Q04` expected checksums resolve to non-CV research docs in the present index snapshot (see artifact lookup block).
 
 Conclusion:
-- Primary failure stage is **retrieval candidate generation/ranking**, not reranking and not only LLM synthesis.
-- Query is strongly profile-intent, but current retrieval is dominated by non-profile “CV/CVE/cross-validation” lexical noise.
+- Immediate blocker is benchmark integrity drift between fixture labels and the current index snapshot.
+- Until expected checksum labels are reconciled with intended CV/resume family targets, Q04 misses are not reliable retrieval-signal misses.
 
 ## Stage-Local Fix Proposal (Next Narrow Change)
 - Do not re-enable reranking.
-- Implement a narrow profile-intent lexical disambiguation in retrieval (single-stage change), then re-measure:
-  - For profile-intent queries containing `cv`/`resume` + contact/location intent, add a targeted lexical variant (e.g., include `resume`, `curriculum vitae`, `contact` terms) or bounded doc-type lexical prior for `cv/resume`.
-  - Keep behavior bounded to this intent class; do not broaden sibling expansion.
-  - Verify specifically on `Q04`, then re-run full gold set guardrail.
+- Add a benchmark-integrity gate before the next retrieval optimization cycle:
+  - verify expected checksums resolve to intended doc families in the active index snapshot,
+  - explicitly flag fixture/index drift,
+  - separate integrity failures from true retrieval failures in report summaries.
+- Defer Q04-specific retrieval tuning until integrity status is clean.
+- Next safe expansion target after integrity cleanup:
+  - broaden profile-oriented fact coverage from only `when/where` to nearby education/employment/profile fact intents,
+  - benchmark that expansion as a separate cycle (not implemented in this step).

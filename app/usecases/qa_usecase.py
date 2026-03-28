@@ -9,6 +9,12 @@ import qa_pipeline
 from app.schemas import DocumentSnippet, QARequest, QAResponse
 from qa_pipeline import RetrievalConfig
 from config import (
+    QA_HANDOFF_DYNAMIC_MAX_CHUNKS,
+    QA_HANDOFF_DYNAMIC_MIN_CHUNKS,
+    QA_HANDOFF_DYNAMIC_RETRIEVAL_TOP_K,
+    QA_HANDOFF_DYNAMIC_TOKEN_BUDGET,
+    QA_HANDOFF_FIXED_TOP_K,
+    QA_HANDOFF_POLICY,
     RETRIEVAL_ENABLE_RERANK,
     RETRIEVAL_RERANK_CANDIDATE_POOL,
     RETRIEVAL_RERANK_TOP_N,
@@ -18,7 +24,40 @@ from config import (
 
 _Q10_DEBUG_QUERY_TERMS = {"pem", "fuel", "cell", "sliding", "mode", "control"}
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
-QA_HANDOFF_TOP_K = 5
+
+
+def _resolve_handoff_policy() -> dict[str, int | str | None]:
+    policy = str(QA_HANDOFF_POLICY or "dynamic").strip().lower()
+    if policy in {"top5", "fixed_top5", "fixed"}:
+        return {
+            "strategy": "top5",
+            "top_k": max(int(QA_HANDOFF_FIXED_TOP_K), 1),
+            "dynamic_token_budget": None,
+            "dynamic_min_chunks": None,
+            "dynamic_max_chunks": None,
+        }
+    if policy == "dynamic":
+        max_chunks = int(QA_HANDOFF_DYNAMIC_MAX_CHUNKS)
+        return {
+            "strategy": "dynamic",
+            "top_k": max(int(QA_HANDOFF_DYNAMIC_RETRIEVAL_TOP_K), 1),
+            "dynamic_token_budget": max(int(QA_HANDOFF_DYNAMIC_TOKEN_BUDGET), 1),
+            "dynamic_min_chunks": max(int(QA_HANDOFF_DYNAMIC_MIN_CHUNKS), 0),
+            "dynamic_max_chunks": max_chunks if max_chunks > 0 else None,
+        }
+
+    logger.warning(
+        "Unknown QA_HANDOFF_POLICY=%s, defaulting to dynamic policy.",
+        policy,
+    )
+    max_chunks = int(QA_HANDOFF_DYNAMIC_MAX_CHUNKS)
+    return {
+        "strategy": "dynamic",
+        "top_k": max(int(QA_HANDOFF_DYNAMIC_RETRIEVAL_TOP_K), 1),
+        "dynamic_token_budget": max(int(QA_HANDOFF_DYNAMIC_TOKEN_BUDGET), 1),
+        "dynamic_min_chunks": max(int(QA_HANDOFF_DYNAMIC_MIN_CHUNKS), 0),
+        "dynamic_max_chunks": max_chunks if max_chunks > 0 else None,
+    }
 
 
 def _is_q10_debug_question(question: str) -> bool:
@@ -30,6 +69,7 @@ def _is_q10_debug_question(question: str) -> bool:
 
 def answer(req: QARequest) -> QAResponse:
     """Run the QA pipeline and normalize output for the UI."""
+    handoff_policy = _resolve_handoff_policy()
     retrieval_cfg = replace(
         RetrievalConfig(),
         enable_rerank=RETRIEVAL_ENABLE_RERANK,
@@ -39,7 +79,7 @@ def answer(req: QARequest) -> QAResponse:
     try:
         context = qa_pipeline.answer_question(
             question=req.question,
-            top_k=QA_HANDOFF_TOP_K,
+            top_k=int(handoff_policy["top_k"]),
             mode=req.mode,
             temperature=req.temperature,
             model=req.model,
@@ -47,6 +87,18 @@ def answer(req: QARequest) -> QAResponse:
             retrieval_cfg=retrieval_cfg,
             use_cache=req.use_cache,
             require_grounding=req.require_grounding,
+            handoff_strategy=str(handoff_policy["strategy"]),
+            handoff_dynamic_token_budget=(
+                int(handoff_policy["dynamic_token_budget"])
+                if handoff_policy["dynamic_token_budget"] is not None
+                else None
+            ),
+            handoff_dynamic_min_chunks=int(handoff_policy["dynamic_min_chunks"] or 0),
+            handoff_dynamic_max_chunks=(
+                int(handoff_policy["dynamic_max_chunks"])
+                if handoff_policy["dynamic_max_chunks"] is not None
+                else None
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         return QAResponse(answer="", error=str(exc))
