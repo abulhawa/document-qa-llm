@@ -22,6 +22,7 @@ from core.opensearch_store import (
     fetch_sibling_chunks as default_sibling_fetcher,
     search as default_keyword_retriever,
 )
+from core.query_rewriter import build_query_plan
 from core.retrieval.pipeline import retrieve
 from core.retrieval.reranker import build_configured_reranker
 from core.retrieval.types import DocHit, RetrievalConfig, RetrievalDeps
@@ -324,6 +325,8 @@ def _cfg_payload(cfg: RetrievalConfig) -> dict[str, Any]:
         "top_k": cfg.top_k,
         "top_k_each": cfg.top_k_each,
         "enable_variants": cfg.enable_variants,
+        "enable_query_planning": cfg.enable_query_planning,
+        "enable_hyde": cfg.enable_hyde,
         "enable_mmr": cfg.enable_mmr,
         "enable_rerank": cfg.enable_rerank,
         "rerank_top_n": cfg.rerank_top_n,
@@ -362,7 +365,22 @@ def _evaluate_single_query(
     docs: list[DocHit] = []
     clarify: Optional[str] = None
     try:
-        retrieval = retrieve(query_text, cfg=cfg, deps=deps)
+        query_plan = None
+        retrieve_query = query_text
+        if cfg.enable_query_planning:
+            query_plan = build_query_plan(
+                query_text,
+                temperature=0.15,
+                use_cache=True,
+                enable_hyde=cfg.enable_hyde,
+            )
+            retrieve_query = query_plan.raw_query
+        retrieval = retrieve(
+            retrieve_query,
+            cfg=cfg,
+            deps=deps,
+            query_plan=query_plan,
+        )
         docs = list(retrieval.documents)
         clarify = retrieval.clarify
     except Exception as exc:  # noqa: BLE001
@@ -781,6 +799,8 @@ def _base_cfg(
     top_k: int,
     top_k_each: int,
     enable_variants: bool,
+    enable_query_planning: bool,
+    enable_hyde: bool,
     enable_mmr: bool,
     sibling_expansion_enabled: bool,
 ) -> RetrievalConfig:
@@ -788,6 +808,8 @@ def _base_cfg(
         top_k=max(top_k, 1),
         top_k_each=max(top_k_each, 1),
         enable_variants=enable_variants,
+        enable_query_planning=enable_query_planning,
+        enable_hyde=enable_hyde,
         enable_mmr=enable_mmr,
         enable_rerank=False,
         sibling_expansion_enabled=sibling_expansion_enabled,
@@ -826,6 +848,15 @@ def parse_args() -> argparse.Namespace:
         help="Run with sibling expansion disabled, enabled, or both.",
     )
     parser.add_argument(
+        "--query-planning-mode",
+        choices=("baseline", "planning", "planning_hyde", "compare"),
+        default="baseline",
+        help=(
+            "Run retrieval with baseline rewrites, planning only, planning+HyDE, "
+            "or emit all three for ablation comparison."
+        ),
+    )
+    parser.add_argument(
         "--skip-targeted-qa",
         action="store_true",
         help="Skip lightweight end-to-end QA probe for targeted profile when/where subset.",
@@ -855,6 +886,8 @@ def _run_single_mode(
     top_k: int,
     top_k_each: int,
     enable_variants: bool,
+    enable_query_planning: bool,
+    enable_hyde: bool,
     enable_mmr: bool,
     soft_timeout_seconds: float,
     run_targeted_qa: bool,
@@ -863,6 +896,8 @@ def _run_single_mode(
         top_k=top_k,
         top_k_each=top_k_each,
         enable_variants=enable_variants,
+        enable_query_planning=enable_query_planning,
+        enable_hyde=enable_hyde,
         enable_mmr=enable_mmr,
         sibling_expansion_enabled=(mode == "on"),
     )
@@ -885,61 +920,124 @@ def main() -> None:
     run_targeted_qa = not args.skip_targeted_qa
 
     modes = ["off", "on"] if args.sibling_expansion_mode == "both" else [args.sibling_expansion_mode]
+    if args.query_planning_mode == "compare":
+        planning_runs = [
+            ("baseline", False, False),
+            ("planning", True, False),
+            ("planning_hyde", True, True),
+        ]
+    elif args.query_planning_mode == "planning":
+        planning_runs = [("planning", True, False)]
+    elif args.query_planning_mode == "planning_hyde":
+        planning_runs = [("planning_hyde", True, True)]
+    else:
+        planning_runs = [("baseline", False, False)]
 
-    mode_artifacts: dict[str, dict[str, Any]] = {}
+    mode_artifacts: dict[str, dict[str, dict[str, Any]]] = {}
+    soft_timeout = max(float(args.soft_query_timeout_seconds), 0.0)
+    for planning_label, enable_query_planning, enable_hyde in planning_runs:
+        planning_artifacts: dict[str, dict[str, Any]] = {}
+        for mode in modes:
+            artifact = _run_single_mode(
+                mode=mode,
+                fixture_path=fixture_path,
+                support_labels_path=support_labels_path,
+                top_k=args.top_k,
+                top_k_each=args.top_k_each,
+                enable_variants=enable_variants,
+                enable_query_planning=enable_query_planning,
+                enable_hyde=enable_hyde,
+                enable_mmr=enable_mmr,
+                soft_timeout_seconds=soft_timeout,
+                run_targeted_qa=run_targeted_qa,
+            )
+            planning_artifacts[mode] = artifact
+
+            runbook_json_path = output_base.with_name(
+                f"{output_base.stem}_{planning_label}_{mode}.json"
+            )
+            runbook_csv_path = output_base.with_name(
+                f"{output_base.stem}_{planning_label}_{mode}.csv"
+            )
+            _write_json(runbook_json_path, artifact)
+            _write_csv(runbook_csv_path, artifact.get("rows", []))
+            print(f"Wrote runbook JSON ({planning_label}/{mode}): {runbook_json_path}")
+            print(f"Wrote runbook CSV ({planning_label}/{mode}): {runbook_csv_path}")
+        mode_artifacts[planning_label] = planning_artifacts
+
+    # Keep existing sibling on/off comparison when a single planning mode is selected.
+    if len(planning_runs) == 1:
+        selected_label = planning_runs[0][0]
+        selected_artifacts = mode_artifacts.get(selected_label, {})
+        if "off" in selected_artifacts and "on" in selected_artifacts:
+            comparison = compare_runs(
+                off_run=selected_artifacts["off"],
+                on_run=selected_artifacts["on"],
+            )
+            comparison_payload = {
+                "generated_at_utc": _utc_now_iso(),
+                "fixture": str(fixture_path),
+                "support_labels": str(support_labels_path) if support_labels_path else None,
+                "mode": "sibling_expansion_off_vs_on",
+                "query_planning_mode": selected_label,
+                "comparison": comparison,
+                "artifacts": {
+                    "off_json": str(output_base.with_name(f"{output_base.stem}_{selected_label}_off.json")),
+                    "on_json": str(output_base.with_name(f"{output_base.stem}_{selected_label}_on.json")),
+                    "off_csv": str(output_base.with_name(f"{output_base.stem}_{selected_label}_off.csv")),
+                    "on_csv": str(output_base.with_name(f"{output_base.stem}_{selected_label}_on.csv")),
+                },
+            }
+            _write_json(output_base, comparison_payload)
+            print(f"Wrote comparison JSON: {output_base}")
+
+            full_set = comparison.get("full_gold_set", {})
+            target = comparison.get("target_profile_when_where", {})
+            print(
+                "Full gold-set strict hit@3 delta (on-off): "
+                f"{full_set.get('strict_hit_at_3', {}).get('delta')}"
+            )
+            print(
+                "Target profile when/where support-hit delta (on-off): "
+                f"{target.get('support_hits', {}).get('delta')}"
+            )
+        return
+
+    # Query planning ablation comparison payload.
+    planning_comparisons: dict[str, dict[str, Any]] = {}
     for mode in modes:
-        artifact = _run_single_mode(
-            mode=mode,
-            fixture_path=fixture_path,
-            support_labels_path=support_labels_path,
-            top_k=args.top_k,
-            top_k_each=args.top_k_each,
-            enable_variants=enable_variants,
-            enable_mmr=enable_mmr,
-            soft_timeout_seconds=max(float(args.soft_query_timeout_seconds), 0.0),
-            run_targeted_qa=run_targeted_qa,
-        )
-        mode_artifacts[mode] = artifact
+        baseline_run = mode_artifacts.get("baseline", {}).get(mode)
+        planning_run = mode_artifacts.get("planning", {}).get(mode)
+        planning_hyde_run = mode_artifacts.get("planning_hyde", {}).get(mode)
+        if baseline_run and planning_run:
+            planning_comparisons[f"{mode}_baseline_vs_planning"] = compare_runs(
+                off_run=baseline_run,
+                on_run=planning_run,
+            )
+        if planning_run and planning_hyde_run:
+            planning_comparisons[f"{mode}_planning_vs_planning_hyde"] = compare_runs(
+                off_run=planning_run,
+                on_run=planning_hyde_run,
+            )
 
-        runbook_json_path = output_base.with_name(
-            f"{output_base.stem}_{mode}.json"
-        )
-        runbook_csv_path = output_base.with_name(
-            f"{output_base.stem}_{mode}.csv"
-        )
-        _write_json(runbook_json_path, artifact)
-        _write_csv(runbook_csv_path, artifact.get("rows", []))
-        print(f"Wrote runbook JSON ({mode}): {runbook_json_path}")
-        print(f"Wrote runbook CSV ({mode}): {runbook_csv_path}")
-
-    if "off" in mode_artifacts and "on" in mode_artifacts:
-        comparison = compare_runs(off_run=mode_artifacts["off"], on_run=mode_artifacts["on"])
-        comparison_payload = {
-            "generated_at_utc": _utc_now_iso(),
-            "fixture": str(fixture_path),
-            "support_labels": str(support_labels_path) if support_labels_path else None,
-            "mode": "sibling_expansion_off_vs_on",
-            "comparison": comparison,
-            "artifacts": {
-                "off_json": str(output_base.with_name(f"{output_base.stem}_off.json")),
-                "on_json": str(output_base.with_name(f"{output_base.stem}_on.json")),
-                "off_csv": str(output_base.with_name(f"{output_base.stem}_off.csv")),
-                "on_csv": str(output_base.with_name(f"{output_base.stem}_on.csv")),
-            },
-        }
-        _write_json(output_base, comparison_payload)
-        print(f"Wrote comparison JSON: {output_base}")
-
-        full_set = comparison.get("full_gold_set", {})
-        target = comparison.get("target_profile_when_where", {})
-        print(
-            "Full gold-set strict hit@3 delta (on-off): "
-            f"{full_set.get('strict_hit_at_3', {}).get('delta')}"
-        )
-        print(
-            "Target profile when/where support-hit delta (on-off): "
-            f"{target.get('support_hits', {}).get('delta')}"
-        )
+    compare_payload = {
+        "generated_at_utc": _utc_now_iso(),
+        "fixture": str(fixture_path),
+        "support_labels": str(support_labels_path) if support_labels_path else None,
+        "mode": "query_planning_compare",
+        "sibling_expansion_modes": modes,
+        "comparison": planning_comparisons,
+        "artifacts": {
+            f"{planning_label}_{mode}": {
+                "json": str(output_base.with_name(f"{output_base.stem}_{planning_label}_{mode}.json")),
+                "csv": str(output_base.with_name(f"{output_base.stem}_{planning_label}_{mode}.csv")),
+            }
+            for planning_label, _, _ in planning_runs
+            for mode in modes
+        },
+    }
+    _write_json(output_base, compare_payload)
+    print(f"Wrote query planning comparison JSON: {output_base}")
 
 
 if __name__ == "__main__":

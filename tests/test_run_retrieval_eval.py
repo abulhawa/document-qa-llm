@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import sys
+import types
 
 
 _SCRIPT_PATH = (
@@ -81,3 +82,70 @@ def test_aggregate_stage_timings_identifies_dominant_group():
     assert groups["live_index_queries"] == 250.0
     assert groups["context_expansion"] == 11.0
     assert summary["dominant_stage_group"] == "live_index_queries"
+
+
+def test_base_cfg_supports_query_planning_flags():
+    cfg = eval_script._base_cfg(
+        top_k=3,
+        top_k_each=10,
+        enable_variants=True,
+        enable_query_planning=True,
+        enable_hyde=True,
+        enable_mmr=False,
+        sibling_expansion_enabled=False,
+    )
+
+    assert cfg.enable_query_planning is True
+    assert cfg.enable_hyde is True
+
+
+def test_evaluate_single_query_uses_query_plan_when_enabled(monkeypatch):
+    cfg = eval_script._base_cfg(
+        top_k=1,
+        top_k_each=1,
+        enable_variants=True,
+        enable_query_planning=True,
+        enable_hyde=False,
+        enable_mmr=False,
+        sibling_expansion_enabled=False,
+    )
+    captured = {}
+
+    monkeypatch.setattr(eval_script, "_build_timed_deps", lambda stage_timer, base_reranker: object())
+    monkeypatch.setattr(
+        eval_script,
+        "build_query_plan",
+        lambda query_text, temperature=0.15, use_cache=True, enable_hyde=False: types.SimpleNamespace(
+            raw_query=query_text,
+            semantic_query="semantic rewrite",
+            bm25_query="bm25 rewrite",
+            hyde_passage=None,
+            clarify=None,
+        ),
+    )
+
+    def _fake_retrieve(query, cfg, deps, query_plan=None):  # noqa: ARG001
+        captured["query"] = query
+        captured["query_plan"] = query_plan
+        return types.SimpleNamespace(documents=[], clarify=None)
+
+    monkeypatch.setattr(eval_script, "retrieve", _fake_retrieve)
+
+    row = {
+        "id": "q1",
+        "mode": "positive",
+        "query": "Where did Ali study?",
+        "expected_checksums": [],
+    }
+    result = eval_script._evaluate_single_query(
+        row,
+        cfg=cfg,
+        run_date="2026-03-28",
+        support_overrides={},
+        soft_timeout_seconds=10.0,
+        base_reranker=None,
+    )
+
+    assert captured["query"] == "Where did Ali study?"
+    assert captured["query_plan"] is not None
+    assert result["clarify"] is None

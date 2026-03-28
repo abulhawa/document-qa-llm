@@ -16,7 +16,13 @@ from core.retrieval.variants import generate_variants
 from core.retrieval.mmr import mmr_select
 from core.retrieval.dedup import collapse_near_duplicates
 from core.retrieval.reranker import build_configured_reranker
-from core.retrieval.types import RetrievalConfig, RetrievalDeps, RetrievalOutput, DocHit
+from core.retrieval.types import (
+    DocHit,
+    QueryPlan,
+    RetrievalConfig,
+    RetrievalDeps,
+    RetrievalOutput,
+)
 from core.query_rewriter import has_strong_query_anchors
 
 _CV_FAMILY_DOC_TYPES: Set[str] = {"cv", "resume"}
@@ -308,6 +314,91 @@ def _default_deps() -> RetrievalDeps:
     )
 
 
+def _append_query_provenance(
+    doc: DocHit,
+    *,
+    variant: str,
+    query_text: str,
+    channel: str,
+) -> None:
+    entry = {"variant": variant, "query_text": query_text, "channel": channel}
+    provenance = doc.get("_query_provenance")
+    if not isinstance(provenance, list):
+        provenance = []
+    if entry not in provenance:
+        provenance.append(entry)
+    doc["_query_provenance"] = provenance
+    if "_query_variant" not in doc:
+        doc["_query_variant"] = variant
+    if "_query_text" not in doc:
+        doc["_query_text"] = query_text
+    if "_query_channel" not in doc:
+        doc["_query_channel"] = channel
+
+
+def _merge_query_provenance(target: DocHit, source: DocHit) -> None:
+    source_provenance = source.get("_query_provenance")
+    if isinstance(source_provenance, list):
+        for item in source_provenance:
+            if not isinstance(item, dict):
+                continue
+            variant = str(item.get("variant") or "").strip()
+            query_text = str(item.get("query_text") or "").strip()
+            channel = str(item.get("channel") or "").strip()
+            if variant and query_text and channel:
+                _append_query_provenance(
+                    target,
+                    variant=variant,
+                    query_text=query_text,
+                    channel=channel,
+                )
+    else:
+        variant = str(source.get("_query_variant") or "").strip()
+        query_text = str(source.get("_query_text") or "").strip()
+        channel = str(source.get("_query_channel") or "").strip()
+        if variant and query_text and channel:
+            _append_query_provenance(
+                target,
+                variant=variant,
+                query_text=query_text,
+                channel=channel,
+            )
+
+
+def _build_planning_variants(
+    *,
+    exact_query: str,
+    query_plan: QueryPlan,
+    cfg: RetrievalConfig,
+    anchored_query: bool,
+) -> List[Tuple[str, str, bool, bool, float]]:
+    variants: List[Tuple[str, str, bool, bool, float]] = [
+        ("raw_query", exact_query, True, True, cfg.weight_exact_bm25)
+    ]
+    if cfg.anchored_exact_only and anchored_query:
+        return variants
+
+    semantic_query = str(query_plan.semantic_query or "").strip()
+    if semantic_query and semantic_query.lower() != exact_query.lower():
+        variants.append(
+            ("semantic_query", semantic_query, True, False, cfg.weight_rewrite_bm25)
+        )
+
+    bm25_query = str(query_plan.bm25_query or "").strip()
+    if bm25_query and bm25_query.lower() != exact_query.lower():
+        variants.append(
+            ("bm25_query", bm25_query, False, True, cfg.weight_rewrite_bm25)
+        )
+
+    hyde_passage = str(query_plan.hyde_passage or "").strip()
+    if cfg.enable_hyde and hyde_passage:
+        variants.append(
+            ("hyde_passage", hyde_passage, True, False, cfg.weight_rewrite_bm25)
+        )
+
+    return variants
+
+
 def _apply_variant_weights(
     variants_with_weights: Sequence[Tuple[str, float | None]],
     cfg: RetrievalConfig,
@@ -338,8 +429,12 @@ def _dedup_bm25_by_id_keep_best_score(hits: Sequence[DocHit]) -> List[DocHit]:
             deduped.append(hit)
             continue
 
-        if hit.get("score", 0.0) > deduped[existing_idx].get("score", 0.0):
+        existing_hit = deduped[existing_idx]
+        if hit.get("score", 0.0) > existing_hit.get("score", 0.0):
+            _merge_query_provenance(hit, existing_hit)
             deduped[existing_idx] = hit
+        else:
+            _merge_query_provenance(existing_hit, hit)
 
     return deduped
 
@@ -1420,6 +1515,7 @@ def retrieve(
     *,
     cfg: RetrievalConfig,
     deps: Optional[RetrievalDeps] = None,
+    query_plan: Optional[QueryPlan] = None,
 ) -> RetrievalOutput:
     """
     Configurable retrieval pipeline combining keyword + semantic search with
@@ -1429,9 +1525,10 @@ def retrieve(
     deps = deps or _default_deps()
     logger.info(f"Running retrieval: '{query}'")
 
-    # 1) Generate variants (keep rewritten + exact) if enabled
+    # 1) Build fanout inputs
     clarify_msg: Optional[str] = None
     variants_with_weights: List[Tuple[str, float]] = []
+    planning_variants: List[Tuple[str, str, bool, bool, float]] = []
     exact_query = query.strip()
     if _is_q10_debug_query(exact_query):
         query_class = "discovery" if _query_looks_like_discovery_request(exact_query) else "content"
@@ -1441,43 +1538,94 @@ def retrieve(
             exact_query,
         )
     anchored_query = has_strong_query_anchors(exact_query)
-    use_exact_only = (
-        cfg.enable_variants
-        and cfg.anchored_exact_only
-        and anchored_query
-    )
-    if use_exact_only:
-        logger.info(
-            "Skipping rewrite variants for strongly anchored query; using exact query only."
-        )
-        variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
-    elif cfg.enable_variants:
-        variants_result = generate_variants(query)
-        if "clarify" in variants_result:
-            clarify_msg = variants_result["clarify"]
+    if cfg.enable_query_planning and query_plan is not None:
+        if query_plan.clarify:
+            clarify_msg = str(query_plan.clarify or "").strip() or None
             return RetrievalOutput(documents=[], clarify=clarify_msg)
-        variants_with_weights = variants_result.get("variants", [])
-    if not variants_with_weights:
-        variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
+        planning_variants = _build_planning_variants(
+            exact_query=exact_query,
+            query_plan=query_plan,
+            cfg=cfg,
+            anchored_query=anchored_query,
+        )
+    else:
+        use_exact_only = (
+            cfg.enable_variants
+            and cfg.anchored_exact_only
+            and anchored_query
+        )
+        if use_exact_only:
+            logger.info(
+                "Skipping rewrite variants for strongly anchored query; using exact query only."
+            )
+            variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
+        elif cfg.enable_variants:
+            variants_result = generate_variants(query)
+            if "clarify" in variants_result:
+                clarify_msg = variants_result["clarify"]
+                return RetrievalOutput(documents=[], clarify=clarify_msg)
+            variants_with_weights = variants_result.get("variants", [])
+        if not variants_with_weights:
+            variants_with_weights = [(exact_query, cfg.weight_exact_bm25)]
 
-    if cfg.max_variants > 0:
-        variants_with_weights = variants_with_weights[: cfg.max_variants]
+        if cfg.max_variants > 0:
+            variants_with_weights = variants_with_weights[: cfg.max_variants]
 
-    variants_with_weights = _apply_variant_weights(variants_with_weights, cfg)
+        variants_with_weights = _apply_variant_weights(variants_with_weights, cfg)
 
     # 2) Retrieve per variant and collect with weights
     vector_results_all: List[DocHit] = []
     bm25_results_all: List[DocHit] = []
 
-    for idx, (qv, weight_override) in enumerate(variants_with_weights):
-        v = deps.semantic_retriever(qv, cfg.top_k_each)
-        vector_results_all.extend(v)
+    if planning_variants:
+        for idx, (variant_name, qv, run_dense, run_sparse, bm25_weight) in enumerate(planning_variants):
+            if run_dense:
+                dense_hits = deps.semantic_retriever(qv, cfg.top_k_each)
+                for hit in dense_hits:
+                    _append_query_provenance(
+                        hit,
+                        variant=variant_name,
+                        query_text=qv,
+                        channel="dense",
+                    )
+                vector_results_all.extend(dense_hits)
 
-        b = deps.keyword_retriever(qv, cfg.top_k_each)
-        for hit in b:
-            hit["_bm25_variant_weight"] = weight_override
-            hit["_variant_rank"] = idx
-        bm25_results_all.extend(b)
+            if run_sparse:
+                sparse_hits = deps.keyword_retriever(qv, cfg.top_k_each)
+                for hit in sparse_hits:
+                    hit["_bm25_variant_weight"] = bm25_weight
+                    hit["_variant_rank"] = idx
+                    _append_query_provenance(
+                        hit,
+                        variant=variant_name,
+                        query_text=qv,
+                        channel="sparse",
+                    )
+                bm25_results_all.extend(sparse_hits)
+    else:
+        for idx, (qv, weight_override) in enumerate(variants_with_weights):
+            variant_name = "raw_query" if idx == 0 else "rewrite_variant"
+            v = deps.semantic_retriever(qv, cfg.top_k_each)
+            for hit in v:
+                _append_query_provenance(
+                    hit,
+                    variant=variant_name,
+                    query_text=qv,
+                    channel="dense",
+                )
+            vector_results_all.extend(v)
+
+            b = deps.keyword_retriever(qv, cfg.top_k_each)
+            for hit in b:
+                hit["_bm25_variant_weight"] = weight_override
+                hit["_variant_rank"] = idx
+                _append_query_provenance(
+                    hit,
+                    variant=variant_name,
+                    query_text=qv,
+                    channel="sparse",
+                )
+            bm25_results_all.extend(b)
     bm25_results_all = _dedup_bm25_by_id_keep_best_score(bm25_results_all)
 
     # 3) Fuse with normalization (respect variant weights)

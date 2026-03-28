@@ -9,6 +9,8 @@ import qa_pipeline
 from app.schemas import DocumentSnippet, QARequest, QAResponse
 from qa_pipeline import RetrievalConfig
 from config import (
+    QA_ENABLE_HYDE,
+    QA_ENABLE_QUERY_PLANNING,
     QA_HANDOFF_DYNAMIC_MAX_CHUNKS,
     QA_HANDOFF_DYNAMIC_MIN_CHUNKS,
     QA_HANDOFF_DYNAMIC_RETRIEVAL_TOP_K,
@@ -72,6 +74,8 @@ def answer(req: QARequest) -> QAResponse:
     handoff_policy = _resolve_handoff_policy()
     retrieval_cfg = replace(
         RetrievalConfig(),
+        enable_query_planning=QA_ENABLE_QUERY_PLANNING,
+        enable_hyde=QA_ENABLE_HYDE,
         enable_rerank=RETRIEVAL_ENABLE_RERANK,
         rerank_top_n=RETRIEVAL_RERANK_TOP_N,
         rerank_candidate_pool=RETRIEVAL_RERANK_CANDIDATE_POOL,

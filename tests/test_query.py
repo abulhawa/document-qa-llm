@@ -172,6 +172,7 @@ def _stub_tracing(monkeypatch):
 from qa_pipeline.coordinator import answer_question
 from qa_pipeline.types import QueryRewrite, RetrievalResult, RetrievedDocument
 from qa_pipeline.retrieve import retrieve_context
+from core.retrieval.types import QueryPlan, RetrievalConfig
 
 
 def test_retrieval_limit_matches_top_k(monkeypatch):
@@ -336,6 +337,100 @@ def test_answer_question_returns_clarify_for_unanchored_query(monkeypatch):
     assert "Clarify" in result.answer
 
 
+def test_answer_question_surfaces_retrieval_clarify(monkeypatch):
+    def mock_rewrite(question, temperature=0.15, use_cache=True):  # noqa: ARG001
+        return QueryRewrite(rewritten=question)
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None):  # noqa: ARG001
+        return RetrievalResult(query=query, documents=[], clarify="Need a specific person.")
+
+    monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.generate_answer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("llm should not run")),
+    )
+
+    result = answer_question("what about it")
+
+    assert result.clarification == "Need a specific person."
+    assert result.answer is not None
+    assert "Clarify" in result.answer
+    assert "No relevant context found" not in result.answer
+
+
+def test_answer_question_planning_uses_single_authoritative_clarify(monkeypatch):
+    cfg = RetrievalConfig(enable_query_planning=True)
+
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.plan_question",
+        lambda question, temperature=0.15, use_cache=True, enable_hyde=False: QueryPlan(
+            raw_query=question,
+            semantic_query=question,
+            bm25_query=question,
+            hyde_passage=None,
+            clarify="Need exact document name.",
+        ),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.rewrite_question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("coordinator rewrite should not run when planning is enabled")
+        ),
+    )
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.retrieve_context",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("retrieve should not run when plan clarify is present")
+        ),
+    )
+
+    result = answer_question("what about it", retrieval_cfg=cfg)
+
+    assert result.clarification == "Need exact document name."
+    assert result.answer is not None
+    assert "Clarify" in result.answer
+
+
+def test_answer_question_planning_passes_typed_query_plan_to_retriever(monkeypatch):
+    cfg = RetrievalConfig(enable_query_planning=True, enable_hyde=True)
+    observed = {}
+
+    def mock_plan(question, temperature=0.15, use_cache=True, enable_hyde=False):  # noqa: ARG001
+        return QueryPlan(
+            raw_query=question,
+            semantic_query="semantic rewrite",
+            bm25_query="bm25 rewrite",
+            hyde_passage="synthetic context",
+            clarify=None,
+        )
+
+    def mock_retrieve(query, top_k, retrieval_cfg=None, query_plan=None):  # noqa: ARG001
+        observed["query"] = query
+        observed["query_plan"] = query_plan
+        return RetrievalResult(
+            query=query,
+            documents=[RetrievedDocument(text="doc", path="path", score=1.0)],
+        )
+
+    monkeypatch.setattr("qa_pipeline.coordinator.plan_question", mock_plan)
+    monkeypatch.setattr(
+        "qa_pipeline.coordinator.rewrite_question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("coordinator rewrite should not run when planning is enabled")
+        ),
+    )
+    monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
+    monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", lambda *args, **kwargs: "answer")
+
+    result = answer_question("Where did Ali do his BSc studies?", retrieval_cfg=cfg)
+
+    assert observed["query"] == "Where did Ali do his BSc studies?"
+    assert isinstance(observed["query_plan"], QueryPlan)
+    assert observed["query_plan"].semantic_query == "semantic rewrite"
+    assert result.rewritten_question == "semantic rewrite"
+
+
 def test_retrieve_context_prefers_normalized_retrieval_score(monkeypatch):
     fake_output = types.SimpleNamespace(
         clarify=None,
@@ -363,6 +458,28 @@ def test_retrieve_context_prefers_normalized_retrieval_score(monkeypatch):
 
     assert len(result.documents) == 1
     assert result.documents[0].score == pytest.approx(0.91)
+
+
+def test_retrieve_context_surfaces_retrieval_clarify(monkeypatch):
+    fake_output = types.SimpleNamespace(
+        clarify="Need more context.",
+        documents=[],
+    )
+    monkeypatch.setattr("qa_pipeline.retrieve.retrieve", lambda query, cfg, deps: fake_output)
+
+    result = retrieve_context(
+        "question",
+        top_k=1,
+        deps=types.SimpleNamespace(
+            semantic_retriever=lambda q, top_k: [],
+            keyword_retriever=lambda q, top_k: [],
+            embed_texts=None,
+            cross_encoder=None,
+        ),
+    )
+
+    assert result.documents == []
+    assert result.clarify == "Need more context."
 
 
 def test_retrieve_context_passes_identity_metadata(monkeypatch):
@@ -598,6 +715,8 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
     monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_TOKEN_BUDGET", 1200)
     monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_MIN_CHUNKS", 3)
     monkeypatch.setattr(qa_usecase, "QA_HANDOFF_DYNAMIC_MAX_CHUNKS", 0)
+    monkeypatch.setattr(qa_usecase, "QA_ENABLE_QUERY_PLANNING", True)
+    monkeypatch.setattr(qa_usecase, "QA_ENABLE_HYDE", True)
     monkeypatch.setattr(qa_usecase.qa_pipeline, "answer_question", mock_answer_question)
 
     response = qa_usecase.answer(QARequest(question="question"))
@@ -609,6 +728,8 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
     assert captured["handoff_dynamic_token_budget"] == 1200
     assert captured["handoff_dynamic_min_chunks"] == 3
     assert captured["handoff_dynamic_max_chunks"] is None
+    assert cfg.enable_query_planning is True
+    assert cfg.enable_hyde is True
     assert cfg.enable_rerank is True
     assert cfg.rerank_top_n == 4
     assert cfg.rerank_candidate_pool == 12

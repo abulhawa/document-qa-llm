@@ -1,18 +1,18 @@
 from typing import Any, List, Optional
 
-from config import logger, QA_GROUNDING_ENABLED, QA_GROUNDING_THRESHOLD
+from config import QA_GROUNDING_ENABLED, QA_GROUNDING_THRESHOLD, logger
 from core.query_rewriter import has_strong_query_anchors
-from core.retrieval.types import RetrievalConfig
+from core.retrieval.types import QueryPlan, RetrievalConfig
 from tracing import (
-    start_span,
-    record_span_error,
-    STATUS_OK,
-    RETRIEVER,
-    LLM,
-    INPUT_VALUE,
-    OUTPUT_VALUE,
     CHAIN,
+    INPUT_VALUE,
+    LLM,
+    OUTPUT_VALUE,
+    RETRIEVER,
+    STATUS_OK,
     TOOL,
+    record_span_error,
+    start_span,
 )
 
 from qa_pipeline.grounding import evaluate_grounding
@@ -23,7 +23,7 @@ from qa_pipeline.handoff import (
 from qa_pipeline.llm_client import generate_answer
 from qa_pipeline.prompt_builder import build_prompt
 from qa_pipeline.retrieve import retrieve_context
-from qa_pipeline.rewrite import rewrite_question
+from qa_pipeline.rewrite import plan_question, rewrite_question
 from qa_pipeline.types import AnswerContext, RetrievalResult
 
 
@@ -43,6 +43,21 @@ def _as_span_value(value: Any) -> SpanAttributeValue:
     if isinstance(value, list):
         return [str(item) for item in value]
     return str(value)
+
+
+def _set_clarify_answer(
+    context: AnswerContext,
+    chain_span: Any,
+    clarification: Optional[str],
+) -> bool:
+    clarification_text = str(clarification or "").strip()
+    if not clarification_text:
+        return False
+    context.clarification = clarification_text
+    context.answer = f"**Clarify**:  \n   -  {clarification_text}.  \n\nTry again!"
+    chain_span.set_attribute(OUTPUT_VALUE, context.answer)
+    chain_span.set_status(STATUS_OK)
+    return True
 
 
 def answer_question(
@@ -79,23 +94,47 @@ def answer_question(
         chain_span.set_attribute("require_grounding", require_grounding)
         chain_span.set_attribute("handoff_strategy", handoff_strategy)
 
-        # Step 1: Rewrite query or request clarification
+        # Step 1: Rewrite/plan query or request clarification
+        planning_enabled = bool(retrieval_cfg.enable_query_planning) if retrieval_cfg else False
+        query_plan: QueryPlan | None = None
         try:
             with start_span("Rewrite Query", TOOL) as rewrite_span:
                 rewrite_span.set_attribute(INPUT_VALUE, question)
-                rewrite_result = rewrite_question(
-                    question,
-                    temperature=0.15,
-                    use_cache=use_cache,
-                )
-                context.rewritten_question = rewrite_result.rewritten
-                context.clarification = rewrite_result.clarify
-                rewrite_span.set_attribute(
-                    OUTPUT_VALUE, _as_span_value(rewrite_result.raw)
-                )
+                if planning_enabled:
+                    query_plan = plan_question(
+                        question,
+                        temperature=0.15,
+                        use_cache=use_cache,
+                        enable_hyde=bool(retrieval_cfg.enable_hyde) if retrieval_cfg else False,
+                    )
+                    context.rewritten_question = query_plan.semantic_query
+                    context.clarification = query_plan.clarify
+                    rewrite_span.set_attribute(
+                        OUTPUT_VALUE,
+                        _as_span_value(
+                            {
+                                "raw_query": query_plan.raw_query,
+                                "semantic_query": query_plan.semantic_query,
+                                "bm25_query": query_plan.bm25_query,
+                                "hyde_enabled": bool(query_plan.hyde_passage),
+                                "clarify": query_plan.clarify or "",
+                            }
+                        ),
+                    )
+                else:
+                    rewrite_result = rewrite_question(
+                        question,
+                        temperature=0.15,
+                        use_cache=use_cache,
+                    )
+                    context.rewritten_question = rewrite_result.rewritten
+                    context.clarification = rewrite_result.clarify
+                    rewrite_span.set_attribute(
+                        OUTPUT_VALUE, _as_span_value(rewrite_result.raw)
+                    )
                 rewrite_span.set_status(STATUS_OK)
 
-            if has_strong_query_anchors(question):
+            if not planning_enabled and has_strong_query_anchors(question):
                 if (
                     context.rewritten_question
                     and context.rewritten_question.strip() != question.strip()
@@ -105,19 +144,14 @@ def answer_question(
                     )
                 context.rewritten_question = question
 
-            if context.clarification and has_strong_query_anchors(question):
+            if not planning_enabled and context.clarification and has_strong_query_anchors(question):
                 logger.info(
                     "Rewrite requested clarification but query has strong anchors; continuing with exact query."
                 )
                 context.rewritten_question = question
                 context.clarification = None
 
-            if context.clarification:
-                context.answer = (
-                    f"**Clarify**:  \n   -  {context.clarification}.  \n\nTry again!"
-                )
-                chain_span.set_attribute(OUTPUT_VALUE, context.answer)
-                chain_span.set_status(STATUS_OK)
+            if _set_clarify_answer(context, chain_span, context.clarification):
                 return context
 
             if not context.rewritten_question:
@@ -132,10 +166,25 @@ def answer_question(
         # Step 2: Retrieve context
         try:
             with start_span("Retriever", RETRIEVER) as retrieval_span:
-                retrieval_span.set_attribute(INPUT_VALUE, context.rewritten_question)
-                retrieval = retrieve_context(
-                    context.rewritten_question, top_k, retrieval_cfg=retrieval_cfg
+                retrieval_query = (
+                    query_plan.raw_query
+                    if planning_enabled and query_plan is not None
+                    else context.rewritten_question
                 )
+                retrieval_span.set_attribute(INPUT_VALUE, retrieval_query)
+                if planning_enabled and query_plan is not None:
+                    retrieval = retrieve_context(
+                        retrieval_query,
+                        top_k,
+                        retrieval_cfg=retrieval_cfg,
+                        query_plan=query_plan,
+                    )
+                else:
+                    retrieval = retrieve_context(
+                        retrieval_query,
+                        top_k,
+                        retrieval_cfg=retrieval_cfg,
+                    )
                 context.retrieval = retrieval
                 retrieval_span.set_attribute("top_k", top_k)
                 retrieval_span.set_attribute("results_found", len(retrieval.documents))
@@ -147,6 +196,13 @@ def answer_question(
             logger.error("❌ Retrieval failed: %s", exc)
             record_span_error(chain_span, exc)
             context.answer = "❌ Retrieval failed."
+            return context
+
+        if context.retrieval and _set_clarify_answer(
+            context,
+            chain_span,
+            context.retrieval.clarify,
+        ):
             return context
 
         if not context.retrieval or not context.retrieval.documents:
@@ -173,6 +229,7 @@ def answer_question(
             context.retrieval = RetrievalResult(
                 query=context.retrieval.query,
                 documents=packed_documents,
+                clarify=context.retrieval.clarify,
             )
         chain_span.set_attribute("handoff_retrieved_docs", len(retrieved_documents))
         chain_span.set_attribute(

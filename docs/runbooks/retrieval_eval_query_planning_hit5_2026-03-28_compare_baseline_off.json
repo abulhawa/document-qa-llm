@@ -1,0 +1,1111 @@
+{
+  "generated_at_utc": "2026-03-28T09:44:40.829151+00:00",
+  "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+  "config": {
+    "top_k": 5,
+    "top_k_each": 20,
+    "enable_variants": true,
+    "enable_query_planning": false,
+    "enable_hyde": false,
+    "enable_mmr": true,
+    "enable_rerank": false,
+    "rerank_top_n": 5,
+    "rerank_candidate_pool": 0,
+    "anchored_exact_only": true,
+    "anchored_lexical_bias_enabled": true,
+    "anchored_fusion_weight_vector": 0.4,
+    "anchored_fusion_weight_bm25": 0.6,
+    "sibling_expansion_enabled": false
+  },
+  "summary": {
+    "positive_total": 20,
+    "positive_hit_at_1": 9,
+    "positive_hit_at_3": 16,
+    "positive_hit_at_1_rate": 0.45,
+    "positive_hit_at_3_rate": 0.8,
+    "positive_support_hit_at_1": 10,
+    "positive_support_hit_at_3": 16,
+    "positive_support_hit_at_1_rate": 0.5,
+    "positive_support_hit_at_3_rate": 0.8,
+    "positive_final_context_support_hits": 16,
+    "positive_final_context_support_hit_rate": 0.8,
+    "control_total": 3,
+    "control_with_results": 0,
+    "control_clarify_count": 0,
+    "target_profile_when_where_total": 1,
+    "target_profile_when_where_support_hits": 1,
+    "target_profile_when_where_support_hit_rate": 1.0,
+    "target_profile_when_where_query_ids": [
+      "Q01"
+    ],
+    "queries_with_errors": 0,
+    "query_error_ids": [],
+    "queries_exceeding_soft_timeout": 0,
+    "timeout_query_ids": [],
+    "timing": {
+      "stage_totals_ms": {
+        "semantic_retriever": 4381.098,
+        "keyword_retriever": 1717.621,
+        "retrieve_total": 14462.635,
+        "harness_overhead": 0.143
+      },
+      "stage_avg_ms": {
+        "semantic_retriever": 190.483,
+        "keyword_retriever": 74.679,
+        "retrieve_total": 628.81,
+        "harness_overhead": 0.006
+      },
+      "stage_p95_ms": {
+        "semantic_retriever": 197.741,
+        "keyword_retriever": 118.92,
+        "retrieve_total": 1030.772,
+        "harness_overhead": 0.011
+      },
+      "stage_group_totals_ms": {
+        "live_index_queries": 6098.719,
+        "rerank_calls": 0.0,
+        "context_expansion": 0.0,
+        "harness_overhead": 0.143
+      },
+      "dominant_stage_group": "live_index_queries"
+    }
+  },
+  "rows": [
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q01",
+      "mode": "positive",
+      "query": "Where did Ali do his PhD studies?",
+      "expected_checksums": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c"
+      ],
+      "support_expected_checksums": [
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+        "e27cc8d46d7f2de11563fdb7d585da3a86e03a562c50136b9f8b4d77a9715c01",
+        "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+        "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1"
+      ],
+      "target_profile_when_where": true,
+      "top1_checksum": "3675100f548329c0d7394ac2e08749a12fc0787dbc3f707f58d83253d4df62e1",
+      "top2_checksum": "8b21988f6818622e62ade72dab8c98c9a8d69c4fc09581744d884fe98007f423",
+      "top3_checksum": "5e81d6af3b670f297a1dfa24a1b0568234b2f90bfd03dad5b6d50273f3fb785c",
+      "top1_score": 1.1747541412959115,
+      "top2_score": 0.6644079357081416,
+      "top3_score": 0.4380145209170921,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 3,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 2342.427,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 1866.121,
+        "keyword_retriever": 192.476,
+        "retrieve_total": 2342.414,
+        "harness_overhead": 0.013
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q02",
+      "mode": "positive",
+      "query": "In Ali's latest CV, what is his most recent job title?",
+      "expected_checksums": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ],
+      "support_expected_checksums": [
+        "fe8a24f07faa71a654c23c23e02c4c23e5ca892ee50a6145104f7502652e1c3c",
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+      "top2_checksum": "19967a785c0a9b5fb8d9b3458d9679d35f1e8b0b8e47efe979ec9c71cf0319db",
+      "top3_checksum": "1a8bbaa991fa80f8999c3d11a19115ed2d0bf5072971db3309f0ec3340426f31",
+      "top1_score": 0.6000008827758498,
+      "top2_score": 0.5770518258252963,
+      "top3_score": 0.5685691150620413,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": 4,
+      "support_rank": 4,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 532.668,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 147.062,
+        "keyword_retriever": 61.608,
+        "retrieve_total": 532.659,
+        "harness_overhead": 0.008
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q03",
+      "mode": "positive",
+      "query": "From Ali's latest CV, list the main technical skills.",
+      "expected_checksums": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ],
+      "support_expected_checksums": [
+        "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+        "84cac60ec6fd710699d59599f6433bed603eddf3b7c24b9f0d3b803501bf0a89",
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "4c1846247ff8a2a0e18bd9389c974c254a79139d117c06510866c95939a09b2c",
+      "top2_checksum": "f714915d06c2b39349d710b8bb2886d084b86dbb60f6493fba930162a6d32314",
+      "top3_checksum": "6b9c70ddf18328a8e807c27ae2b7bd6ed3370a0d0e4ea9c702475b7d942866b7",
+      "top1_score": 0.6000000000341573,
+      "top2_score": 0.5516347463736067,
+      "top3_score": 0.5028979754571216,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 2,
+      "support_rank": 2,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 619.055,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 76.376,
+        "keyword_retriever": 92.339,
+        "retrieve_total": 619.05,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q04",
+      "mode": "positive",
+      "query": "In Ali's most recent CV contact section, which city is listed?",
+      "expected_checksums": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ],
+      "support_expected_checksums": [
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+        "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+      "top2_checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+      "top3_checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+      "top1_score": 0.600000000092309,
+      "top2_score": 0.5993851160209904,
+      "top3_score": 0.5729106493516563,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": null,
+      "support_rank": null,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 499.399,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 80.447,
+        "keyword_retriever": 88.488,
+        "retrieve_total": 499.389,
+        "harness_overhead": 0.011
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q05",
+      "mode": "positive",
+      "query": "From Ali's cover letters, what role is he applying for?",
+      "expected_checksums": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ],
+      "support_expected_checksums": [
+        "ca1cb2aa1a21c69132e6aade0fd6318554abc741503c9b67353fb9dfe5a4c4f4",
+        "0061407cd13e59fd7ad88a66d80bc201e1c433fd669d76c593f4387f2353524f",
+        "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "3c50b61769451f93d2faf86953f8cb517a2008e5977bc7f7368a22877e5d0e82",
+      "top2_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+      "top3_checksum": "87f422caa7f2eb24102da67a67dafd0f18d9d20f3b04597a83850569c8bd12c4",
+      "top1_score": 0.6000000433779902,
+      "top2_score": 0.5666557085723849,
+      "top3_score": 0.5706051970098057,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 3,
+      "support_rank": 3,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 512.836,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 78.994,
+        "keyword_retriever": 94.468,
+        "retrieve_total": 512.829,
+        "harness_overhead": 0.007
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q06",
+      "mode": "positive",
+      "query": "In the power systems project report about the Dubai grid, what is the main objective?",
+      "expected_checksums": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ],
+      "support_expected_checksums": [
+        "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "477859642ef7cc60671eaed0d1453937003c4e9f7ccc933f94bac02302c51103"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "ecb5287a4d597a2f7c930ad60603b9502d8a72e1ac975d8334169cb01441c75d",
+      "top2_checksum": "5b94e91d9fd6afd2c4a5076b79f3a725df52f26119fb30f33a30f6b54c442a13",
+      "top3_checksum": "a6fd12c4625fdf93255e82260612c22e3bbf7bdc9a0d9cd01a65c92fead294ad",
+      "top1_score": 0.6900576406159512,
+      "top2_score": 0.6900566406159512,
+      "top3_score": 0.43304558611670396,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 563.586,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 78.552,
+        "keyword_retriever": 90.317,
+        "retrieve_total": 563.582,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q07",
+      "mode": "positive",
+      "query": "In the Electric Circuits (1) course materials, what course code is shown?",
+      "expected_checksums": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ],
+      "support_expected_checksums": [
+        "24ebea3d279594c11e4781ff80565a09403ba744490458d4c21dcb4066c36cc0",
+        "81291a849e71d1f150b569bf11101973e971014e93724ef61a9353b983590a62",
+        "44b8015ba5249343b4821c616267c5c68de7585d14f2455fc390533d877526af"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "885ea6250e3a8952b2efe3c8cc9f35916974fc4fa255716b4256205a171c9e18",
+      "top2_checksum": "b14a8cf088dd5448e47eb4ec5029a554eb675acc4eb7ee3d66755143acc72487",
+      "top3_checksum": "27541ef23720a4c154622322d8d5d02cedfce5cd266a8c462efdade2c7b54136",
+      "top1_score": 0.9356709688351148,
+      "top2_score": 0.6399204774233298,
+      "top3_score": 0.593154465017633,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": 5,
+      "support_rank": 5,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 513.217,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 119.691,
+        "keyword_retriever": 34.089,
+        "retrieve_total": 513.211,
+        "harness_overhead": 0.006
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q08",
+      "mode": "positive",
+      "query": "In the modern ship steering control project report, who is listed as the supervisor?",
+      "expected_checksums": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ],
+      "support_expected_checksums": [
+        "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+        "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+        "523081e0b381e4cb22309ab28ee1869647ba99d85d971d2d047c771e2c7774ce"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "32fdc97bb42fff4ac45c9a2bb04e9976051109e586fb64e63a8a98f46be4e62b",
+      "top2_checksum": "893c740f9b16b337c8c6549d73ee0238db3417705e929925e58f15bb8bda71fb",
+      "top3_checksum": "27f685d5a7e6ab916f8d37a245c32fe87da94b4c214f5720428da23ba9483d25",
+      "top1_score": 1.0000000000015552,
+      "top2_score": 0.6874713110674711,
+      "top3_score": 0.6644682669603332,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 542.27,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 119.315,
+        "keyword_retriever": 66.485,
+        "retrieve_total": 542.264,
+        "harness_overhead": 0.006
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q09",
+      "mode": "positive",
+      "query": "In the Norton theorem lecture notes for electric circuits, what topic is discussed?",
+      "expected_checksums": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ],
+      "support_expected_checksums": [
+        "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+        "fe54640d9d75cb8a6cd77c932afece309198c0501a964d8fa5129579e0bc0180",
+        "ba04cc79724864dc40a70be2d2a09253411db4654116dc48685a8fbf17547325"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "1defa0b86d6d65f721dfe2fc6c3461a8525a64d3f851404e7b78a94b56c1abb1",
+      "top2_checksum": "76e2ed9567c310b91b6749361f342ea9d8b3293b0c38d164f7b45153ecc229fe",
+      "top3_checksum": "f9c0d667b8eee851e9d901042bf68be6de2eef5fe738a8ae0a62a42e5ed2fca3",
+      "top1_score": 0.8846794084811691,
+      "top2_score": 0.8580534986262376,
+      "top3_score": 0.8335302576863254,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 2,
+      "support_rank": 2,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 502.204,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 102.275,
+        "keyword_retriever": 64.18,
+        "retrieve_total": 502.197,
+        "harness_overhead": 0.007
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q10",
+      "mode": "positive",
+      "query": "In the PEM fuel-cell sliding mode control research paper, what control approach is used?",
+      "expected_checksums": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ],
+      "support_expected_checksums": [
+        "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+        "ac4570d14562ab02bc7051ffc5ef756d7deb346553b631666df98bb935f68609",
+        "95b9e7791e64e24578fae7aa5cd387cc75d517cd94d295bb6751c8d4895ae2b7"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "2403a2e3c5841d6d4b0dcdc91fd587d664a9a1bb91560bef42c063e77bf8a3d1",
+      "top2_checksum": "16e80d48876e0688cdae30760ad6d5447c1e04637ba5b855e4cc2851a130d615",
+      "top3_checksum": "ffe94b3fbb1e26d55d6d2667eda2e71d0e79371c1b69eed7ca1df0e63d55ee65",
+      "top1_score": 0.933511576294939,
+      "top2_score": 0.7742909010682498,
+      "top3_score": 0.37523464276426666,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 422.166,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 118.024,
+        "keyword_retriever": 66.978,
+        "retrieve_total": 422.161,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q11",
+      "mode": "positive",
+      "query": "In the paper on solar radiation over tilted surfaces, what quantity is being estimated?",
+      "expected_checksums": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ],
+      "support_expected_checksums": [
+        "471e94ffad78115b90a1e48b5c316c929ac0ece50dee4181f717379ef1aac425",
+        "c0ec9e222491a003183b94ab9bf34f45762228fbe3f560674136619af96d6f70",
+        "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "50cd0ec91b83edf771551f98545be2b7535b7ba7aff13ec49711f0707705f3c1",
+      "top2_checksum": "4f63ce92e945678e440bb376a169c745b243948587aa8404e0c08a285c9a41c5",
+      "top3_checksum": "9ec11b977b57aefadac77417a879826f09fee02d3ae46452ac639ff00aa72d7e",
+      "top1_score": 0.8294506218882806,
+      "top2_score": 0.8144745882633346,
+      "top3_score": 0.7988109292984876,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 2,
+      "support_rank": 2,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 472.296,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 158.533,
+        "keyword_retriever": 63.594,
+        "retrieve_total": 472.289,
+        "harness_overhead": 0.006
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q12",
+      "mode": "positive",
+      "query": "Which data science training document explicitly mentions PCA for feature engineering?",
+      "expected_checksums": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ],
+      "support_expected_checksums": [
+        "64d5d956a49a2b95f405ca69cb522f2ea1e62932b5a06de228e0532b10964db1",
+        "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+        "770f58f55bbc703965b2a141f2fc68d13414c86dd642f2b1c27b53b17bd62844"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "1203ba7db91b03f1e32177616dce7f519983a82c6543f2ea8266b2e7c322fed4",
+      "top2_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top3_checksum": "b319ccad9fdb41fb6cfbf84d0a8588cfb000d10e57b57ee2a2665a2b0dc4aad2",
+      "top1_score": 0.9914292053914062,
+      "top2_score": 0.9691547049839573,
+      "top3_score": 0.9593989327103426,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": null,
+      "support_rank": null,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 509.753,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 117.378,
+        "keyword_retriever": 66.12,
+        "retrieve_total": 509.746,
+        "harness_overhead": 0.008
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q13",
+      "mode": "positive",
+      "query": "In the bilingual German-Arabic letter to the employment office, which office is addressed?",
+      "expected_checksums": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ],
+      "support_expected_checksums": [
+        "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+        "ee8e435298158542a7dd98a12cbf0b22d5c5fd259f0fddc63606384e4ec0f3f7",
+        "0b6250454936453162ba6eb80eab2745bcba7aa9839b76037883856c8958fd86"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "78cb3afa683ca075556e7e905fe938fb026306ab2cf0561290deade8c9707160",
+      "top2_checksum": "b753e21b1d3de91dfb8ecf17f46fb489c14db0b626f004fb1343a4ae3464b8d7",
+      "top3_checksum": "467044b3bb9939abaa260944f02bd0d5e7fc4afbdd1d63f8024a523d8fb3f220",
+      "top1_score": 0.5966521370578748,
+      "top2_score": 0.5106054595457765,
+      "top3_score": 0.5097065754335104,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 462.73,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 109.762,
+        "keyword_retriever": 63.688,
+        "retrieve_total": 462.725,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q14",
+      "mode": "positive",
+      "query": "Was ist die Kundennummer im Kooperationsplan-Dokument des Jobcenters?",
+      "expected_checksums": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ],
+      "support_expected_checksums": [
+        "6e3c57f84abe4bf187e1b5d5cd3fac0465466cc6f9b5fe37f591e662dc5ce782",
+        "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+        "c2bf4b9850d4fdeccea56149af4a6c0a504c40e231c13937835e7902e9382bee"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "bc8c26347f40468f211751fc69ac27a4e2f99b82a9fcf938a24b3d8f55be1a5a",
+      "top2_checksum": "79aadd0d369543f384254c14d9992d9277bc8a6238569242a4c157f0062638e1",
+      "top3_checksum": "d423c244fb185e314597e3f6d73e2af1bc66360815c85050773b47b45252e4ac",
+      "top1_score": 0.6156439141207792,
+      "top2_score": 0.6099215515544134,
+      "top3_score": 0.5940489370122941,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 504.95,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 117.065,
+        "keyword_retriever": 69.864,
+        "retrieve_total": 504.945,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q15",
+      "mode": "positive",
+      "query": "Im Jobcenter-Formular Anlage KI, wofur ist das Formular gedacht?",
+      "expected_checksums": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ],
+      "support_expected_checksums": [
+        "1d86348bcdf2a14e18ec997f475bcf1bae22575533a9176d4c24e19857993eec",
+        "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+        "0ec90860fb8f480a71e750f8af9fb5728f83a97b988096964035212ba224136e"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "9fe97be359f6d2575a6934805ec0b67b823753af4cdf5b6b9d0043db136c62db",
+      "top2_checksum": "076850a7a12b56c91e2c84c2fa6384e6dd9564f6749171d2aaf9f5ce1a5cbeed",
+      "top3_checksum": "2522f3918cea6491e31521b9de34ee149312e5ab745e83f1e06bec2a79a60419",
+      "top1_score": 1.0033280328243503,
+      "top2_score": 0.8855331080550228,
+      "top3_score": 0.8646796923294604,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 2,
+      "support_rank": 2,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 424.519,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 129.918,
+        "keyword_retriever": 65.917,
+        "retrieve_total": 424.514,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q16",
+      "mode": "positive",
+      "query": "In the 2025 insurance premium-adjustment letter, which insurer issued it?",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ],
+      "support_expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "82a2a8d3fd74efec49cc801851aba86bf5037e1166d04480db810dcfa32502d7",
+        "ac7ad1193005404ae7ff8247bf61c6d8cb8f3774c9cef8196e5dcb5af6aa060c"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+      "top2_checksum": "67e5aa15aa1608baec2326bc7c6824bcba35453326a2c2ca2d04f16c94494f83",
+      "top3_checksum": "b5d8a5d13998ce420c885e5fdb56d2fb48536a1ad8da90290c504a04d1207a01",
+      "top1_score": 0.6000000204744407,
+      "top2_score": 0.5079162530320908,
+      "top3_score": 0.48671355638482605,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 580.286,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 105.485,
+        "keyword_retriever": 64.297,
+        "retrieve_total": 580.281,
+        "harness_overhead": 0.005
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q17",
+      "mode": "positive",
+      "query": "In insurer correspondence letters, what customer service phone number is listed?",
+      "expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ],
+      "support_expected_checksums": [
+        "933d94a4d456ee459fca078d72db147cef52965e9487ddacf7233f74e0e387d1",
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+      "top2_checksum": "871e29c2677b868cdc4ff43e6a0fccddc1a33dc69646cebce7ca60b071b6b363",
+      "top3_checksum": "b84f7bea3b4de49a3c8cad74f2ed695d10d42034578ce235d6fa72c17d130ee8",
+      "top1_score": 0.6000000000492749,
+      "top2_score": 0.5826809305079252,
+      "top3_score": 0.5608392208454993,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 516.361,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 109.406,
+        "keyword_retriever": 59.717,
+        "retrieve_total": 516.355,
+        "harness_overhead": 0.006
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q18",
+      "mode": "positive",
+      "query": "In the annual tax statement document for 2023, what date range is covered?",
+      "expected_checksums": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ],
+      "support_expected_checksums": [
+        "22e52303812451c9891bb13f1e5fc865f6d8559864d2a028f1ea2e1c784f8ccf",
+        "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+        "90fa6af3ee8298a6c3abef6df0a9b0f092496cb7d6b1c3e8b55c5c8f5b552eb3"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "20c6d06eee6a0d747c26275ba55afe1c44ede152c499daed04cbe492bef5a264",
+      "top2_checksum": "18eea58db0a50bb91f2f812fab74b9835e5306025be3c1771894c716b5b4c5a2",
+      "top3_checksum": "96d110116f7551b1eaab8ac196924de4a13d77c7cfb1535cf17313a8ea68aff4",
+      "top1_score": 0.6586798222350237,
+      "top2_score": 0.47487213164747943,
+      "top3_score": 0.4412882392172451,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 652.672,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 148.832,
+        "keyword_retriever": 61.874,
+        "retrieve_total": 652.666,
+        "harness_overhead": 0.006
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q19",
+      "mode": "positive",
+      "query": "In the tax-related invoice PDF, who is the issuing company?",
+      "expected_checksums": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ],
+      "support_expected_checksums": [
+        "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+        "ecbfacaf842c5f0f7b2ee9914fc9201d1e24fe835c0a7bbd2830afd16b1fa7eb",
+        "45baeb56da8137cc402a5cc1b22e533faf277e78a7177ef5f3fd9789fffc737f"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "45f108c0caa086ebb03eecec4806887c0bbce14ea3722a13a38751289f4c4e8a",
+      "top2_checksum": "9fcd552312946062a0bf1fb5e0cc67493172c2c964f69425c5861bf641862e1c",
+      "top3_checksum": "7f7b56185099074ddc44a89abf789bbdd332a05d46104cf16d8902811e7a1517",
+      "top1_score": 1.034495991321328,
+      "top2_score": 0.40434632005485605,
+      "top3_score": 0.3935153540724284,
+      "hit_at_1": false,
+      "hit_at_3": true,
+      "support_hit_at_1": false,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 3,
+      "support_rank": 3,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 595.333,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 87.348,
+        "keyword_retriever": 56.708,
+        "retrieve_total": 595.326,
+        "harness_overhead": 0.007
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q20",
+      "mode": "positive",
+      "query": "In the remittance receipt from 2020, what payment amount is shown?",
+      "expected_checksums": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ],
+      "support_expected_checksums": [
+        "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+        "97c9a20c9a03dc27ffab5944725ad7e13cf4332c089f72da90f5a4424177602d",
+        "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281"
+      ],
+      "target_profile_when_where": false,
+      "top1_checksum": "cc931d5de88cbc70536ecd96f9e5e4819ae8479a15ec03aa40c8179645f5620b",
+      "top2_checksum": "82ea97d5b2756e343921698a35c057d0ab3a9d0925d0079beb72614d76dec281",
+      "top3_checksum": "344053e565ae19b83c8c54af4f21560859a052eef3248bd484f925b081004b60",
+      "top1_score": 1.0344938267795152,
+      "top2_score": 0.5718251626557636,
+      "top3_score": 0.5127698732663479,
+      "hit_at_1": true,
+      "hit_at_3": true,
+      "support_hit_at_1": true,
+      "support_hit_at_3": true,
+      "final_context_support_hit": true,
+      "strict_rank": 1,
+      "support_rank": 1,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 538.948,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 90.786,
+        "keyword_retriever": 59.039,
+        "retrieve_total": 538.941,
+        "harness_overhead": 0.007
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q21",
+      "mode": "control",
+      "query": "What is Bitcoin price today?",
+      "expected_checksums": [],
+      "support_expected_checksums": [],
+      "target_profile_when_where": false,
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": null,
+      "top2_score": null,
+      "top3_score": null,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": null,
+      "support_rank": null,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 1072.787,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 202.098,
+        "keyword_retriever": 121.637,
+        "retrieve_total": 1072.784,
+        "harness_overhead": 0.003
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 2,
+        "keyword_retriever": 2
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q22",
+      "mode": "control",
+      "query": "Who won yesterday's Bundesliga match?",
+      "expected_checksums": [],
+      "support_expected_checksums": [],
+      "target_profile_when_where": false,
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": null,
+      "top2_score": null,
+      "top3_score": null,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": null,
+      "support_rank": null,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 515.248,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 103.464,
+        "keyword_retriever": 56.642,
+        "retrieve_total": 515.244,
+        "harness_overhead": 0.004
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    },
+    {
+      "run_date": "2026-03-28",
+      "query_id": "Q23",
+      "mode": "control",
+      "query": "What is the weather in Berlin tomorrow?",
+      "expected_checksums": [],
+      "support_expected_checksums": [],
+      "target_profile_when_where": false,
+      "top1_checksum": "",
+      "top2_checksum": "",
+      "top3_checksum": "",
+      "top1_score": null,
+      "top2_score": null,
+      "top3_score": null,
+      "hit_at_1": false,
+      "hit_at_3": false,
+      "support_hit_at_1": false,
+      "support_hit_at_3": false,
+      "final_context_support_hit": false,
+      "strict_rank": null,
+      "support_rank": null,
+      "clarify": null,
+      "error": null,
+      "query_duration_ms": 567.067,
+      "soft_timeout_seconds": 30.0,
+      "timeout_exceeded": false,
+      "stage_timings_ms": {
+        "semantic_retriever": 114.166,
+        "keyword_retriever": 57.096,
+        "retrieve_total": 567.063,
+        "harness_overhead": 0.003
+      },
+      "stage_call_counts": {
+        "semantic_retriever": 1,
+        "keyword_retriever": 1
+      },
+      "stage_error_counts": {}
+    }
+  ],
+  "run_duration_ms": 14464.064
+}

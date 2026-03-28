@@ -1,0 +1,123 @@
+{
+  "generated_at_utc": "2026-03-28T09:45:28.328229+00:00",
+  "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+  "support_labels": "tests\\fixtures\\retrieval_eval_answer_support_labels.json",
+  "mode": "query_planning_compare",
+  "sibling_expansion_modes": [
+    "off"
+  ],
+  "comparison": {
+    "off_baseline_vs_planning": {
+      "full_gold_set": {
+        "strict_hit_at_1": {
+          "off": 9,
+          "on": 9,
+          "delta": 0
+        },
+        "strict_hit_at_3": {
+          "off": 16,
+          "on": 16,
+          "delta": 0
+        },
+        "final_context_support_hits": {
+          "off": 16,
+          "on": 16,
+          "delta": 0
+        }
+      },
+      "target_profile_when_where": {
+        "query_ids": [
+          "Q01"
+        ],
+        "support_hits": {
+          "off": 1,
+          "on": 1,
+          "delta": 0
+        },
+        "qa_answered_without_error": {
+          "off": 0,
+          "on": 0,
+          "delta": 0
+        }
+      },
+      "query_level_deltas": {
+        "improved_final_context_support": [],
+        "regressed_final_context_support": [],
+        "improved_strict_hit_at_3": [],
+        "regressed_strict_hit_at_3": []
+      },
+      "timing_dominant_stage_group": {
+        "off": "live_index_queries",
+        "on": "live_index_queries"
+      },
+      "run_duration_ms": {
+        "off": 14464.064,
+        "on": 12941.733,
+        "delta": -1522.3310000000001
+      }
+    },
+    "off_planning_vs_planning_hyde": {
+      "full_gold_set": {
+        "strict_hit_at_1": {
+          "off": 9,
+          "on": 9,
+          "delta": 0
+        },
+        "strict_hit_at_3": {
+          "off": 16,
+          "on": 16,
+          "delta": 0
+        },
+        "final_context_support_hits": {
+          "off": 16,
+          "on": 16,
+          "delta": 0
+        }
+      },
+      "target_profile_when_where": {
+        "query_ids": [
+          "Q01"
+        ],
+        "support_hits": {
+          "off": 1,
+          "on": 1,
+          "delta": 0
+        },
+        "qa_answered_without_error": {
+          "off": 0,
+          "on": 0,
+          "delta": 0
+        }
+      },
+      "query_level_deltas": {
+        "improved_final_context_support": [],
+        "regressed_final_context_support": [],
+        "improved_strict_hit_at_3": [],
+        "regressed_strict_hit_at_3": []
+      },
+      "timing_dominant_stage_group": {
+        "off": "live_index_queries",
+        "on": "live_index_queries"
+      },
+      "run_duration_ms": {
+        "off": 12941.733,
+        "on": 34540.997,
+        "delta": 21599.264000000003
+      }
+    }
+  },
+  "artifacts": {
+    "baseline_off": {
+      "json": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_baseline_off.json",
+      "csv": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_baseline_off.csv"
+    },
+    "planning_off": {
+      "json": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_planning_off.json",
+      "csv": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_planning_off.csv"
+    },
+    "planning_hyde_off": {
+      "json": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_planning_hyde_off.json",
+      "csv": "docs\\runbooks\\retrieval_eval_query_planning_hit5_2026-03-28_compare_planning_hyde_off.csv"
+    }
+  }
+}
