@@ -377,6 +377,7 @@ def test_retrieve_context_passes_identity_metadata(monkeypatch):
                 "doc_type": "cv",
                 "person_name": "Jane Doe",
                 "authority_rank": 0.85,
+                "checksum": "chk-123",
             }
         ],
     )
@@ -398,6 +399,7 @@ def test_retrieve_context_passes_identity_metadata(monkeypatch):
     assert doc.doc_type == "cv"
     assert doc.person_name == "Jane Doe"
     assert doc.authority_rank == pytest.approx(0.85)
+    assert doc.checksum == "chk-123"
 
 
 def test_retrieve_context_sources_prefer_pdf_over_list_artifacts(monkeypatch):
@@ -574,6 +576,7 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
 
     def mock_answer_question(**kwargs):
         captured["retrieval_cfg"] = kwargs.get("retrieval_cfg")
+        captured["top_k"] = kwargs.get("top_k")
         return types.SimpleNamespace(
             answer="ok",
             retrieval=None,
@@ -592,6 +595,7 @@ def test_qa_usecase_applies_rerank_runtime_config(monkeypatch):
 
     assert response.answer == "ok"
     cfg = captured["retrieval_cfg"]
+    assert captured["top_k"] == 5
     assert cfg.enable_rerank is True
     assert cfg.rerank_top_n == 4
     assert cfg.rerank_candidate_pool == 12

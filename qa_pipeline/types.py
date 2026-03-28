@@ -20,6 +20,7 @@ class RetrievedDocument:
     doc_type: Optional[str] = None
     person_name: Optional[str] = None
     authority_rank: Optional[float] = None
+    checksum: Optional[str] = None
 
     @property
     def source_label(self) -> str:

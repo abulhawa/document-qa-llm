@@ -1,0 +1,107 @@
+{
+  "generated_at_utc": "2026-03-28T00:30:52.127781Z",
+  "query_id": "Q04",
+  "query": "In Ali's most recent CV contact section, which city is listed?",
+  "expected_checksums": [
+    "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+    "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2",
+    "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482"
+  ],
+  "expected_checksum_lookup": {
+    "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3": {
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
+      "doc_type": "research_paper",
+      "chunk_index": 0,
+      "text_preview": "Learning Knowledge Graph Embeddings for Natural Language Processing Muhao Chen Department of Computer Science University of California, Los Angeles Winter 2017"
+    },
+    "80791207f75f8bb75bc4a6ad2f404cf1015069069c9bf940a4c91968948e97c2": {
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Final Report/SIT Edits to report (Jan 22).docx",
+      "doc_type": "research_paper",
+      "chunk_index": 0,
+      "text_preview": "EU/GIZ's Project on CVE in Online Arabic Content  Overview  Social Media and other forms of online content have become important sources for opinion and sentiment (sad, happy, angry and etc.) extraction. During the Arab "
+    },
+    "a5bbb73ae35c419354519ae5b77dfefa9ba9a9467ba3a60e7a6701ff0f10c482": {
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/EU/Final Report/SIT Edits to report (Jan 21).docx",
+      "doc_type": "research_paper",
+      "chunk_index": 0,
+      "text_preview": "EU/GIZ's Project on CVE in Online Arabic Content  Overview  Social Media and other forms of online content have become important sources for opinion and sentiment (sad, happy, angry and etc.) extraction. During the Arab "
+    }
+  },
+  "final_retrieval_top7_rerank_off": [
+    {
+      "rank": 1,
+      "checksum": "98e669968eafdc31436a42c48aa85ab7831240db241693a9aa21b62e4ff97924",
+      "retrieval_score": 0.600000000092309,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Academic & Education/Data Science/The elements of statistical learning  Data mining, inference, and prediction.pdf",
+      "chunk_index": 2091,
+      "text_preview": "GAM model. Figure 14.19 (left panel) shows the mean binomial deviance for the sequence of GBM models, both for 10-fold CV and test data. There is a mod est improvement over the performance of a GAM model, \ft using smooth"
+    },
+    {
+      "rank": 2,
+      "checksum": "45258340b45b030433c577f185c32ec8709043d55f42d2e6896f77856bc41df4",
+      "retrieval_score": 0.5993851160209904,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/SWAMBIT/References/O-Reilly_et_al-2014-Cognitive_Science.pdf",
+      "chunk_index": 38,
+      "text_preview": "transient—the model is essentially agnostic about this issue. Finally, Winocur et al. (2010) emphasize that there is a dynamic interplay between hippocampal and neocortical memory systems, such that one or the other may "
+    },
+    {
+      "rank": 3,
+      "checksum": "afbfdddfd10b0f1eb2ae9b4d60697bbe177062323805e446e91c5f1436bfe24f",
+      "retrieval_score": 0.5729106493516563,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/AUM/Courses/103350 Signals and Systems/Signals, Systems, and Transforms, 4th Edition.pdf",
+      "chunk_index": 1764,
+      "text_preview": "Sec. 12.6 Applications of the Discrete Fourier Transform 635 Hence, and which is in agreement with the previous results found in Examples 12.9 and 12.12 and listed in Table 12.3. ■ Summary In this section, we have presen"
+    },
+    {
+      "rank": 4,
+      "checksum": "bbc78d0c4f121f5b5c1a025aeb0b5cc63ddc85cbf3a8e612ecfd9d5c9c93b8f5",
+      "retrieval_score": 0.5689018361455417,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/6.pdf",
+      "chunk_index": 7,
+      "text_preview": "In this paper, we try to solve the aforementioned problem by designing new richer linguistic analysis tools which can extract language feature in social media context and introducing a mechanism to automatically extract "
+    },
+    {
+      "rank": 5,
+      "checksum": "4c629054f17e67d886e6bfb19de3187c84c651b2836524b024efd9e3e284ff9b",
+      "retrieval_score": 0.5191967734425758,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/Final Online SIT report (Jan 31)-2.pdf",
+      "chunk_index": 117,
+      "text_preview": "3.8. VE Typologies and User Segmentations To better understand the content of messages, this nest  section breaks down each category into various elements, such as geographical distribution, gender and age group of  its "
+    },
+    {
+      "rank": 6,
+      "checksum": "a81b5c8dc3ff3454a6712a02694ae003be0daf27d0fb76c0909292e449aba2f3",
+      "retrieval_score": 0.5217946637266099,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/knowledge_graph paper.pdf",
+      "chunk_index": 122,
+      "text_preview": "Table 4.9: Data sets for sentiment analysis. For each data set, whether to use the specified test set size, or 10-fold cross validation (CV) is as summarized in [Kim14]. Data set #classes average length #sentences #vocab"
+    },
+    {
+      "rank": 7,
+      "checksum": "2192ae392a6de8ad519d7f92c95c666d58091cb6467744505ec84683a22376b6",
+      "retrieval_score": 0.5172185968234823,
+      "doc_type": "research_paper",
+      "path": "C:/Users/ali_a/My Drive/3. Career & Development/Past Employment/SIT/OCEAN/1204.4809.pdf",
+      "chunk_index": 18,
+      "text_preview": "stands for emotion. Table 1: Features Design FEATURE GROUP COUNT Basic Info. 5 SNS Usage 28 T-Related Usage 3 E-Related Usage 2 T&E-Related Usage 3 Features of basic information and SNS usage experiences have already bee"
+    }
+  ],
+  "semantic_top120_first_cv_or_resume": null,
+  "keyword_top120_first_cv_or_resume": {
+    "rank": 45,
+    "path": "C:/Users/ali_a/My Drive/3. Career & Development/Career Docs/CVs/Older/2016/Resume - Ali 2016_11.pdf",
+    "score": 5.837677,
+    "doc_type": "cv",
+    "checksum": "6ce8ea0a7f5a718d6c79e1b631a28f5683d3703e2e2f15b075d86be7ceda85c9"
+  },
+  "notes": [
+    "Baseline config: sibling expansion on, rerank off.",
+    "Q04 expected checksums resolve to non-CV documents in current index snapshot."
+  ]
+}

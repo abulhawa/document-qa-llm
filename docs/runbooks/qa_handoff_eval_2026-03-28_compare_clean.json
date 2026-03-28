@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "2026-03-28T00:30:04.302130+00:00",
+  "fixture": "tests\\fixtures\\retrieval_eval_queries.json",
+  "support_labels": "tests\\fixtures\\retrieval_eval_answer_support_labels.json",
+  "strategies": [
+    "top3",
+    "top5",
+    "dynamic"
+  ],
+  "comparison": {
+    "top5_vs_top3": {
+      "positive_answered_without_error_delta": 1,
+      "positive_support_context_hits_delta": 2,
+      "positive_answered_with_support_delta": 2
+    },
+    "dynamic_vs_top5": {
+      "positive_answered_without_error_delta": 2,
+      "positive_support_context_hits_delta": 1,
+      "positive_answered_with_support_delta": 2
+    },
+    "run_duration_ms": {
+      "top3": 88356.171,
+      "top5": 88769.715,
+      "dynamic": 88974.668
+    }
+  },
+  "artifacts": {
+    "top3": {
+      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top3.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top3.csv"
+    },
+    "top5": {
+      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top5.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top5.csv"
+    },
+    "dynamic": {
+      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_dynamic.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_dynamic.csv"
+    }
+  }
+}

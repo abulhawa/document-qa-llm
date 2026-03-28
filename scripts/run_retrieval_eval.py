@@ -325,6 +325,9 @@ def _cfg_payload(cfg: RetrievalConfig) -> dict[str, Any]:
         "top_k_each": cfg.top_k_each,
         "enable_variants": cfg.enable_variants,
         "enable_mmr": cfg.enable_mmr,
+        "enable_rerank": cfg.enable_rerank,
+        "rerank_top_n": cfg.rerank_top_n,
+        "rerank_candidate_pool": cfg.rerank_candidate_pool,
         "anchored_exact_only": cfg.anchored_exact_only,
         "anchored_lexical_bias_enabled": cfg.anchored_lexical_bias_enabled,
         "anchored_fusion_weight_vector": cfg.anchored_fusion_weight_vector,
@@ -628,7 +631,7 @@ def run_eval(
     ]
     support_overrides = _load_support_overrides(support_labels_path)
     run_date = _iso_date_utc()
-    base_reranker = build_configured_reranker()
+    base_reranker = build_configured_reranker() if cfg.enable_rerank else None
 
     eval_start = time.perf_counter()
     rows = [
@@ -786,6 +789,7 @@ def _base_cfg(
         top_k_each=max(top_k_each, 1),
         enable_variants=enable_variants,
         enable_mmr=enable_mmr,
+        enable_rerank=False,
         sibling_expansion_enabled=sibling_expansion_enabled,
     )
 
