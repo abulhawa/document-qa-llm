@@ -7,6 +7,7 @@ from opensearchpy import helpers, exceptions
 from config import (
     CHUNKS_INDEX,
     FULLTEXT_INDEX,
+    FINANCIAL_RECORDS_INDEX,
     OPENSEARCH_DELETE_BATCH,
     OPENSEARCH_REQUEST_TIMEOUT,
     INGEST_LOG_INDEX,
@@ -194,6 +195,77 @@ _IDENTITY_MAPPINGS: Dict[str, Dict[str, Any]] = {
 }
 
 
+_NUMERIC_MAPPINGS = {
+    "float",
+    "half_float",
+    "double",
+    "scaled_float",
+    "long",
+    "integer",
+    "short",
+    "byte",
+}
+
+
+_INTEGER_MAPPINGS = {"long", "integer", "short", "byte"}
+
+
+_FINANCIAL_METADATA_MAPPINGS: Dict[str, Dict[str, Any]] = {
+    "is_financial_document": {"type": "boolean"},
+    "document_date": {"type": "date"},
+    "mentioned_years": {"type": "integer"},
+    "transaction_dates": {"type": "date"},
+    "tax_years_referenced": {"type": "integer"},
+    "amounts": {"type": "double"},
+    "counterparties": {"type": "keyword"},
+    "tax_relevance_signals": {"type": "keyword"},
+    "expense_category": {"type": "keyword"},
+    "financial_record_type": {"type": "keyword"},
+    "financial_metadata_version": {"type": "keyword"},
+    "financial_metadata_source": {"type": "keyword"},
+}
+
+
+FINANCIAL_RECORDS_INDEX_SETTINGS = {
+    "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+    "mappings": {
+        "properties": {
+            "record_type": {"type": "keyword"},
+            "date": {"type": "date"},
+            "amount": {"type": "double"},
+            "currency": {"type": "keyword"},
+            "counterparty": {
+                "type": "text",
+                "fields": {"keyword": {"type": "keyword", "ignore_above": 512}},
+            },
+            "description": {"type": "text"},
+            "confidence": {"type": "float"},
+            "document_id": {"type": "keyword"},
+            "checksum": {"type": "keyword"},
+            "chunk_id": {"type": "keyword"},
+            "source_text_span": {"type": "text"},
+            "extraction_method": {"type": "keyword"},
+            "merge_key": {"type": "keyword"},
+            "source_count": {"type": "integer"},
+            "financial_record_version": {"type": "keyword"},
+            "source_family": {"type": "keyword"},
+            "year": {"type": "integer"},
+            "source_links": {
+                "type": "nested",
+                "properties": {
+                    "document_id": {"type": "keyword"},
+                    "checksum": {"type": "keyword"},
+                    "chunk_id": {"type": "keyword"},
+                    "source_text_span": {"type": "text"},
+                    "extraction_method": {"type": "keyword"},
+                    "confidence": {"type": "float"},
+                },
+            },
+        }
+    },
+}
+
+
 def _extract_properties_from_mapping_response(mapping: Dict[str, Any]) -> Dict[str, Any]:
     if not mapping:
         return {}
@@ -216,6 +288,55 @@ def _is_identity_mapping_compatible(field: str, existing: Dict[str, Any]) -> boo
         return existing_type in {"text", "keyword"}
     if field == "authority_rank":
         return existing_type in {"float", "half_float", "double", "scaled_float", "long", "integer"}
+    return False
+
+
+def _is_financial_metadata_mapping_compatible(field: str, existing: Dict[str, Any]) -> bool:
+    existing_type = existing.get("type")
+    if field == "is_financial_document":
+        return existing_type == "boolean"
+    if field in {"document_date", "transaction_dates"}:
+        return existing_type == "date"
+    if field in {"mentioned_years", "tax_years_referenced"}:
+        return existing_type in _INTEGER_MAPPINGS
+    if field == "amounts":
+        return existing_type in _NUMERIC_MAPPINGS
+    if field in {
+        "counterparties",
+        "tax_relevance_signals",
+        "expense_category",
+        "financial_record_type",
+        "financial_metadata_version",
+        "financial_metadata_source",
+    }:
+        return existing_type in {"keyword", "text"}
+    return False
+
+
+def _is_financial_record_mapping_compatible(field: str, existing: Dict[str, Any]) -> bool:
+    existing_type = existing.get("type")
+    if field in {
+        "record_type",
+        "currency",
+        "document_id",
+        "checksum",
+        "chunk_id",
+        "extraction_method",
+        "merge_key",
+        "financial_record_version",
+        "source_family",
+    }:
+        return existing_type in {"keyword", "text"}
+    if field == "date":
+        return existing_type == "date"
+    if field in {"amount", "confidence"}:
+        return existing_type in _NUMERIC_MAPPINGS
+    if field in {"description", "counterparty", "source_text_span"}:
+        return existing_type in {"text", "keyword"}
+    if field in {"source_count", "year"}:
+        return existing_type in _INTEGER_MAPPINGS
+    if field == "source_links":
+        return existing_type in {"nested", "object"}
     return False
 
 
@@ -273,6 +394,139 @@ def ensure_identity_metadata_mappings() -> None:
                 index_name,
             )
             raise
+
+
+def ensure_financial_metadata_mappings() -> None:
+    """Ensure finance metadata fields exist on chunks/fulltext indices.
+
+    This operation is non-destructive: only missing mappings are added.
+    Incompatible existing mappings fail fast to avoid unsafe writes.
+    """
+
+    client = get_client()
+    for index_name in (CHUNKS_INDEX, FULLTEXT_INDEX):
+        try:
+            mapping = client.indices.get_mapping(index=index_name)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to fetch OpenSearch mappings for index=%s",
+                index_name,
+            )
+            raise
+
+        properties = _extract_properties_from_mapping_response(mapping)
+        additions: Dict[str, Dict[str, Any]] = {}
+        conflicts: list[str] = []
+        for field, expected_mapping in _FINANCIAL_METADATA_MAPPINGS.items():
+            existing = properties.get(field)
+            if existing is None:
+                additions[field] = expected_mapping
+                continue
+            if not _is_financial_metadata_mapping_compatible(field, existing):
+                conflicts.append(
+                    f"{field}: existing_type={existing.get('type')} expected={expected_mapping.get('type')}"
+                )
+
+        if conflicts:
+            conflict_message = "; ".join(conflicts)
+            raise RuntimeError(
+                f"Incompatible mapping detected for index '{index_name}'. "
+                f"Refusing to continue to avoid data risk. Conflicts: {conflict_message}"
+            )
+
+        if not additions:
+            continue
+
+        try:
+            client.indices.put_mapping(
+                index=index_name,
+                body={"properties": additions},
+            )
+            logger.info(
+                "Added financial metadata mappings for index=%s fields=%s",
+                index_name,
+                sorted(additions.keys()),
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to add financial metadata mappings for index=%s",
+                index_name,
+            )
+            raise
+
+
+def ensure_financial_records_index() -> None:
+    """Ensure sidecar financial records index exists with compatible mappings."""
+
+    client = get_client()
+    expected_properties = (
+        FINANCIAL_RECORDS_INDEX_SETTINGS.get("mappings", {}).get("properties", {}) or {}
+    )
+
+    if not client.indices.exists(index=FINANCIAL_RECORDS_INDEX):
+        try:
+            client.indices.create(
+                index=FINANCIAL_RECORDS_INDEX,
+                body=FINANCIAL_RECORDS_INDEX_SETTINGS,
+                params={"wait_for_active_shards": "1"},
+            )
+            logger.info("Created OpenSearch index: %s", FINANCIAL_RECORDS_INDEX)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to create OpenSearch index=%s",
+                FINANCIAL_RECORDS_INDEX,
+            )
+            raise
+        return
+
+    try:
+        mapping = client.indices.get_mapping(index=FINANCIAL_RECORDS_INDEX)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to fetch OpenSearch mappings for index=%s",
+            FINANCIAL_RECORDS_INDEX,
+        )
+        raise
+
+    properties = _extract_properties_from_mapping_response(mapping)
+    additions: Dict[str, Dict[str, Any]] = {}
+    conflicts: list[str] = []
+    for field, expected_mapping in expected_properties.items():
+        existing = properties.get(field)
+        if existing is None:
+            additions[field] = expected_mapping
+            continue
+        if not _is_financial_record_mapping_compatible(field, existing):
+            conflicts.append(
+                f"{field}: existing_type={existing.get('type')} expected={expected_mapping.get('type')}"
+            )
+
+    if conflicts:
+        conflict_message = "; ".join(conflicts)
+        raise RuntimeError(
+            f"Incompatible mapping detected for index '{FINANCIAL_RECORDS_INDEX}'. "
+            f"Refusing to continue to avoid data risk. Conflicts: {conflict_message}"
+        )
+
+    if not additions:
+        return
+
+    try:
+        client.indices.put_mapping(
+            index=FINANCIAL_RECORDS_INDEX,
+            body={"properties": additions},
+        )
+        logger.info(
+            "Added financial-record mappings for index=%s fields=%s",
+            FINANCIAL_RECORDS_INDEX,
+            sorted(additions.keys()),
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to add financial-record mappings for index=%s",
+            FINANCIAL_RECORDS_INDEX,
+        )
+        raise
 
 
 def index_documents(chunks: List[Dict[str, Any]]) -> Tuple[int, List[Any]]:
