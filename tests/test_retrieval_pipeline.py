@@ -2215,6 +2215,52 @@ def test_retrieval_financial_mode_without_entity_does_not_require_entity_filter(
     assert result.stage_metadata.get("target_entity") is None
 
 
+def test_retrieval_financial_mode_with_entity_hint_does_not_require_entity_text_match():
+    vector_hits = [
+        {
+            "id": "invoice-1",
+            "text": "Invoice paid in 2022 amount EUR 100 for office rent",
+            "score": 1.0,
+            "checksum": "inv-1",
+            "doc_type": "invoice",
+            "mentioned_years": [2022],
+            "is_financial_document": True,
+            "financial_record_type": "expense",
+        }
+    ]
+    cfg = RetrievalConfig(
+        top_k=1,
+        enable_variants=False,
+        enable_mmr=False,
+        fusion_weight_vector=1.0,
+        fusion_weight_bm25=0.0,
+        authority_boost_enabled=False,
+        recency_boost_enabled=False,
+        profile_intent_boost_enabled=False,
+    )
+    plan = QueryPlan(
+        raw_query="What expenses did Ali make in 2022?",
+        semantic_query="What expenses did Ali make in 2022?",
+        bm25_query="What expenses did Ali make in 2022?",
+        financial_query_mode=True,
+        target_entity="Ali",
+        target_year=2022,
+        target_concept="expenses",
+    )
+
+    result = pipeline.retrieve(
+        plan.raw_query,
+        cfg=cfg,
+        deps=_build_deps(vector_hits, []),
+        query_plan=plan,
+    )
+
+    assert len(result.documents) == 1
+    assert result.documents[0].get("checksum") == "inv-1"
+    assert result.stage_metadata is not None
+    assert result.stage_metadata.get("target_entity") == "Ali"
+
+
 def test_retrieval_financial_fallback_does_not_relax_year_when_strict_budget_met():
     vector_hits = [
         {
