@@ -34,7 +34,7 @@ _STRONG_ANCHOR_TERMS = {
 }
 
 
-def _ask_llm(*args: Any, **kwargs: Any) -> str:
+def ask_llm(*args: Any, **kwargs: Any) -> str:
     from core.llm import ask_llm
 
     return ask_llm(*args, **kwargs)
@@ -126,7 +126,7 @@ def rewrite_query(
     ]
 
     try:
-        rewritten = _ask_llm(
+        rewritten = ask_llm(
             prompt=messages,
             temperature=temperature,
             mode="chat",
@@ -164,7 +164,7 @@ def _generate_hyde_passage(
         {"role": "user", "content": query_text},
     ]
     try:
-        response = _ask_llm(
+        response = ask_llm(
             prompt=prompt,
             temperature=temperature,
             mode="chat",
