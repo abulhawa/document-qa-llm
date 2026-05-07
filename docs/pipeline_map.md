@@ -22,8 +22,7 @@ This project is more mature than a simple RAG demo. It includes:
 - local/OpenAI-compatible LLM answer generation
 - optional grounding checks
 - financial document enrichment and financial-query answer handling
-- Streamlit UI
-- legacy Gradio UI
+- Streamlit UI only; Gradio was removed because it was unused and added unnecessary dependency/security surface
 - Celery worker ingestion
 - Docker Compose local infrastructure
 - retrieval, QA handoff, and financial evaluation scripts
@@ -54,7 +53,6 @@ Some boundaries are clear. Others are historical or compatibility-driven.
 | `pages/` | Active Streamlit pages: chat, ingest, search, index, admin, topics, tools | UI/frontend | Clear, but several files are large |
 | `ui/` | Streamlit UI helpers, Celery client/admin helpers, topic discovery UI components | UI/frontend helpers | Mostly clear |
 | `components/` | Small reusable Streamlit components | UI/frontend | Clear |
-| `ui_gradio/` | Legacy Gradio app and tabs | Legacy UI/frontend | Clear as legacy, but still sizeable |
 | `ingestion/` | Current ingestion package: orchestrator, loading, preprocessing, storage, classification, finance extraction | Core ingestion | Clear |
 | `ingestion/orchestrator.py` | Main single-document ingestion pipeline | Core ingestion | Clear but large/mixed |
 | `core/` | Lower-level domain and infrastructure code: chunking, embeddings, LLM, retrieval, OpenSearch/Qdrant stores, sync tools | Core code | Mixed responsibilities |
@@ -97,7 +95,7 @@ Some boundaries are clear. Others are historical or compatibility-driven.
 | Answer generation | `qa_pipeline/coordinator.py`, `qa_pipeline/llm_client.py`, `core/llm.py`, `qa_pipeline/financial_answer.py` |
 | Evaluation | `scripts/run_retrieval_eval.py`, `scripts/run_qa_handoff_eval.py`, `scripts/run_financial_eval.py`, `scripts/analyze_retrieval_residual_failures.py`, `scripts/investigate_ranking_post_patha.py`, `tests/fixtures/*`, `docs/runbooks/*eval*` |
 | API/backend | `app/schemas.py`, `app/usecases/*.py`, `worker/tasks.py`; embedder API is separate in `embedder_api_multilingual/app.py` |
-| UI/frontend | `main.py`, `pages/`, `ui/`, `components/`, `ui_gradio/` |
+| UI/frontend | `main.py`, `pages/`, `ui/`, `components/` |
 | Configuration | `config.py`, `.env.example`, `requirements/`, `pytest.ini`, `docker-compose.yml` |
 | Observability/logging | `tracing.py`, `utils/timing.py`, `utils/ingest_logging.py`, `worker/audit.py`, Phoenix service in `docker-compose.yml` |
 | Tests | `tests/`, `tests/e2e/`, `tests/ui_apptest/` |
@@ -281,7 +279,7 @@ portfolio strength.
 | `utils/opensearch_utils.py` is too broad | It owns mappings, chunk indexing, fulltext indexing, deletion, search, logs, financial mappings, and duplicate utilities. Wrappers in `utils/opensearch/*` partially hide that. |
 | `services/topic_naming.py` is extremely large | It mixes topic profiling, OpenSearch keyword logic, Qdrant vectors, LLM naming, caching, metrics, and postprocessing. |
 | `app/usecases/*` is not consistently UI-agnostic | Some files are clean use cases; others render Streamlit pages by `runpy.run_path`, which creates hidden path dependencies. |
-| Active Streamlit plus legacy Gradio duplicates UI concepts | README says Gradio is legacy, but the code remains sizeable and duplicates tabs/flows. |
+| Active Streamlit is the supported UI | Gradio was removed because it was unused and added unnecessary dependency/security surface. |
 | `core/ingestion.py` is a compatibility shim | The real ingestion source of truth is `ingestion/orchestrator.py`; the shim is useful but can confuse readers. |
 | Scripts rely on repo-root `sys.path` and relative paths | Moving scripts, fixtures, or runbooks could break direct execution. |
 | Worker path mapping is Windows/container-specific | `DOC_PATH_MAP=C:/=>/host-c` is essential for Docker ingestion behavior. |
@@ -371,7 +369,6 @@ document_qa/
       main.py
       pages/
       components/
-    gradio_legacy/
 
   observability/
     tracing.py
@@ -470,7 +467,7 @@ flowchart TD
 | Grounding/citations | `qa_pipeline/grounding.py`, `qa_pipeline/types.py`, `pages/0_chat.py` | Missing | Grounding limitations and citation contract | `docs/grounding_and_citations.md` |
 | Evaluation | `scripts/run_retrieval_eval.py`, `scripts/run_qa_handoff_eval.py`, `scripts/run_financial_eval.py`, fixtures | Many runbook artifacts | Stable evaluation guide | `docs/evaluation.md` |
 | Financial retrieval | `ingestion/financial_extractor.py`, `qa_pipeline/financial_answer.py`, `core/financial_query.py` | `docs/plans/financial_tax_retrieval_plan.md`, implementation log | Current implemented behavior summary | `docs/financial_retrieval.md` |
-| UI flow | `main.py`, `pages/`, `ui/`, `app/usecases/` | README sections | Active Streamlit flow and legacy Gradio boundary | `docs/api_flow.md` or `docs/ui_flow.md` |
+| UI flow | `main.py`, `pages/`, `ui/`, `app/usecases/` | README sections | Active Streamlit flow | `docs/api_flow.md` or `docs/ui_flow.md` |
 | Worker/async | `worker/*`, `docker-compose.yml`, `ui/ingest_client.py` | README setup | Worker lifecycle and path mapping | `docs/worker_and_ingestion_ops.md` |
 | Observability | `tracing.py`, `utils/timing.py`, Phoenix service | README mentions Phoenix | Span taxonomy and logs guide | `docs/observability.md` |
 | Security/governance | Config, prompt, local data handling | README privacy claims | Prompt injection, data leakage, access control, PII policy | `docs/security_and_governance.md` |
@@ -507,4 +504,3 @@ scripts and compare before/after metrics.
 - Which files own retrieval quality versus answer generation versus UI display.
 - Why retrieval evaluation is already a major asset of this project.
 - Why the first improvement should be documentation, not refactoring.
-

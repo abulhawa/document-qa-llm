@@ -22,8 +22,8 @@ This system aims to become a **powerful and private Retrieval-Augmented Generati
 
 ## UI Direction
 
-- Streamlit is the primary and only actively developed UI.
-- Gradio is legacy/archived for this repository and will not receive new feature work.
+- Streamlit is the supported UI for this repository.
+- Gradio was removed because it was unused and added unnecessary dependency/security surface.
 
 ---
 
@@ -94,18 +94,6 @@ The system is built from modular, testable components:
 - **Tools Hub**: Smart File Sorter utility.  
 - **Admin Hub**: Running Tasks monitor (including revoke/clear) and Worker Emergency controls for queues and Celery.  
 
-### Gradio Workspace Tabs (Legacy - no new development)
-
-- Chat Assistant  
-- Intelligent Search  
-- Storage & Index  
-- Ingestion Pipeline  
-- Topic Discovery & Naming  
-- Watchlist  
-- Knowledge Base Maintenance  
-- Task Administration  
-- Tools – Smart File Sorter  
-
 ---
 
 ## 🧪 Usage Guide
@@ -162,12 +150,6 @@ The system is built from modular, testable components:
 
    ```bash
    streamlit run main.py
-   ```
-
-4. **(Optional legacy) Launch the Gradio app**
-
-   ```bash
-   python -m ui_gradio.app
    ```
 
 ### Run tests
