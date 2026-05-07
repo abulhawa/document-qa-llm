@@ -2,7 +2,6 @@
 
 # App-only
 streamlit==1.57.*
-arize-phoenix-otel==0.16.*
 hdbscan==0.8.*
 umap-learn==0.5.*
 plotly==6.7.*
