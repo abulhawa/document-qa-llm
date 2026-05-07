@@ -3,4 +3,4 @@ pytest-cov==7.1.*
 pytest-mock==3.15.*
 playwright==1.59.*
 pytest-playwright==0.7.*
-fastapi
+fastapi==0.136.*

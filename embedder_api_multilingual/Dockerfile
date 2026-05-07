@@ -3,14 +3,9 @@ FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 WORKDIR /app
 ENV PYTHONPATH=/app
 
-# Install only what your FastAPI embedder app needs
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    uvloop \
-    httptools \
-    pydantic \
-    sentence-transformers
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
