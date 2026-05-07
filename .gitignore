@@ -10,6 +10,7 @@ qdrant_threshold_eval.py
 artifacts/
 *.ipynb
 opensearch-backups/
+qdrant-snapshots/
 data/topic_discovery/
 .cache/topic_naming/
 pyrightconfig.json
