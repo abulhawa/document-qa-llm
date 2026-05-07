@@ -66,6 +66,9 @@ services:
     environment:
       - OPENSEARCH_HOSTS=http://opensearch:9200
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - DATA_SOURCE_ENABLED=true
+      - WORKSPACE_ENABLED=true
+      - EXPLORE_ENABLED=true
     ports:
       - "5601:5601"
     expose:
