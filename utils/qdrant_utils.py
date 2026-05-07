@@ -1,3 +1,38 @@
+"""
+utils/qdrant_utils.py
+=====================
+Low-level Qdrant operations: collection management, vector upsert, search,
+and deletion. All higher-level retrieval logic lives in core/vector_store.py.
+
+Payload design philosophy
+--------------------------
+Qdrant stores vectors + a small payload per point. We deliberately keep the
+payload minimal (_QDRANT_PAYLOAD_KEYS = id, checksum, path) because:
+
+  1. OpenSearch is the single source of truth for all chunk metadata.
+     After ANN search, core/vector_store.py fetches full metadata from
+     OpenSearch via _fetch_chunk_texts(). Nothing else needs to be in Qdrant.
+
+  2. Keeping payloads lean means metadata changes (doc_type corrections,
+     financial enrichment re-runs, new fields) only require an OpenSearch
+     update. No Qdrant backfill needed.
+
+  3. Smaller payloads = less memory pressure on Qdrant at scale.
+
+Migration note
+--------------
+Points ingested before this payload-slim change (any point whose payload
+contains keys beyond id/checksum/path) can be cleaned up without re-embedding
+by running:
+
+    python scripts/slim_qdrant_payloads.py --dry-run
+    python scripts/slim_qdrant_payloads.py
+
+This script scrolls all points, detects bloated payloads, and overwrites them
+with the minimal set using client.set_payload() + client.clear_payload().
+Vectors are never touched.
+"""
+
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import (
     PointStruct,
@@ -23,6 +58,11 @@ client = QdrantClient(url=QDRANT_URL)
 
 
 def ensure_collection_exists() -> None:
+    """
+    Create the Qdrant collection if it does not already exist.
+    Called once at startup (app/main.py) and before ingestion runs.
+    Uses HNSW with cosine distance, sized to EMBEDDING_SIZE from config.
+    """
     with timed_block(
         "step.qdrant.call",
         extra={"operation": "get_collections", "collection": QDRANT_COLLECTION},
@@ -44,12 +84,6 @@ def ensure_collection_exists() -> None:
             vectors_config=VectorParams(size=EMBEDDING_SIZE, distance=Distance.COSINE),
         )
     logger.info(f"Created collection '{QDRANT_COLLECTION}'.")
-
-def _payload_without_text(chunk: Dict[str, Any]) -> Dict[str, Any]:
-    # copy to avoid mutating the original
-    p = dict(chunk)
-    p.pop("text", None)   # <- drop the heavy field
-    return p
 
 
 def _sanitize_vectors(
@@ -88,12 +122,25 @@ def _sanitize_vectors(
         return vectors, 0
     return sanitized, replacements
 
+# Minimal payload stored in Qdrant alongside each vector.
+# Qdrant is used exclusively for ANN search — all metadata lives in OpenSearch.
+# We only store what is needed to:
+#   - look up the chunk in OpenSearch after retrieval (id)
+#   - deduplicate results in retrieve_top_k() (checksum)
+#   - support deletion by path (path)
+# Everything else (doc_type, financial metadata, chunk_index, etc.) is fetched
+# from OpenSearch via _fetch_chunk_texts() and never needs to live here.
+# Benefit: metadata backfills (e.g. re-running financial enrichment) only
+# require an OpenSearch update — no Qdrant pass needed.
+_QDRANT_PAYLOAD_KEYS = {"id", "checksum", "path"}
+
+
 def upsert_vectors(chunks: list[dict], vectors: list[list[float]]) -> bool:
     points = [
         PointStruct(
             id=chunk["id"],
             vector=vec,
-            payload={k: val for k, val in chunk.items() if k != "text"},
+            payload={k: chunk[k] for k in _QDRANT_PAYLOAD_KEYS if k in chunk},
         )
         for chunk, vec in zip(chunks, vectors)
     ]
@@ -119,10 +166,18 @@ def index_chunks_in_batches(
     os_index_batch: Callable[[Sequence[Dict[str, Any]]], None] | None = None,
 ) -> bool:
     """
-    Vectors-first per batch:
-      1) embed a batch
-      2) upsert to Qdrant (wait=True)
-      3) optionally index the same batch in OpenSearch
+    Embed and upsert a list of chunks in batches, then optionally index in OpenSearch.
+
+    Vectors-first ordering per batch is intentional:
+      1) embed the batch
+      2) upsert to Qdrant (wait=True — blocks until persisted)
+      3) call os_index_batch for the same batch
+
+    This ensures Qdrant never falls behind OpenSearch. If the process dies
+    mid-batch, the worst case is a Qdrant point with no corresponding OpenSearch
+    doc (retrieval returns it but fetch fails gracefully), never the reverse.
+
+    Called by ingestion/storage.py:embed_and_store().
     """
     for group in _batches_by_budget(chunks, EMBEDDING_REQ_MAX_CHUNKS):
         texts = [c["text"] for c in group]
@@ -167,7 +222,11 @@ def count_qdrant_chunks_by_checksum(checksum: str) -> Optional[int]:
 
 
 def delete_vectors_by_ids(ids: list[str]) -> int:
-    """Delete Qdrant points by chunk IDs. Returns number requested."""
+    """
+    Delete Qdrant points by their chunk ID list.
+    Called by ingestion/storage.py:replace_existing_artifacts() before re-ingestion.
+    Returns the number of IDs requested for deletion (not confirmed deleted).
+    """
     if not ids:
         return 0
     with timed_block(
@@ -184,7 +243,12 @@ def delete_vectors_by_ids(ids: list[str]) -> int:
 
 
 def delete_vectors_by_checksum(checksum: str) -> int:
-    """Delete Qdrant points by checksum filter."""
+    """
+    Delete all Qdrant points matching a document checksum.
+    Used as an alternative to delete_vectors_by_ids when chunk IDs are not
+    known but the file checksum is (e.g. cross-path duplicate handling).
+    Returns the number of points deleted, or 0 on error.
+    """
     if not checksum:
         return 0
     try:

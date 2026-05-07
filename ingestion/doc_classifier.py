@@ -1,3 +1,36 @@
+"""
+ingestion/doc_classifier.py
+===========================
+Classifies a document into a type (cv, research_paper, invoice, etc.) using
+rule-based pattern matching on the file path and the first 4000 characters of text.
+
+This runs early in the ingestion pipeline (orchestrator.py calls it right after
+full text is extracted) and its output — doc_type, doc_type_confidence — is
+merged into every chunk and the full-text document stored in OpenSearch.
+
+The doc_type is also passed to financial_extractor.py as a prior, so getting
+this right matters: a correct "research_paper" label prevents the financial
+extractor from misclassifying an engineering paper as a tax document.
+
+Classification logic
+--------------------
+- Path rules run first and carry higher confidence (0.94-0.98).
+  Rationale: filenames like "invoice_2023.pdf" or "cv_ali.pdf" are highly reliable.
+- Text rules run second and carry lower confidence (0.76-0.88).
+  Rationale: keywords in body text are less specific than filename keywords.
+- First match wins — order of checks matters. More specific types (cover_letter,
+  reference_letter) are checked before generic ones (cv, research_paper).
+- Falls back to doc_type="other" with confidence 0.25 if nothing matches.
+
+Output dict keys
+----------------
+- doc_type: str            e.g. "cv", "research_paper", "invoice", "other"
+- doc_type_confidence: float  0.25-0.98
+- doc_type_source: str     "rule" or "fallback"
+- person_name: Optional[str]  extracted for CVs, cover letters, reference letters
+- authority_rank: Optional[float]  relevance weight for person-centric doc types
+"""
+
 import os
 import re
 from typing import Dict, Optional
@@ -122,6 +155,11 @@ _NAME_LINE_EXCLUDE = {
 
 
 def _infer_doc_type(path: str, filetype: str, full_text: str) -> tuple[Optional[str], Optional[float], str]:
+    """
+    Core classification logic. Returns (doc_type, confidence, source).
+    Checks path+filename patterns first (higher confidence), then text patterns.
+    Order of checks is significant — more specific document types are matched first.
+    """
     path_text = re.sub(r"[_/\\.\-]+", " ", f"{path} {filetype}")
     text_sample = full_text[:4000]
 
@@ -188,6 +226,11 @@ def _infer_doc_type(path: str, filetype: str, full_text: str) -> tuple[Optional[
 
 
 def _extract_person_name_from_filename(path: str) -> Optional[str]:
+    """
+    Attempts to extract a person's name from the filename stem.
+    Looks for 2-3 consecutive capitalised tokens that are not in the stopword list.
+    Example: "CV_Ali_Abul-Hawa_2024.pdf" → "Ali Abul-Hawa"
+    """
     stem = os.path.splitext(os.path.basename(path))[0]
     tokens = [tok for tok in _TOKEN_SPLIT_RE.split(stem) if tok]
     name_parts: list[str] = []
@@ -211,6 +254,11 @@ def _extract_person_name_from_filename(path: str) -> Optional[str]:
 
 
 def _extract_person_name_from_text(full_text: str) -> Optional[str]:
+    """
+    Scans the first 12 lines of text for a line that looks like a person's name:
+    2-4 capitalised words, not in the exclusion list, not longer than 60 chars.
+    This is used as a fallback when the filename doesn't yield a name.
+    """
     for raw_line in full_text.splitlines()[:12]:
         line = raw_line.strip()
         if not line or len(line) > 60:
@@ -223,6 +271,12 @@ def _extract_person_name_from_text(full_text: str) -> Optional[str]:
 
 
 def _authority_for_doc_type(doc_type: Optional[str]) -> Optional[float]:
+    """
+    Returns a relevance weight for person-centric document types.
+    Used downstream to rank results when searching across multiple doc types.
+    CVs carry the highest authority (1.0), cover letters slightly less (0.85).
+    Returns None for non-person-centric types.
+    """
     if doc_type == "cv":
         return 1.0
     if doc_type == "cover_letter":
@@ -233,6 +287,11 @@ def _authority_for_doc_type(doc_type: Optional[str]) -> Optional[float]:
 
 
 def classify_document(path: str, filetype: str, full_text: str) -> Dict[str, Optional[str | float]]:
+    """
+    Public entry point. Classifies a document and returns a metadata dict.
+    Called by orchestrator.ingest_one() after full text is extracted.
+    The returned dict is merged into both the full-text document and every chunk.
+    """
     doc_type, doc_type_confidence, doc_type_source = _infer_doc_type(path, filetype, full_text)
     person_name: Optional[str] = None
     if doc_type in {"cv", "cover_letter", "reference_letter"}:
