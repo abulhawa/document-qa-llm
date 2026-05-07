@@ -1,3 +1,48 @@
+"""
+ingestion/financial_extractor.py
+================================
+Responsible for detecting whether a document is financially relevant and, if so,
+extracting structured financial metadata and individual transaction records from it.
+
+This module is called by the ingestion orchestrator (orchestrator.py) AFTER
+doc_classifier.py has already identified the document type (doc_type). It uses
+the doc_type as a signal to decide how aggressively to run financial extraction.
+
+High-level flow
+---------------
+1. _source_family()        — maps (path, doc_type, text) → a family label
+                             e.g. "tax_document", "publication", "cv"
+                             This is the gating decision: suppressed families
+                             (books, CVs, research papers) skip extraction.
+
+2. Deterministic extraction — regex-based passes over the full text and each
+                             chunk to pull out dates, amounts, counterparties,
+                             and tax signals. Produces a list of candidate records.
+
+3. LLM fallback            — if the document looks financial but the deterministic
+                             pass came back thin (missing dates, counterparties, etc.),
+                             an LLM call is made with a structured JSON schema prompt
+                             to fill the gaps.
+
+4. merge_duplicate_records() — deduplicates records by a composite merge key
+                             (type + date + amount + currency + counterparty).
+
+5. Returns FinancialExtractionResult with:
+   - document_metadata: flat dict merged into every chunk and the full-text doc
+   - records: list of individual transaction records upserted to financial_records index
+   - source_family, used_llm_fallback, fallback_reason
+
+Known issue / design note
+--------------------------
+_source_family() has a catch-all rule at the end:
+    if _TAX_SIGNAL_RE.search(sample): return "official_letter"
+This runs AFTER the doc_type checks, but _TAX_SIGNAL_RE is broad (matches "cost",
+"expense", "receipt") and can fire on engineering papers, academic texts, etc.
+The correct fix is to guard with a suppression check BEFORE running financial
+extraction, or move the doc_type → suppressed_family check earlier in _source_family.
+See extract_financial_enrichment() for the recommended suppression guard location.
+"""
+
 from __future__ import annotations
 
 import json
@@ -11,6 +56,10 @@ from config import logger
 from core.llm import ask_llm
 
 
+# ---------------------------------------------------------------------------
+# Regex patterns
+# ---------------------------------------------------------------------------
+# Matches 4-digit years in the range 1900–2099.
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _DATE_RE = re.compile(
     r"\b\d{4}-\d{1,2}-\d{1,2}\b|"
@@ -20,15 +69,22 @@ _DATE_RE = re.compile(
     r"dec(?:ember)?)\s+\d{1,2},?\s+\d{2,4}\b",
     re.IGNORECASE,
 )
+# Matches monetary amounts with optional currency symbols/codes on either side.
+# Handles European (1.234,56) and US (1,234.56) number formats.
 _AMOUNT_RE = re.compile(
     r"(?P<currency_1>EUR|USD|GBP|CHF|€|\$|£)\s*(?P<amount_1>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)|"
     r"(?P<amount_2>\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(?P<currency_2>EUR|USD|GBP|CHF|€|\$|£)",
     re.IGNORECASE,
 )
+# Extracts the name following keywords like "payee:", "to:", "from:", "vendor:".
 _COUNTERPARTY_RE = re.compile(
     r"(?:payee|merchant|vendor|recipient|to|from)\s*[:\-]?\s*([A-Z][A-Za-z0-9&.,'() \-]{2,80})",
     re.IGNORECASE,
 )
+# Broad keyword match for financial relevance signals.
+# WARNING: This is intentionally broad — words like "receipt", "invoice", "expense"
+# appear in non-financial documents too (engineering papers, academic texts).
+# Do not use this alone as the sole gate for financial classification.
 _TAX_SIGNAL_RE = re.compile(
     r"\b(tax|vat|deductible|expense|receipt|invoice|tuition|school fee|medical)\b",
     re.IGNORECASE,
@@ -42,6 +98,8 @@ _EXPENSE_CATEGORY_RULES = (
     ("professional", re.compile(r"\b(software|subscription|equipment|office)\b", re.IGNORECASE)),
 )
 
+# Document families that are actively processed for financial records.
+# If _source_family() returns one of these, extraction proceeds fully.
 _PREFERRED_FINANCIAL_FAMILIES = {
     "tax_document",
     "bank_statement",
@@ -52,6 +110,10 @@ _PREFERRED_FINANCIAL_FAMILIES = {
     "official_letter",
 }
 
+# Document families where financial extraction is explicitly suppressed.
+# Even if the text contains amounts or dates, these are not financial documents.
+# IMPORTANT: _source_family() must resolve to one of these BEFORE the
+# _TAX_SIGNAL_RE catch-all fires, otherwise suppression is bypassed.
 _SUPPRESSED_FAMILIES = {
     "book",
     "course_material",
@@ -231,6 +293,22 @@ def _limited_unique(values: Iterable[Any], limit: int = 20) -> List[Any]:
 
 
 def _source_family(path: str, doc_type: Optional[str], full_text: str) -> str:
+    """
+    Map a document to a source family label used to gate and guide financial extraction.
+
+    Priority order (first match wins):
+    1. Path/filename keywords (most reliable — e.g. "invoice", "kontoauszug")
+    2. doc_type from doc_classifier (e.g. "research_paper" → "publication")
+    3. Text-sample heuristics (e.g. presence of IBAN → "bank_statement")
+    4. _TAX_SIGNAL_RE catch-all → "official_letter" (LAST RESORT — broad, can misfire)
+    5. Default fallback → "archive_misc"
+
+    KNOWN BUG: The _TAX_SIGNAL_RE catch-all (step 4) runs after some doc_type
+    checks but can override them if the doc_type check is positioned too late.
+    For example, a research_paper with the word "expense" in it can be
+    re-labelled as "official_letter", bypassing suppression.
+    Fix: ensure doc_type → suppressed family checks come BEFORE step 4.
+    """
     p = (path or "").lower()
     d = (doc_type or "").strip().lower()
     sample = (full_text or "")[:5000].lower()
@@ -276,6 +354,10 @@ def _build_merge_key(record: Dict[str, Any]) -> str:
 
 
 def _default_record_type(source_family: str, text: str) -> str:
+    """
+    Assign a default financial record type when no explicit type was extracted.
+    Checks text for 'refund' or 'tax' first, then falls back to family-based rules.
+    """
     lowered = (text or "").lower()
     if "refund" in lowered:
         return "refund"
@@ -289,6 +371,11 @@ def _default_record_type(source_family: str, text: str) -> str:
 
 
 def _record_confidence(*, has_date: bool, has_counterparty: bool, llm: bool) -> float:
+    """
+    Score extraction confidence 0.0-1.0 based on signal quality.
+    LLM-extracted records are capped at 0.6 (less reliable than deterministic).
+    Deterministic records score higher when both date and counterparty are present.
+    """
     if llm:
         return 0.6
     if has_date and has_counterparty:
@@ -315,6 +402,15 @@ def _record_is_valid(record: Dict[str, Any]) -> bool:
 
 
 def merge_duplicate_records(records: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Deduplicate financial records using a composite merge key:
+        record_type | date | amount | currency | counterparty
+
+    When duplicates are found (same key), the canonical record accumulates
+    source_links from all duplicates and takes the highest confidence score.
+    If duplicates came from different extraction methods (deterministic vs llm),
+    the method is set to "hybrid".
+    """
     merged: Dict[str, Dict[str, Any]] = {}
     for raw in records:
         record = dict(raw)
@@ -487,7 +583,48 @@ def extract_financial_enrichment(
     document_id: str,
     enable_llm_fallback: bool = True,
 ) -> FinancialExtractionResult:
+    """
+    Main entry point for financial enrichment of a single document.
+
+    Called by orchestrator.ingest_one() after doc classification and chunking.
+    Returns a FinancialExtractionResult containing:
+    - document_metadata: flat dict merged into every chunk and the full-text doc
+      in OpenSearch. Key fields: is_financial_document, transaction_dates,
+      financial_record_type, financial_metadata_source.
+    - records: list of individual transaction dicts upserted to the
+      financial_records OpenSearch index via financial_records_store.py.
+    - source_family: the resolved family label (e.g. "tax_document", "publication")
+    - used_llm_fallback: True if the LLM was called to fill extraction gaps.
+
+    Suppression guard (FIX for misclassification bug)
+    -------------------------------------------------
+    If _source_family() resolves to a suppressed family (book, cv, research paper,
+    etc.) we should return early with is_financial_document=False before running
+    any extraction. Without this guard, a research paper containing the word
+    "expense" can pass through and get labelled as a tax document.
+    Recommended addition at the top of this function:
+
+        if source_family in _SUPPRESSED_FAMILIES:
+            return FinancialExtractionResult(
+                document_metadata={"is_financial_document": False},
+                records=[],
+                source_family=source_family,
+                used_llm_fallback=False,
+            )
+    """
     source_family = _source_family(path, doc_type, full_text)
+
+    # SUPPRESSION GUARD: never run financial extraction on non-financial document families.
+    # This prevents research papers, CVs, and course materials from being misclassified
+    # as tax documents due to incidental keyword matches (e.g. "cost", "expense").
+    if source_family in _SUPPRESSED_FAMILIES:
+        return FinancialExtractionResult(
+            document_metadata={"is_financial_document": False},
+            records=[],
+            source_family=source_family,
+            used_llm_fallback=False,
+        )
+
     all_dates = _extract_dates(full_text)
     all_years = _extract_years(full_text)
     amount_matches = _extract_amount_matches(full_text)

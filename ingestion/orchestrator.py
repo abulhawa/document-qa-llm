@@ -1,3 +1,47 @@
+"""
+ingestion/orchestrator.py
+=========================
+The single-document ingestion pipeline. This is the main coordinator — every
+other ingestion module is called from here in a strict sequence.
+
+Entry point: ingest_one(path, ...)
+
+Pipeline stages (in order)
+--------------------------
+1. FINGERPRINT    — compute checksum + file size + timestamps (io_loader)
+2. DEDUP CHECK    — skip if already indexed at same path+checksum, or handle
+                    cross-path duplicates (same checksum, different path)
+3. LOAD           — parse raw file into LangChain Document objects (io_loader)
+4. PREPROCESS     — clean text: strip headers/footers, fix hyphenation,
+                    remove junk lines (preprocess / core.document_preprocessor)
+5. CLASSIFY       — infer doc_type, person_name, authority_rank (doc_classifier)
+6. CHUNK          — split into overlapping chunks (core.chunking)
+7. ENRICH         — extract financial metadata + transaction records (financial_extractor)
+8. EMBED + STORE  — embed chunks → Qdrant (dense vectors)
+                    index chunks + full text → OpenSearch (BM25)
+9. FINANCIAL UPSERT — write transaction records to financial_records index
+10. INVENTORY     — update per-path stats (chunk count, last indexed timestamp)
+
+Metadata flow
+-------------
+classify_document() returns a dict with doc_type, person_name, etc.
+  └─ _merge_identity_metadata() copies it into full_doc AND every chunk.
+
+extract_financial_enrichment() returns document_metadata + records.
+  └─ _merge_financial_metadata() copies metadata into full_doc AND every chunk.
+  └─ financial_records are upserted separately via financial_records_store.
+
+All chunks therefore carry the same doc_type and financial metadata,
+which enables filtering in retrieval (e.g. filter by doc_type="invoice").
+
+Observability
+-------------
+Each ingest_one() call is wrapped in an IngestLogger context (log_factory).
+Stages that fail call log.fail() with a stage label before re-raising.
+Successful completion calls log.done(status=...). This feeds the
+Ingestion Logs tab in the Streamlit UI.
+"""
+
 import os
 import uuid
 from contextlib import AbstractContextManager
@@ -83,6 +127,11 @@ def default_log_factory(path: str, op: str, source: str) -> IngestLogger:
 
 
 def _merge_identity_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    """
+    Copy doc classification fields (doc_type, person_name, etc.) into a chunk
+    or full-text document dict. Skips keys with None values to avoid overwriting
+    existing data with nulls.
+    """
     for key in (
         "doc_type",
         "doc_type_confidence",
@@ -96,6 +145,12 @@ def _merge_identity_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -
 
 
 def _merge_financial_metadata(target: Dict[str, Any], metadata: Dict[str, Any]) -> None:
+    """
+    Copy financial enrichment fields (is_financial_document, transaction_dates, etc.)
+    into a chunk or full-text document dict. Same None-skip behaviour as above.
+    Both functions exist (rather than one generic merge) to make the field sets
+    explicit and auditable.
+    """
     for key in (
         "is_financial_document",
         "document_date",
