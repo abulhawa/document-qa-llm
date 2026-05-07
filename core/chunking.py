@@ -1,3 +1,11 @@
+"""Document chunk construction for the ingestion pipeline.
+
+This module owns the first chunk records produced from preprocessed
+LangChain `Document` objects. It does not assign final storage IDs or
+file-level ingestion metadata. `ingestion.orchestrator.ingest_one` adds
+those fields after all chunks for a file have been produced.
+"""
+
 from typing import List, Dict, Any
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -11,7 +19,16 @@ def split_documents(
     chunk_overlap: int = CHUNK_OVERLAP,
 ) -> List[Dict[str, Any]]:
     """
-    Split a list of LangChain Document objects into chunks with metadata.
+    Split LangChain `Document` objects into character-based chunk records.
+
+    The splitter uses `RecursiveCharacterTextSplitter` with paragraph,
+    newline, whitespace, and finally character-level separators. Defaults
+    come from `config.CHUNK_SIZE` and `config.CHUNK_OVERLAP`.
+
+    The returned `chunk_index` is local to each input `Document`; the
+    orchestrator rewrites it to a file-level index before indexing. The
+    returned `location_percent` is also a local estimate and is overwritten
+    by the orchestrator with a file-level position.
 
     Args:
         docs: List of LangChain `Document` objects. Expected metadata keys:

@@ -2,6 +2,9 @@
 
 This runbook covers the controlled migration from chunking `400/50` to `800/100`.
 
+For the runtime chunking data flow and final chunk metadata shape, see
+`docs/runbooks/chunking_process.md`.
+
 ## Scope
 
 - Runtime default chunking changes:
