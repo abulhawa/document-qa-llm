@@ -24,8 +24,8 @@ class FakeQdrant:
         for p in points:
             self.points[p.id] = p
 
-    # Search using cosine similarity
-    def search(self, collection_name, query_vector, limit, score_threshold, with_payload):
+    # Query using cosine similarity
+    def query_points(self, collection_name, query, limit, score_threshold, with_payload):
         def cosine(a, b):
             dot = sum(x * y for x, y in zip(a, b))
             na = math.sqrt(sum(x * x for x in a))
@@ -34,11 +34,11 @@ class FakeQdrant:
 
         scored = []
         for p in self.points.values():
-            score = cosine(query_vector, p.vector)
+            score = cosine(query, p.vector)
             if score >= score_threshold:
                 scored.append(types.SimpleNamespace(payload=p.payload, score=score))
         scored.sort(key=lambda r: r.score, reverse=True)
-        return scored[:limit]
+        return types.SimpleNamespace(points=scored[:limit])
 
     def delete(self, collection_name, points_selector, **kwargs):
         if hasattr(points_selector, "filter"):
@@ -174,7 +174,7 @@ def test_vector_empty_collection(monkeypatch, setup_fake_qdrant):
 
 def test_vector_search_exception(monkeypatch, setup_fake_qdrant):
     class Boom(FakeQdrant):
-        def search(self, *args, **kwargs):
+        def query_points(self, *args, **kwargs):
             raise RuntimeError("fail")
 
     boom = Boom()

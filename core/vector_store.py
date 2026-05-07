@@ -95,16 +95,17 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
         try:
             with timed_block(
                 "step.qdrant.call",
-                extra={"operation": "search", "collection": QDRANT_COLLECTION, "top_k": top_k},
+                extra={"operation": "query_points", "collection": QDRANT_COLLECTION, "top_k": top_k},
                 logger=logger,
             ):
-                results = client.search(
+                response = client.query_points(
                     collection_name=QDRANT_COLLECTION,
-                    query_vector=query_embedding,
+                    query=query_embedding,
                     limit=top_k * 3,
                     score_threshold=CHUNK_SCORE_THRESHOLD,
                     with_payload=True,
                 )
+                results = response.points
             chunk_ids: set[str] = set()
             for r in results:
                 payload = r.payload or {}
