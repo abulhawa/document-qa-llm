@@ -94,6 +94,7 @@ services:
       - opensearch
       - qdrant
       - embedder-api
+      - phoenix
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
@@ -104,6 +105,7 @@ services:
       - EMBEDDING_BATCH_SIZE=96
       - QDRANT_URL=http://qdrant:6333
       - OPENSEARCH_URL=http://opensearch:9200
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
     volumes:
       - "C:/:/host-c:ro"
     networks: [appnet]

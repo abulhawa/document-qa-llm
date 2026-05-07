@@ -31,4 +31,6 @@ Thumbs.db
 data/
 datasets/
 downloads/
+opensearch-backups/
+qdrant-snapshots/
 .venv/

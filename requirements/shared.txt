@@ -4,6 +4,9 @@ requests==2.33.*
 qdrant-client==1.17.*
 opensearch-py==3.2.*
 
+# Shared tracing/observability used by app and worker modules.
+arize-phoenix-otel==0.16.*
+
 # Both app and worker use Celery client & Redis driver
 celery==5.6.*
 redis==7.4.*
