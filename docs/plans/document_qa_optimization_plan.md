@@ -15,7 +15,7 @@ Purpose: Convert the external draft into an execution-ready plan for this reposi
 - No broad refactor of retrieval or ingestion architecture.
 - No default provider migration in the same PR as QA quality fixes.
 - No forced data migration (re-ingest) until quality fixes are validated.
-- No new Gradio UI work; continue on Streamlit UI only.
+- No alternate UI work; continue on the supported Streamlit UI only.
 
 ## 3. Corrections to the original draft
 
