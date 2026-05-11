@@ -36,7 +36,7 @@ Some boundaries are clear. Others are historical or compatibility-driven.
 
 ## Current Repository Map
 
-| Path | What it appears to do | Type | Clarity |
+| Path_________________ | What it appears to do | Type | Clarity |
 |---|---|---|---|
 | `README.md` | Project overview, setup, architecture, UI direction, features | Documentation | Mostly clear, partly outdated in wording |
 | `AGENTS.md` | Project-specific working rules and portfolio/learning goals | Documentation | Clear |
