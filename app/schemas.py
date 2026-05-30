@@ -290,6 +290,14 @@ ResyncActionType = Literal[
 class FileResyncScanRequest:
     roots: List[str]
     allowed_extensions: List[str] = field(default_factory=list)
+    min_ingest_bytes: int = 1024
+    temp_prefixes: List[str] = field(default_factory=lambda: ["~$"])
+    temp_suffixes: List[str] = field(
+        default_factory=lambda: [".tmp", ".temp", ".swp", ".swx", ".part"]
+    )
+    ignore_dir_names: List[str] = field(
+        default_factory=lambda: [".cache", ".git", ".obsidian", "__pycache__", "node_modules"]
+    )
     context: Optional[RequestContext] = None
 
 
