@@ -37,7 +37,7 @@ else:
     rows = format_duplicate_rows(response)
     df = pd.DataFrame(rows)
     display_df = df.drop(
-        columns=["Checksum", "Canonical Path", "Filetype", "Chunks"],
+        columns=["Checksum", "Canonical Path", "Filetype", "Chunks", "Location Type"],
         errors="ignore",
     )
 
