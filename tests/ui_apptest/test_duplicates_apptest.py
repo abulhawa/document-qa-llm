@@ -40,9 +40,16 @@ def test_duplicate_table_renders(monkeypatch):
     assert len(at.dataframe) == 1
     df = at.dataframe[0].value
     assert len(df) == 3
-    assert df["Checksum"].value_counts().to_dict() == {"c1": 2, "c2": 1}
+    assert "Checksum" not in df.columns
+    assert "Canonical Path" not in df.columns
+    assert "Filetype" not in df.columns
+    assert "Chunks" not in df.columns
     assert set(df["Location Type"].unique()) == {"Canonical", "Alias"}
     assert "Size" in df.columns
+    button_labels = [button.label for button in at.button]
+    assert "Open file" in button_labels
+    assert "Open containing folder" in button_labels
+    assert "Remove from index" not in button_labels
 
 
 def test_duplicate_alias_locations_surface(monkeypatch):
@@ -82,4 +89,4 @@ def test_duplicate_alias_locations_surface(monkeypatch):
         "/alias/second.txt",
     }
     alias_rows = df[df["Location Type"] == "Alias"]
-    assert set(alias_rows["Canonical Path"]) == {"/docs/main.txt"}
+    assert "Canonical Path" not in alias_rows.columns
