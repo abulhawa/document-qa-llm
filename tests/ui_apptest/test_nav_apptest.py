@@ -76,3 +76,18 @@ def test_navigation_links_and_titles():
     for page_path, expected_title in TITLE_PAGES:
         at.switch_page(page_path).run()
         assert expected_title in at.title[0].value
+
+
+def test_storage_index_hub_does_not_render_all_sections(monkeypatch):
+    def fail_duplicate_lookup():
+        raise AssertionError("Duplicate lookup should not run on initial hub render")
+
+    monkeypatch.setattr(
+        "utils.opensearch_utils.get_duplicate_checksums",
+        fail_duplicate_lookup,
+    )
+
+    at = AppTest.from_file("pages/8_storage_index.py", default_timeout=10)
+    at.run()
+
+    assert "Storage & Index" in at.title[0].value
