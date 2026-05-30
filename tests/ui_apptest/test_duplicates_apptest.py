@@ -52,6 +52,43 @@ def test_duplicate_table_renders(monkeypatch):
     assert "Remove from index" not in button_labels
 
 
+def test_duplicate_action_status_uses_toast_not_inline_message(monkeypatch):
+    checksums = ["c1"]
+    file_template = {
+        "filetype": "txt",
+        "created_at": "1",
+        "modified_at": "1",
+        "indexed_at": "1",
+        "num_chunks": 1,
+        "bytes": 100,
+        "canonical_path": "a",
+    }
+    files = {
+        "c1": [
+            {**file_template, "path": "a", "location_type": "canonical"},
+            {**file_template, "path": "b", "location_type": "alias"},
+        ],
+    }
+
+    monkeypatch.setattr(
+        "utils.opensearch_utils.get_duplicate_checksums", lambda: checksums
+    )
+    monkeypatch.setattr(
+        "utils.opensearch_utils.get_files_by_checksum",
+        lambda checksum: files[checksum],
+    )
+
+    at = AppTest.from_file("pages/3_duplicates_viewer.py", default_timeout=10)
+    at.run()
+
+    next(button for button in at.button if button.label == "Open file").click().run()
+
+    assert len(at.info) == 0
+    assert len(at.success) == 0
+    assert len(at.toast) == 1
+    assert at.toast[0].value == "Select one or more rows first."
+
+
 def test_duplicate_alias_locations_surface(monkeypatch):
     checksums = ["dup"]
     base = {
