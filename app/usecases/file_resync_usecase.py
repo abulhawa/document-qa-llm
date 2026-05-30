@@ -21,6 +21,7 @@ from core.sync.file_resync import (
     ApplyResult,
     PlanItem,
     ReconciliationPlan,
+    ScanFilterOptions,
     build_reconciliation_plan,
     apply_plan as apply_resync_plan,
     scan_files,
@@ -30,6 +31,10 @@ from core.sync.file_resync import (
 def _normalize_extensions(allowed_extensions: Iterable[str]) -> list[str]:
     cleaned = [ext.strip().lower() for ext in allowed_extensions if ext and ext.strip()]
     return cleaned or sorted(DEFAULT_ALLOWED_EXTENSIONS)
+
+
+def _clean_string_list(values: Iterable[str]) -> tuple[str, ...]:
+    return tuple(v.strip() for v in values if v and v.strip())
 
 
 def _to_schema_plan_item(item: PlanItem) -> FileResyncPlanItem:
@@ -84,7 +89,16 @@ def scan_and_plan(
 ) -> Tuple[FileResyncPlanResponse, dict[str, Any]]:
     """Scan filesystem roots and build a reconciliation plan for the UI."""
     allowed_extensions = _normalize_extensions(req.allowed_extensions)
-    scan_result = scan_files(req.roots, allowed_extensions)
+    scan_result = scan_files(
+        req.roots,
+        allowed_extensions,
+        ScanFilterOptions(
+            min_ingest_bytes=max(0, int(req.min_ingest_bytes or 0)),
+            temp_prefixes=_clean_string_list(req.temp_prefixes),
+            temp_suffixes=_clean_string_list(req.temp_suffixes),
+            ignore_dir_names=_clean_string_list(req.ignore_dir_names),
+        ),
+    )
     plan = build_reconciliation_plan(
         scan_result,
         req.roots,

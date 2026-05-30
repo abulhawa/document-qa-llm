@@ -1,3 +1,12 @@
+"""Streamlit UI for the File Path Re-Sync reconciliation workflow.
+
+This page is a thin UI over ``app.usecases.file_resync_usecase``. It keeps the
+workflow explicit: scan first, review the dry-run plan, then apply SAFE or
+destructive actions with separate controls. Session state stores the current
+operation label so reruns caused by filters or navigation do not hide that a
+foreground resync action is in progress.
+"""
+
 import os
 import uuid
 from typing import List, cast
@@ -9,7 +18,13 @@ from app.schemas import FileResyncApplyRequest, FileResyncPlanItem, FileResyncSc
 from app.usecases.file_resync_usecase import apply_plan as apply_resync_plan
 from app.usecases.file_resync_usecase import scan_and_plan
 from config import logger
-from core.sync.file_resync import DEFAULT_ALLOWED_EXTENSIONS
+from core.sync.file_resync import (
+    DEFAULT_ALLOWED_EXTENSIONS,
+    IGNORE_DIR_NAMES,
+    MIN_INGEST_BYTES,
+    TEMP_PREFIXES,
+    TEMP_SUFFIXES,
+)
 from ui.ingestion_ui import run_root_picker
 from utils.timing import set_run_id, timed_block
 
@@ -35,9 +50,9 @@ REASON_DETAIL_MAP = {
     "ADD_ALIAS": "Disk path exists that is not in aliases yet.",
     "REMOVE_ALIAS": "Alias path is missing on disk within scanned roots.",
     "SET_CANONICAL": (
-        "Canonical path missing; auto-selected via shortest path, then newest mtime, then first."
+        "Canonical path missing; single disk replacement can be applied automatically."
     ),
-    "CANONICAL_AMBIGUOUS": "Legacy state; canonical selection is now automatic.",
+    "CANONICAL_AMBIGUOUS": "Canonical path missing but multiple disk paths exist.",
     "ORPHANED_INDEX_CONTENT": "Indexed content has no disk paths under scanned roots.",
     "PATH_REPLACED": "Canonical path now points to a different checksum.",
     "MIXED": "Multiple reasons apply; review actions and details.",
@@ -48,11 +63,49 @@ REASON_ACTION_MAP = {
     "ADD_ALIAS": "Apply: add alias path.",
     "REMOVE_ALIAS": "Apply: remove alias path.",
     "SET_CANONICAL": "Apply: set canonical using auto-selection rules.",
-    "CANONICAL_AMBIGUOUS": "No longer used; auto-selection applies.",
+    "CANONICAL_AMBIGUOUS": "Review deterministic canonical candidate before applying.",
     "ORPHANED_INDEX_CONTENT": "Optional delete (Destructive checkbox).",
     "PATH_REPLACED": "Manual review; optional retire replaced content.",
     "MIXED": "Review actions list for applyable steps.",
 }
+
+OPERATION_STATE_KEY = "file_resync_operation"
+
+
+def _operation_state() -> dict:
+    return st.session_state.setdefault(
+        OPERATION_STATE_KEY,
+        {"running": False, "label": "", "run_id": "", "cancel_requested": False},
+    )
+
+
+def _is_operation_running() -> bool:
+    return bool(_operation_state().get("running"))
+
+
+def _start_operation(label: str, run_id: str) -> None:
+    st.session_state[OPERATION_STATE_KEY] = {
+        "running": True,
+        "label": label,
+        "run_id": run_id,
+        "cancel_requested": False,
+    }
+
+
+def _finish_operation() -> None:
+    state = _operation_state()
+    state["running"] = False
+    state["label"] = ""
+    state["run_id"] = ""
+
+
+def _cancel_operation_status() -> None:
+    state = _operation_state()
+    if state.get("running"):
+        state["cancel_requested"] = True
+        state["running"] = False
+        state["label"] = ""
+        state["run_id"] = ""
 
 
 def _friendly_service_error(exc: Exception) -> str:
@@ -77,6 +130,10 @@ def _parse_exts(raw: str) -> set[str]:
     parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
     exts = {p if p.startswith(".") else f".{p}" for p in parts}
     return exts or set(DEFAULT_ALLOWED_EXTENSIONS)
+
+
+def _parse_csv(raw: str) -> List[str]:
+    return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 def _split_reasons(reason: str) -> List[str]:
@@ -129,7 +186,7 @@ def _plan_items_to_rows(items: List[FileResyncPlanItem]) -> List[dict]:
     ]
 
 
-def _render_table(rows: List[dict]) -> pd.DataFrame:
+def _render_table(rows: List[dict], controls_disabled: bool = False) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if df.empty:
         st.info("No results to show yet. Run a scan to populate this table.")
@@ -138,7 +195,10 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
     bucket_options = ["SAFE", "REVIEW", "BLOCKED", "INFO"]
     default_selection = [s for s in bucket_options if s in df["bucket"].unique()]
     selected = st.multiselect(
-        "Filter by bucket", options=bucket_options, default=default_selection
+        "Filter by bucket",
+        options=bucket_options,
+        default=default_selection,
+        disabled=controls_disabled,
     )
     if selected:
         df = df.loc[df["bucket"].isin(selected)]
@@ -162,9 +222,14 @@ def _render_table(rows: List[dict]) -> pd.DataFrame:
     ]
     df = df[[c for c in preferred_cols if c in df.columns]]
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     csv_data = df.to_csv(index=False).encode("utf-8")
-    st.download_button("Export CSV", data=csv_data, file_name="file_resync.csv")
+    st.download_button(
+        "Export CSV",
+        data=csv_data,
+        file_name="file_resync.csv",
+        disabled=controls_disabled,
+    )
     return cast(pd.DataFrame, df)
 
 
@@ -202,23 +267,34 @@ with st.expander("Reason Map (Mismatch -> Apply Action)", expanded=False):
 if "file_resync_roots" not in st.session_state:
     st.session_state["file_resync_roots"] = [DEFAULT_ROOT] if DEFAULT_ROOT else []
 
+operation = _operation_state()
+operation_running = _is_operation_running()
+if operation_running:
+    st.warning(
+        f"{operation.get('label') or 'File resync operation'} is running "
+        f"(run_id={operation.get('run_id') or 'unknown'}). Other actions are blocked until it finishes."
+    )
+    if st.button("Cancel pending status"):
+        _cancel_operation_status()
+        st.info("Operation status cancelled. Start a fresh scan before applying more changes.")
+
 roots_col1, roots_col2 = st.columns([1, 1], gap="small")
 with roots_col1:
-    if st.button("Select Folder Root"):
+    if st.button("Select Folder Root", disabled=operation_running):
         picked = run_root_picker()
         if picked:
             current = st.session_state.get("file_resync_roots", [])
             merged = list(dict.fromkeys(current + picked))
             st.session_state["file_resync_roots"] = merged
 with roots_col2:
-    if st.button("Clear Roots"):
+    if st.button("Clear Roots", disabled=operation_running):
         st.session_state["file_resync_roots"] = []
 
 roots = st.session_state.get("file_resync_roots", [])
 if roots:
     st.dataframe(
         pd.DataFrame({"Sync roots": roots}),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 else:
@@ -226,7 +302,32 @@ else:
 ext_input = st.text_input(
     "Allowed extensions (comma-separated)",
     value=", ".join(sorted(DEFAULT_ALLOWED_EXTENSIONS)),
+    disabled=operation_running,
 )
+with st.expander("Scan filters", expanded=False):
+    min_ingest_bytes = st.number_input(
+        "Minimum file size in bytes",
+        min_value=0,
+        value=MIN_INGEST_BYTES,
+        step=256,
+        disabled=operation_running,
+        help="Files smaller than this are ignored before checksum calculation.",
+    )
+    temp_prefixes_input = st.text_input(
+        "Temporary filename prefixes",
+        value=", ".join(TEMP_PREFIXES),
+        disabled=operation_running,
+    )
+    temp_suffixes_input = st.text_input(
+        "Temporary filename suffixes",
+        value=", ".join(TEMP_SUFFIXES),
+        disabled=operation_running,
+    )
+    ignore_dirs_input = st.text_input(
+        "Ignored directory names",
+        value=", ".join(sorted(IGNORE_DIR_NAMES)),
+        disabled=operation_running,
+    )
 
 st.subheader("Plan & Apply Actions")
 phase_col1, phase_col2, phase_col3 = st.columns(3)
@@ -234,28 +335,44 @@ phase_col1, phase_col2, phase_col3 = st.columns(3)
 with phase_col1:
     st.markdown("**Step 1: Scan & Plan**")
     st.caption("Dry run that builds the reconciliation plan based on the options below.")
-    scan_clicked = st.button("Scan & Plan", use_container_width=True)
+    scan_clicked = st.button("Scan & Plan", width="stretch", disabled=operation_running)
 
 with phase_col2:
     st.markdown("**Step 2: Apply SAFE actions**")
     st.caption("Unambiguous updates only; no deletions.")
-    ingest_missing_safe = st.checkbox("Ingest missing (SAFE phase)", value=False)
+    ingest_missing_safe = st.checkbox(
+        "Ingest missing (SAFE phase)",
+        value=False,
+        disabled=operation_running,
+    )
     apply_safe_clicked = st.button(
         "Apply SAFE actions",
-        use_container_width=True,
-        disabled="file_resync_plan" not in st.session_state,
+        width="stretch",
+        disabled=operation_running or "file_resync_plan" not in st.session_state,
     )
 
 with phase_col3:
     st.markdown("**Step 3: Apply destructive actions**")
     st.caption("Includes REVIEW bucket; may delete content.")
-    ingest_missing_destructive = st.checkbox("Ingest missing (Destructive phase)", value=False)
-    delete_orphaned = st.checkbox("Delete orphaned content (Destructive)", value=False)
-    retire_replaced = st.checkbox("Retire replaced content (Destructive)", value=False)
+    ingest_missing_destructive = st.checkbox(
+        "Ingest missing (Destructive phase)",
+        value=False,
+        disabled=operation_running,
+    )
+    delete_orphaned = st.checkbox(
+        "Delete orphaned content (Destructive)",
+        value=False,
+        disabled=operation_running,
+    )
+    retire_replaced = st.checkbox(
+        "Retire replaced content (Destructive)",
+        value=False,
+        disabled=operation_running,
+    )
     apply_destructive_clicked = st.button(
         "Apply destructive actions",
-        use_container_width=True,
-        disabled="file_resync_plan" not in st.session_state,
+        width="stretch",
+        disabled=operation_running or "file_resync_plan" not in st.session_state,
     )
 
 if scan_clicked:
@@ -266,6 +383,7 @@ if scan_clicked:
         try:
             run_id = uuid.uuid4().hex[:8]
             st.session_state["_run_id"] = run_id
+            _start_operation("Scan & Plan", run_id)
             set_run_id(run_id)
             with st.spinner("Scanning disk and building plan…"):
                 with timed_block(
@@ -274,7 +392,14 @@ if scan_clicked:
                     logger=logger,
                 ):
                     plan, scan_meta = scan_and_plan(
-                        FileResyncScanRequest(roots=roots, allowed_extensions=sorted(exts)),
+                        FileResyncScanRequest(
+                            roots=roots,
+                            allowed_extensions=sorted(exts),
+                            min_ingest_bytes=int(min_ingest_bytes),
+                            temp_prefixes=_parse_csv(temp_prefixes_input),
+                            temp_suffixes=_parse_csv(temp_suffixes_input),
+                            ignore_dir_names=_parse_csv(ignore_dirs_input),
+                        ),
                         retire_replaced_content=retire_replaced,
                     )
         except Exception as e:  # noqa: BLE001
@@ -288,6 +413,8 @@ if scan_clicked:
             st.success(
                 f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
             )
+        finally:
+            _finish_operation()
 
 plan = st.session_state.get("file_resync_plan")
 scan_meta = st.session_state.get("file_resync_scan_meta", {})
@@ -301,13 +428,14 @@ if plan:
         )
     _render_summary(plan.counts)
     rows = _plan_items_to_rows(plan.items)
-    filtered_df = _render_table(rows)
+    filtered_df = _render_table(rows, controls_disabled=operation_running)
 
 if apply_safe_clicked and plan:
     result = None
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
+        _start_operation("Applying SAFE actions", run_id)
         set_run_id(run_id)
         with st.spinner("Applying SAFE actions…"):
             with timed_block(
@@ -327,6 +455,8 @@ if apply_safe_clicked and plan:
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "SAFE apply")
         st.stop()
+    finally:
+        _finish_operation()
     if result is None:
         st.stop()
     assert result is not None
@@ -347,6 +477,7 @@ if apply_destructive_clicked and plan:
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
+        _start_operation("Applying destructive actions", run_id)
         set_run_id(run_id)
         with st.spinner("Applying destructive actions…"):
             with timed_block(
@@ -371,6 +502,8 @@ if apply_destructive_clicked and plan:
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "Destructive apply")
         st.stop()
+    finally:
+        _finish_operation()
     if result is None:
         st.stop()
     assert result is not None

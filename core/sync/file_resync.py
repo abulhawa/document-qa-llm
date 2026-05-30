@@ -1,3 +1,27 @@
+"""Reconcile on-disk file paths with indexed document metadata.
+
+The resync flow is intentionally plan-first:
+
+1. Scan selected filesystem roots for supported document files.
+2. Load the full-text index snapshot containing canonical paths, aliases, and
+   checksums.
+3. Build a dry-run reconciliation plan grouped by checksum.
+4. Apply only the actions explicitly authorized by the UI options.
+
+The checksum is the content identity. Paths are mutable metadata. A full-text
+document stores one canonical ``path`` plus optional ``aliases`` for duplicate
+locations of the same content. When the canonical path changes, chunk documents
+and Qdrant payloads must be updated to keep retrieval citations consistent.
+
+Safety assumptions:
+- A partial root scan must not prove content is orphaned unless every indexed
+  path for that checksum was inside the scanned roots.
+- Canonical path changes are SAFE only when there is exactly one disk path for
+  the checksum; multiple disk paths require REVIEW.
+- Destructive deletes are never implied by the plan alone. Apply-time options
+  decide whether orphaned or replaced content may be removed.
+"""
+
 from __future__ import annotations
 
 import os
@@ -81,6 +105,16 @@ ActionType = Literal[
     "SET_CANONICAL",
     "DELETE_CONTENT",
 ]
+
+
+@dataclass
+class ScanFilterOptions:
+    """Filesystem filters applied before checksum calculation."""
+
+    min_ingest_bytes: int = MIN_INGEST_BYTES
+    temp_prefixes: tuple[str, ...] = TEMP_PREFIXES
+    temp_suffixes: tuple[str, ...] = TEMP_SUFFIXES
+    ignore_dir_names: tuple[str, ...] = tuple(sorted(IGNORE_DIR_NAMES))
 
 
 @dataclass
@@ -178,23 +212,31 @@ class ScanResult:
     ignored_files: int = 0
 
 
-def _should_ignore_file(name: str, dirpath: str) -> bool:
-    if name.startswith(TEMP_PREFIXES):
+def _should_ignore_file(name: str, dirpath: str, filters: ScanFilterOptions) -> bool:
+    if filters.temp_prefixes and name.startswith(filters.temp_prefixes):
         return True
     lowered = name.lower()
-    if lowered.endswith(TEMP_SUFFIXES):
+    temp_suffixes = tuple(s.lower() for s in filters.temp_suffixes)
+    if temp_suffixes and lowered.endswith(temp_suffixes):
         return True
     parts = normalize_path(dirpath).split("/")
-    return any(part in IGNORE_DIR_NAMES for part in parts if part)
+    ignored_dirs = set(filters.ignore_dir_names)
+    return any(part in ignored_dirs for part in parts if part)
 
 
-def scan_files(roots: Sequence[str], allowed_exts: Iterable[str]) -> ScanResult:
+def scan_files(
+    roots: Sequence[str],
+    allowed_exts: Iterable[str],
+    filters: ScanFilterOptions | None = None,
+) -> ScanResult:
     """Scan filesystem roots and return discovered FileHit entries."""
 
+    filters = filters or ScanFilterOptions()
     normalized_roots = [normalize_path(r) for r in roots if r]
     allowed = {e.lower().strip() for e in allowed_exts if e}
     if not allowed:
         allowed = set(DEFAULT_ALLOWED_EXTENSIONS)
+    ignored_dirs = set(filters.ignore_dir_names)
 
     hits: list[FileHit] = []
     ignored_files = 0
@@ -215,12 +257,12 @@ def scan_files(roots: Sequence[str], allowed_exts: Iterable[str]) -> ScanResult:
                 continue
             scanned_success.append(root)
             for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-                dirnames[:] = [d for d in dirnames if d not in IGNORE_DIR_NAMES]
+                dirnames[:] = [d for d in dirnames if d not in ignored_dirs]
                 for name in filenames:
                     ext = os.path.splitext(name)[1].lower()
                     if allowed and ext not in allowed:
                         continue
-                    if _should_ignore_file(name, dirpath):
+                    if _should_ignore_file(name, dirpath, filters):
                         ignored_files += 1
                         continue
                     abs_path = normalize_path(os.path.join(dirpath, name))
@@ -229,7 +271,7 @@ def scan_files(roots: Sequence[str], allowed_exts: Iterable[str]) -> ScanResult:
                     except OSError as e:  # noqa: BLE001
                         logger.warning("Stat failed for %s: %s", abs_path, e)
                         continue
-                    if st.st_size < MIN_INGEST_BYTES:
+                    if st.st_size < max(0, int(filters.min_ingest_bytes)):
                         ignored_files += 1
                         continue
                     try:
@@ -419,16 +461,25 @@ def build_reconciliation_plan(
         # Canonical path handling (see CANONICAL_PATH_RULES above).
         canonical_missing = doc.canonical_path and doc.canonical_path in missing_in_scanned
         if canonical_missing:
-            if disk_paths:
+            if len(disk_paths) == 1:
                 new_canonical = _select_canonical_path(disk_paths, path_mtime)
                 actions.append(
                     Action("SET_CANONICAL", {"path": new_canonical, "previous": doc.canonical_path})
                 )
                 reasons.append("SET_CANONICAL")
                 bucket = "SAFE"
+            elif disk_paths:
+                new_canonical = _select_canonical_path(disk_paths, path_mtime)
+                actions.append(
+                    Action("SET_CANONICAL", {"path": new_canonical, "previous": doc.canonical_path})
+                )
+                reasons.append("CANONICAL_AMBIGUOUS")
+                bucket = "REVIEW"
 
         # Orphan detection (no disk paths for this checksum under scanned roots).
-        if not disk_paths and missing_in_scanned:
+        indexed_in_scanned = _paths_within_roots(indexed_paths, scanned_roots)
+        all_indexed_paths_scanned = bool(indexed_paths) and len(indexed_in_scanned) == len(indexed_paths)
+        if not disk_paths and missing_in_scanned and all_indexed_paths_scanned:
             bucket = "REVIEW"
             reasons.append("ORPHANED_INDEX_CONTENT")
             actions.append(Action("DELETE_CONTENT", {"checksum": checksum, "conditional": True}))
@@ -493,13 +544,27 @@ def build_reconciliation_plan(
             )
         )
 
-    return ReconciliationPlan(
+    plan = ReconciliationPlan(
         items=items,
         counts=_bucket_counts(items),
         scanned_roots=scanned_roots,
         scanned_roots_failed=scanned_failed,
         generated_at=datetime.now(timezone.utc),
     )
+    action_counts: dict[str, int] = {}
+    for item in plan.items:
+        for action in item.actions:
+            action_counts[action.type] = action_counts.get(action.type, 0) + 1
+    logger.info(
+        "File resync plan built: files=%s index_docs=%s items=%s counts=%s actions=%s failed_roots=%s",
+        len(hits),
+        len(docs),
+        len(plan.items),
+        plan.counts,
+        action_counts,
+        len(scanned_failed),
+    )
+    return plan
 
 
 def _update_fulltext_paths(content_id: str, canonical_path: Optional[str], aliases: list[str]) -> int:
@@ -615,7 +680,7 @@ def _apply_alias_canonical_updates(
             updated = _update_fulltext_paths(doc["id"], canonical_path, sorted(aliases))
             result.updated_fulltext += updated
         except Exception as e:  # noqa: BLE001
-            logger.error("Failed to update full-text paths for %s: %s", checksum, e)
+            logger.error("Failed to update full-text paths for %s: %s", checksum, e, exc_info=True)
             result.errors.append(str(e))
             continue
 
@@ -623,12 +688,12 @@ def _apply_alias_canonical_updates(
             try:
                 result.updated_chunks += _update_chunk_paths(checksum, canonical_path)
             except Exception as e:  # noqa: BLE001
-                logger.error("Failed to update chunk paths for %s: %s", checksum, e)
+                logger.error("Failed to update chunk paths for %s: %s", checksum, e, exc_info=True)
                 result.errors.append(str(e))
             try:
                 result.updated_qdrant += _update_qdrant_payload(checksum, canonical_path)
             except Exception as e:  # noqa: BLE001
-                logger.error("Failed to update Qdrant payload for %s: %s", checksum, e)
+                logger.error("Failed to update Qdrant payload for %s: %s", checksum, e, exc_info=True)
                 result.errors.append(str(e))
 
 
@@ -657,7 +722,9 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
         for item in plan.items:
             if item.bucket == "BLOCKED":
                 continue
-            if options.apply_safe_only and item.bucket != "SAFE":
+            if options.apply_safe_only and item.bucket != "SAFE" and not (
+                options.ingest_missing and item.bucket == "INFO"
+            ):
                 continue
             for action in item.actions:
                 if action.type == "INGEST_NEW":
@@ -681,21 +748,26 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
                     )
                     change["canonical_path"] = action.payload.get("path")
                 elif action.type == "DELETE_CONTENT":
-                    if options.delete_orphaned or action.payload.get("reason") == "retire_replaced_content":
+                    reason = action.payload.get("reason")
+                    can_delete = (
+                        reason == "retire_replaced_content" and options.retire_replaced_content
+                    ) or (reason != "retire_replaced_content" and options.delete_orphaned)
+                    if can_delete:
                         delete_checksums.append(action.payload.get("checksum", item.checksum))
 
         # Apply metadata updates first to avoid ingest collisions.
         if metadata_changes:
             _apply_alias_canonical_updates(metadata_changes, result)
 
-        for checksum in delete_checksums:
+        for checksum in dict.fromkeys(delete_checksums):
             try:
+                logger.warning("Deleting file resync content for checksum=%s", checksum)
                 delete_vectors_by_checksum(checksum)
                 delete_chunks_by_checksum(checksum)
                 delete_fulltext_by_checksum(checksum)
                 result.deleted_checksums += 1
             except Exception as e:  # noqa: BLE001
-                logger.error("Delete failed for checksum=%s: %s", checksum, e)
+                logger.error("Delete failed for checksum=%s: %s", checksum, e, exc_info=True)
                 result.errors.append(str(e))
 
         for path in dict.fromkeys(ingestion_queue):
@@ -705,7 +777,7 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
                 ingest_one(path, force=True, replace=True, op="resync", source="resync")
                 result.ingested += 1
             except Exception as e:  # noqa: BLE001
-                logger.error("Ingest failed for %s: %s", path, e)
+                logger.error("Ingest failed for %s: %s", path, e, exc_info=True)
                 result.errors.append(str(e))
 
     return result
@@ -715,6 +787,7 @@ __all__ = [
     "DEFAULT_ALLOWED_EXTENSIONS",
     "CANONICAL_PATH_RULES",
     "ScanResult",
+    "ScanFilterOptions",
     "FileHit",
     "IndexedDoc",
     "PlanItem",
