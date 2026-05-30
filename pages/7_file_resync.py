@@ -1,10 +1,8 @@
 """Streamlit UI for the File Path Re-Sync reconciliation workflow.
 
 This page is a thin UI over ``app.usecases.file_resync_usecase``. It keeps the
-workflow explicit: scan first, review the dry-run plan, then apply SAFE or
-destructive actions with separate controls. Session state stores the current
-operation label so reruns caused by filters or navigation do not hide that a
-foreground resync action is in progress.
+workflow explicit: configure a scan, review the dry-run plan, then apply
+automatic or reviewed changes with separate controls.
 """
 
 import os
@@ -22,6 +20,11 @@ from utils.timing import set_run_id, timed_block
 if st.session_state.get("_nav_context") != "hub":
     st.set_page_config(page_title="File Path Re-Sync", layout="wide")
 st.title("🔁 File Path Re-Sync")
+
+st.caption(
+    "Find files that moved, disappeared, were copied, or were replaced after indexing. "
+    "Scan first; nothing changes until you apply a plan."
+)
 
 DEFAULT_ROOT = os.getenv("LOCAL_SYNC_ROOT", "")
 DEFAULT_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -82,50 +85,6 @@ SUMMARY_LABEL_MAP = {
     "REVIEW": "Need review",
     "BLOCKED": "Blocked",
 }
-
-OPERATION_STATE_KEY = "file_resync_operation"
-
-
-def _operation_state() -> dict:
-    return st.session_state.setdefault(
-        OPERATION_STATE_KEY,
-        {
-            "running": False,
-            "label": "",
-            "run_id": "",
-            "cancel_requested": False,
-        },
-    )
-
-
-def _is_operation_running() -> bool:
-    return bool(_operation_state().get("running"))
-
-
-def _start_operation(label: str, run_id: str) -> None:
-    st.session_state[OPERATION_STATE_KEY] = {
-        "running": True,
-        "label": label,
-        "run_id": run_id,
-        "cancel_requested": False,
-    }
-
-
-def _finish_operation() -> None:
-    state = _operation_state()
-    state["running"] = False
-    state["label"] = ""
-    state["run_id"] = ""
-    state["cancel_requested"] = False
-
-
-def _cancel_operation_status() -> None:
-    state = _operation_state()
-    state["cancel_requested"] = True
-    state["running"] = False
-    state["label"] = ""
-    state["run_id"] = ""
-
 
 def _friendly_service_error(exc: Exception) -> str:
     msg = str(exc)
@@ -236,6 +195,29 @@ def _render_summary(counts: dict) -> None:
         col.metric(SUMMARY_LABEL_MAP[bucket], visible_counts[bucket])
 
 
+def _next_step_message(counts: dict) -> tuple[str, str]:
+    blocked = int(counts.get("BLOCKED", 0))
+    review = int(counts.get("REVIEW", 0))
+    safe = int(counts.get("SAFE", 0))
+    info = int(counts.get("INFO", 0))
+    if blocked:
+        return (
+            "warning",
+            "Some items are blocked. Open technical details and fix duplicate index records before applying changes.",
+        )
+    if safe or info:
+        return (
+            "success",
+            "Start with automatic fixes. They do not delete content; new files are ingested only if you enable that option.",
+        )
+    if review:
+        return (
+            "warning",
+            "Only reviewed changes were found. Read the rows carefully before enabling any delete options.",
+        )
+    return ("info", "No changes are needed for the scanned roots.")
+
+
 def _plan_items_to_rows(items: List[FileResyncPlanItem]) -> List[dict]:
     return [
         {
@@ -333,80 +315,47 @@ def _render_table(rows: List[dict], controls_disabled: bool = False) -> pd.DataF
     return cast(pd.DataFrame, friendly_df)
 
 
-with st.expander("Workflow & Safety", expanded=False):
-    st.markdown(
-        """
-        **Phase A: Scan & Plan** (dry run only)
-        - Builds a plan without changing data.
-
-        **Phase B: Apply SAFE actions**
-        - Canonical/alias updates that are unambiguous.
-        - Optional ingestion of clearly missing files.
-        - No deletions.
-
-        **Phase C: Apply destructive actions**
-        - REVIEW + SAFE buckets.
-        - Optional orphan cleanup and retire-on-replace.
-        - Use with care; vectors/chunks/full-text may be deleted.
-
-        *Orphaned content* = indexed content whose canonical path **and** all aliases are missing on disk within scanned roots.
-        """
-    )
-
-with st.expander("Technical reason map", expanded=False):
-    mapping_rows = [
-        {
-            "Reason": reason,
-            "Meaning": REASON_DETAIL_MAP.get(reason, ""),
-            "Apply action": REASON_ACTION_MAP.get(reason, ""),
-        }
-        for reason in REASON_ORDER
-    ]
-    st.table(pd.DataFrame(mapping_rows))
-
 if "file_resync_roots" not in st.session_state:
     st.session_state["file_resync_roots"] = [DEFAULT_ROOT] if DEFAULT_ROOT else []
 
-operation = _operation_state()
-operation_running = _is_operation_running()
-if operation_running:
-    st.warning(
-        f"{operation.get('label') or 'File resync operation'} is running in this Streamlit session "
-        f"(run_id={operation.get('run_id') or 'unknown'}). Other actions are blocked until it finishes."
-    )
-    st.caption(
-        "This is a foreground UI operation, not a Celery worker task. Use this only if the page was interrupted "
-        "and the operation is no longer running."
-    )
-    if st.button("Clear stale lock"):
-        _cancel_operation_status()
-        st.rerun()
+scan_clicked = False
+apply_safe_clicked = False
+apply_destructive_clicked = False
+ingest_missing_safe = False
+delete_orphaned = False
+retire_replaced = False
 
+step_cols = st.columns(3)
+step_cols[0].markdown("**1. Choose folders**")
+step_cols[0].caption("Pick the disk roots that should be checked.")
+step_cols[1].markdown("**2. Review plan**")
+step_cols[1].caption("The scan is a dry run and does not change indexes.")
+step_cols[2].markdown("**3. Apply changes**")
+step_cols[2].caption("Automatic fixes and reviewed changes are separate.")
+
+st.subheader("Configure Scan")
 roots_col1, roots_col2 = st.columns([1, 1], gap="small")
 with roots_col1:
-    if st.button("Select Folder Root", disabled=operation_running):
+    if st.button("Select Folder Root"):
         picked = run_root_picker()
         if picked:
             current = st.session_state.get("file_resync_roots", [])
             merged = list(dict.fromkeys(current + picked))
             st.session_state["file_resync_roots"] = merged
 with roots_col2:
-    if st.button("Clear Roots", disabled=operation_running):
+    if st.button("Clear Roots"):
         st.session_state["file_resync_roots"] = []
 
 roots = st.session_state.get("file_resync_roots", [])
 if roots:
-    st.dataframe(
-        pd.DataFrame({"Sync roots": roots}),
-        width="stretch",
-        hide_index=True,
-    )
+    st.markdown("**Selected folders**")
+    for root in roots:
+        st.code(root, language=None)
 else:
     st.info("No roots selected yet. Use the folder picker to add one.")
 ext_input = st.text_input(
     "Allowed extensions (comma-separated)",
     value=", ".join(sorted(DEFAULT_ALLOWED_EXTENSIONS)),
-    disabled=operation_running,
 )
 with st.expander("Scan filters", expanded=False):
     min_ingest_bytes = st.number_input(
@@ -414,65 +363,22 @@ with st.expander("Scan filters", expanded=False):
         min_value=0,
         value=MIN_INGEST_BYTES,
         step=256,
-        disabled=operation_running,
         help="Files smaller than this are ignored before checksum calculation.",
     )
     temp_prefixes_input = st.text_input(
         "Temporary filename prefixes",
         value=", ".join(TEMP_PREFIXES),
-        disabled=operation_running,
     )
     temp_suffixes_input = st.text_input(
         "Temporary filename suffixes",
         value=", ".join(TEMP_SUFFIXES),
-        disabled=operation_running,
     )
     ignore_dirs_input = st.text_input(
         "Ignored directory names",
         value=", ".join(sorted(IGNORE_DIR_NAMES)),
-        disabled=operation_running,
     )
 
-st.subheader("Plan & Apply Actions")
-phase_col1, phase_col2, phase_col3 = st.columns(3)
-
-with phase_col1:
-    st.markdown("**Step 1: Scan & Plan**")
-    st.caption("Dry run that builds the reconciliation plan based on the options below.")
-    scan_clicked = st.button("Scan & Plan", width="stretch", disabled=operation_running)
-
-with phase_col2:
-    st.markdown("**Step 2: Apply automatic fixes**")
-    st.caption("Low-risk path and alias updates. Optionally ingest new files. No deletions.")
-    ingest_missing_safe = st.checkbox(
-        "Also ingest new files",
-        value=False,
-        disabled=operation_running,
-    )
-    apply_safe_clicked = st.button(
-        "Apply automatic fixes",
-        width="stretch",
-        disabled=operation_running or "file_resync_plan" not in st.session_state,
-    )
-
-with phase_col3:
-    st.markdown("**Step 3: Apply reviewed changes**")
-    st.caption("Includes review items. Deletions require explicit checkboxes.")
-    delete_orphaned = st.checkbox(
-        "Delete orphaned content (Destructive)",
-        value=False,
-        disabled=operation_running,
-    )
-    retire_replaced = st.checkbox(
-        "Retire replaced content (Destructive)",
-        value=False,
-        disabled=operation_running,
-    )
-    apply_destructive_clicked = st.button(
-        "Apply reviewed changes",
-        width="stretch",
-        disabled=operation_running or "file_resync_plan" not in st.session_state,
-    )
+scan_clicked = st.button("Scan & build plan", width="stretch")
 
 if scan_clicked:
     exts = _parse_exts(ext_input)
@@ -482,7 +388,6 @@ if scan_clicked:
         try:
             run_id = uuid.uuid4().hex[:8]
             st.session_state["_run_id"] = run_id
-            _start_operation("Scan & Plan", run_id)
             set_run_id(run_id)
             with st.spinner("Scanning disk and building plan…"):
                 with timed_block(
@@ -514,8 +419,6 @@ if scan_clicked:
             st.success(
                 f"Scan complete. {len(plan.items)} plan item(s) found across {len(plan.counts)} buckets."
             )
-        finally:
-            _finish_operation()
 
 plan = st.session_state.get("file_resync_plan")
 scan_meta = st.session_state.get("file_resync_scan_meta", {})
@@ -528,19 +431,69 @@ if plan:
             f"ignored temp/small files: {scan_meta.get('ignored', 0)}"
         )
     _render_summary(plan.counts)
+    next_step_kind, next_step_text = _next_step_message(plan.counts)
+    if next_step_kind == "success":
+        st.success(next_step_text)
+    elif next_step_kind == "warning":
+        st.warning(next_step_text)
+    else:
+        st.info(next_step_text)
     st.caption(
         "Review the plain-language report first. Use technical details only when you need "
         "checksums, raw action codes, or index identifiers."
     )
     rows = _plan_items_to_rows(plan.items)
-    filtered_df = _render_table(rows, controls_disabled=operation_running)
+    filtered_df = _render_table(rows)
+
+    st.subheader("Apply Changes")
+    apply_col1, apply_col2 = st.columns(2, gap="large")
+    with apply_col1:
+        st.markdown("**Automatic fixes**")
+        st.caption("Applies low-risk path and alias updates. Optionally ingests new files. Never deletes content.")
+        ingest_missing_safe = st.checkbox("Also ingest new files", value=False)
+        can_apply_automatic = bool(plan.counts.get("SAFE")) or (
+            bool(plan.counts.get("INFO")) and ingest_missing_safe
+        )
+        apply_safe_clicked = st.button(
+            "Apply automatic fixes",
+            width="stretch",
+            disabled=not can_apply_automatic,
+        )
+
+    with apply_col2:
+        st.markdown("**Reviewed changes**")
+        st.caption("Applies reviewed items. Deletions run only when explicitly enabled below.")
+        delete_orphaned = st.checkbox("Delete orphaned index content")
+        retire_replaced = st.checkbox("Retire replaced content")
+        apply_destructive_clicked = st.button(
+            "Apply reviewed changes",
+            width="stretch",
+            disabled=not bool(plan.counts.get("REVIEW")),
+        )
+
+    with st.expander("Technical reference", expanded=False):
+        st.markdown(
+            """
+            - Scan & build plan is a dry run.
+            - Automatic fixes update paths and aliases only; they never delete indexed content.
+            - Reviewed changes may include deletions only when the matching checkbox is enabled.
+            """
+        )
+        mapping_rows = [
+            {
+                "Reason": reason,
+                "Meaning": REASON_DETAIL_MAP.get(reason, ""),
+                "Apply action": REASON_ACTION_MAP.get(reason, ""),
+            }
+            for reason in REASON_ORDER
+        ]
+        st.table(pd.DataFrame(mapping_rows))
 
 if apply_safe_clicked and plan:
     result = None
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
-        _start_operation("Applying SAFE actions", run_id)
         set_run_id(run_id)
         with st.spinner("Applying SAFE actions…"):
             with timed_block(
@@ -562,8 +515,6 @@ if apply_safe_clicked and plan:
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "SAFE apply")
         st.stop()
-    finally:
-        _finish_operation()
     if result is None:
         st.stop()
     assert result is not None
@@ -584,7 +535,6 @@ if apply_destructive_clicked and plan:
     try:
         run_id = uuid.uuid4().hex[:8]
         st.session_state["_run_id"] = run_id
-        _start_operation("Applying destructive actions", run_id)
         set_run_id(run_id)
         with st.spinner("Applying destructive actions…"):
             with timed_block(
@@ -611,8 +561,6 @@ if apply_destructive_clicked and plan:
     except Exception as e:  # noqa: BLE001
         _render_service_error(e, "Destructive apply")
         st.stop()
-    finally:
-        _finish_operation()
     if result is None:
         st.stop()
     assert result is not None
