@@ -1,3 +1,6 @@
+import sys
+import types
+
 from core.sync import file_resync
 from core.sync.file_resync import (
     Action,
@@ -80,11 +83,9 @@ def test_missing_canonical_with_multiple_disk_paths_requires_review(monkeypatch)
 
 def test_safe_apply_can_ingest_info_items_when_enabled(monkeypatch):
     ingested = []
-    monkeypatch.setattr(
-        file_resync,
-        "ingest_one",
-        lambda path, **kwargs: ingested.append((path, kwargs)),
-    )
+    orchestrator_stub = types.ModuleType("ingestion.orchestrator")
+    orchestrator_stub.ingest_one = lambda path, **kwargs: ingested.append((path, kwargs))
+    monkeypatch.setitem(sys.modules, "ingestion.orchestrator", orchestrator_stub)
     plan = ReconciliationPlan(
         items=[
             PlanItem(
@@ -116,7 +117,9 @@ def test_safe_apply_can_ingest_info_items_when_enabled(monkeypatch):
 
 def test_destructive_delete_actions_require_matching_apply_option(monkeypatch):
     deleted = []
-    monkeypatch.setattr(file_resync, "delete_vectors_by_checksum", lambda checksum: deleted.append(("q", checksum)))
+    qdrant_stub = types.ModuleType("utils.qdrant_utils")
+    qdrant_stub.delete_vectors_by_checksum = lambda checksum: deleted.append(("q", checksum))
+    monkeypatch.setitem(sys.modules, "utils.qdrant_utils", qdrant_stub)
     monkeypatch.setattr(file_resync, "delete_chunks_by_checksum", lambda checksum: deleted.append(("c", checksum)))
     monkeypatch.setattr(file_resync, "delete_fulltext_by_checksum", lambda checksum: deleted.append(("f", checksum)))
 

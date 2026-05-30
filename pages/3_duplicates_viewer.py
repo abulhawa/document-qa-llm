@@ -18,7 +18,8 @@ if not response.groups:
 else:
     rows = format_duplicate_rows(response)
     df = pd.DataFrame(rows)
-    st.dataframe(
-        df.style.format({"Size": format_duplicate_size}),
-        use_container_width=True,
-    )
+    styled_df = df.style.format({"Size": format_duplicate_size})
+    try:
+        st.dataframe(styled_df, width="stretch")
+    except TypeError:
+        st.dataframe(styled_df, use_container_width=True)

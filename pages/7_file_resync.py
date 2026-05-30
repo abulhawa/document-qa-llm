@@ -15,16 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from app.schemas import FileResyncApplyRequest, FileResyncPlanItem, FileResyncScanRequest
-from app.usecases.file_resync_usecase import apply_plan as apply_resync_plan
-from app.usecases.file_resync_usecase import scan_and_plan
 from config import logger
-from core.sync.file_resync import (
-    DEFAULT_ALLOWED_EXTENSIONS,
-    IGNORE_DIR_NAMES,
-    MIN_INGEST_BYTES,
-    TEMP_PREFIXES,
-    TEMP_SUFFIXES,
-)
 from ui.ingestion_ui import run_root_picker
 from utils.timing import set_run_id, timed_block
 
@@ -33,6 +24,11 @@ if st.session_state.get("_nav_context") != "hub":
 st.title("🔁 File Path Re-Sync")
 
 DEFAULT_ROOT = os.getenv("LOCAL_SYNC_ROOT", "")
+DEFAULT_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+MIN_INGEST_BYTES = 1024
+TEMP_PREFIXES = ("~$",)
+TEMP_SUFFIXES = (".tmp", ".temp", ".swp", ".swx", ".part")
+IGNORE_DIR_NAMES = {".git", ".obsidian", ".cache", "node_modules", "__pycache__"}
 REASON_ORDER = [
     "DUPLICATE_INDEX_DOCS",
     "NOT_INDEXED",
@@ -68,6 +64,24 @@ REASON_ACTION_MAP = {
     "PATH_REPLACED": "Manual review; optional retire replaced content.",
     "MIXED": "Review actions list for applyable steps.",
 }
+BUCKET_LABEL_MAP = {
+    "SAFE": "Automatic fix",
+    "INFO": "New file",
+    "REVIEW": "Needs review",
+    "BLOCKED": "Blocked",
+}
+BUCKET_RISK_MAP = {
+    "SAFE": "Low",
+    "INFO": "Low",
+    "REVIEW": "Medium",
+    "BLOCKED": "High",
+}
+SUMMARY_LABEL_MAP = {
+    "SAFE": "Automatic fixes",
+    "INFO": "New files",
+    "REVIEW": "Need review",
+    "BLOCKED": "Blocked",
+}
 
 OPERATION_STATE_KEY = "file_resync_operation"
 
@@ -75,7 +89,12 @@ OPERATION_STATE_KEY = "file_resync_operation"
 def _operation_state() -> dict:
     return st.session_state.setdefault(
         OPERATION_STATE_KEY,
-        {"running": False, "label": "", "run_id": "", "cancel_requested": False},
+        {
+            "running": False,
+            "label": "",
+            "run_id": "",
+            "cancel_requested": False,
+        },
     )
 
 
@@ -97,15 +116,15 @@ def _finish_operation() -> None:
     state["running"] = False
     state["label"] = ""
     state["run_id"] = ""
+    state["cancel_requested"] = False
 
 
 def _cancel_operation_status() -> None:
     state = _operation_state()
-    if state.get("running"):
-        state["cancel_requested"] = True
-        state["running"] = False
-        state["label"] = ""
-        state["run_id"] = ""
+    state["cancel_requested"] = True
+    state["running"] = False
+    state["label"] = ""
+    state["run_id"] = ""
 
 
 def _friendly_service_error(exc: Exception) -> str:
@@ -159,19 +178,73 @@ def _map_reason_actions(reason: str) -> str:
     return "; ".join(dict.fromkeys(mapped))
 
 
+def _first_path(paths: List[str]) -> str:
+    if not paths:
+        return ""
+    if len(paths) == 1:
+        return paths[0]
+    return f"{paths[0]} (+{len(paths) - 1} more)"
+
+
+def _friendly_change(item: FileResyncPlanItem) -> str:
+    reasons = set(_split_reasons(item.reason))
+    if "DUPLICATE_INDEX_DOCS" in reasons:
+        return "The index has duplicate records for the same file content."
+    if "NOT_INDEXED" in reasons:
+        return "This file exists on disk but is not indexed yet."
+    if "PATH_REPLACED" in reasons:
+        return "An indexed path now points to different file content."
+    if "ORPHANED_INDEX_CONTENT" in reasons:
+        return "Indexed content no longer appears under the scanned roots."
+    if "CANONICAL_AMBIGUOUS" in reasons:
+        return "The main indexed path is missing and multiple replacements exist."
+    if "SET_CANONICAL" in reasons:
+        return "The main indexed path is missing and one replacement was found."
+    if "ADD_ALIAS" in reasons and "REMOVE_ALIAS" in reasons:
+        return "The file has moved or has changed duplicate locations."
+    if "ADD_ALIAS" in reasons:
+        return "The same file content exists at an additional disk location."
+    if "REMOVE_ALIAS" in reasons:
+        return "A previously known duplicate location is missing from disk."
+    return item.explanation or "This item needs reconciliation."
+
+
+def _friendly_action(item: FileResyncPlanItem) -> str:
+    actions = {action.type for action in item.actions}
+    if item.bucket == "BLOCKED":
+        return "Fix duplicate index records before applying changes."
+    if item.bucket == "INFO" and "INGEST_NEW" in actions:
+        return "Enable ingest missing files, then apply automatic fixes."
+    if "DELETE_CONTENT" in actions:
+        return "Review carefully; deletion only runs when its checkbox is enabled."
+    if "SET_CANONICAL" in actions and item.bucket == "REVIEW":
+        return "Choose whether the suggested main path is correct before applying."
+    if "SET_CANONICAL" in actions:
+        return "Apply automatic fixes to update the main path."
+    if "ADD_ALIAS" in actions or "REMOVE_ALIAS" in actions:
+        return "Apply automatic fixes to update known locations."
+    return "No automatic action is available."
+
+
 def _render_summary(counts: dict) -> None:
-    counts = {k: v for k, v in counts.items() if v}
-    if not counts:
+    visible_counts = {k: int(counts.get(k, 0)) for k in ["SAFE", "INFO", "REVIEW", "BLOCKED"]}
+    if not any(visible_counts.values()):
         st.info("No plan items yet. Run a scan to populate this view.")
         return
-    cols = st.columns(len(counts))
-    for col, (bucket, cnt) in zip(cols, counts.items()):
-        col.metric(bucket.title(), cnt)
+    cols = st.columns(4)
+    for col, bucket in zip(cols, ["SAFE", "INFO", "REVIEW", "BLOCKED"]):
+        col.metric(SUMMARY_LABEL_MAP[bucket], visible_counts[bucket])
 
 
 def _plan_items_to_rows(items: List[FileResyncPlanItem]) -> List[dict]:
     return [
         {
+            "status": BUCKET_LABEL_MAP.get(item.bucket, item.bucket),
+            "risk": BUCKET_RISK_MAP.get(item.bucket, "Unknown"),
+            "what_changed": _friendly_change(item),
+            "recommended_action": _friendly_action(item),
+            "indexed_location": _first_path(item.indexed_paths),
+            "disk_location": _first_path(item.disk_paths),
             "bucket": item.bucket,
             "reason": item.reason,
             "checksum": item.checksum,
@@ -192,22 +265,33 @@ def _render_table(rows: List[dict], controls_disabled: bool = False) -> pd.DataF
         st.info("No results to show yet. Run a scan to populate this table.")
         return df
 
-    bucket_options = ["SAFE", "REVIEW", "BLOCKED", "INFO"]
-    default_selection = [s for s in bucket_options if s in df["bucket"].unique()]
+    status_options = [
+        BUCKET_LABEL_MAP[bucket]
+        for bucket in ["SAFE", "INFO", "REVIEW", "BLOCKED"]
+        if BUCKET_LABEL_MAP[bucket] in set(df["status"])
+    ]
     selected = st.multiselect(
-        "Filter by bucket",
-        options=bucket_options,
-        default=default_selection,
+        "Filter by status",
+        options=status_options,
+        default=status_options,
         disabled=controls_disabled,
     )
     if selected:
-        df = df.loc[df["bucket"].isin(selected)]
+        df = df.loc[df["status"].isin(selected)]
 
     df = df.copy()
     reason_series = cast(pd.Series, df["reason"])
     df["reason_detail"] = reason_series.apply(_map_reason_details)
     df["apply_action"] = reason_series.apply(_map_reason_actions)
-    preferred_cols = [
+    friendly_cols = [
+        "status",
+        "risk",
+        "what_changed",
+        "recommended_action",
+        "indexed_location",
+        "disk_location",
+    ]
+    technical_cols = [
         "bucket",
         "reason",
         "reason_detail",
@@ -220,17 +304,33 @@ def _render_table(rows: List[dict], controls_disabled: bool = False) -> pd.DataF
         "new_checksum",
         "explanation",
     ]
-    df = df[[c for c in preferred_cols if c in df.columns]]
 
-    st.dataframe(df, width="stretch", hide_index=True)
-    csv_data = df.to_csv(index=False).encode("utf-8")
+    friendly_df = df[[c for c in friendly_cols if c in df.columns]]
+    st.dataframe(friendly_df, width="stretch", hide_index=True)
+    csv_data = friendly_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        "Export CSV",
+        "Export current view",
         data=csv_data,
         file_name="file_resync.csv",
         disabled=controls_disabled,
     )
-    return cast(pd.DataFrame, df)
+
+    show_technical = st.checkbox(
+        "Show technical details",
+        value=False,
+        disabled=controls_disabled,
+        help="Show checksums, raw reason codes, content IDs, and low-level actions.",
+    )
+    if show_technical:
+        technical_df = df[[c for c in technical_cols if c in df.columns]]
+        st.dataframe(technical_df, width="stretch", hide_index=True)
+        st.download_button(
+            "Export technical details",
+            data=technical_df.to_csv(index=False).encode("utf-8"),
+            file_name="file_resync_technical.csv",
+            disabled=controls_disabled,
+        )
+    return cast(pd.DataFrame, friendly_df)
 
 
 with st.expander("Workflow & Safety", expanded=False):
@@ -253,7 +353,7 @@ with st.expander("Workflow & Safety", expanded=False):
         """
     )
 
-with st.expander("Reason Map (Mismatch -> Apply Action)", expanded=False):
+with st.expander("Technical reason map", expanded=False):
     mapping_rows = [
         {
             "Reason": reason,
@@ -271,12 +371,16 @@ operation = _operation_state()
 operation_running = _is_operation_running()
 if operation_running:
     st.warning(
-        f"{operation.get('label') or 'File resync operation'} is running "
+        f"{operation.get('label') or 'File resync operation'} is running in this Streamlit session "
         f"(run_id={operation.get('run_id') or 'unknown'}). Other actions are blocked until it finishes."
     )
-    if st.button("Cancel pending status"):
+    st.caption(
+        "This is a foreground UI operation, not a Celery worker task. Use this only if the page was interrupted "
+        "and the operation is no longer running."
+    )
+    if st.button("Clear stale lock"):
         _cancel_operation_status()
-        st.info("Operation status cancelled. Start a fresh scan before applying more changes.")
+        st.rerun()
 
 roots_col1, roots_col2 = st.columns([1, 1], gap="small")
 with roots_col1:
@@ -338,27 +442,22 @@ with phase_col1:
     scan_clicked = st.button("Scan & Plan", width="stretch", disabled=operation_running)
 
 with phase_col2:
-    st.markdown("**Step 2: Apply SAFE actions**")
-    st.caption("Unambiguous updates only; no deletions.")
+    st.markdown("**Step 2: Apply automatic fixes**")
+    st.caption("Low-risk path and alias updates. Optionally ingest new files. No deletions.")
     ingest_missing_safe = st.checkbox(
-        "Ingest missing (SAFE phase)",
+        "Also ingest new files",
         value=False,
         disabled=operation_running,
     )
     apply_safe_clicked = st.button(
-        "Apply SAFE actions",
+        "Apply automatic fixes",
         width="stretch",
         disabled=operation_running or "file_resync_plan" not in st.session_state,
     )
 
 with phase_col3:
-    st.markdown("**Step 3: Apply destructive actions**")
-    st.caption("Includes REVIEW bucket; may delete content.")
-    ingest_missing_destructive = st.checkbox(
-        "Ingest missing (Destructive phase)",
-        value=False,
-        disabled=operation_running,
-    )
+    st.markdown("**Step 3: Apply reviewed changes**")
+    st.caption("Includes review items. Deletions require explicit checkboxes.")
     delete_orphaned = st.checkbox(
         "Delete orphaned content (Destructive)",
         value=False,
@@ -370,7 +469,7 @@ with phase_col3:
         disabled=operation_running,
     )
     apply_destructive_clicked = st.button(
-        "Apply destructive actions",
+        "Apply reviewed changes",
         width="stretch",
         disabled=operation_running or "file_resync_plan" not in st.session_state,
     )
@@ -391,6 +490,8 @@ if scan_clicked:
                     extra={"run_id": run_id, "roots": len(roots), "extensions": sorted(exts)},
                     logger=logger,
                 ):
+                    from app.usecases.file_resync_usecase import scan_and_plan
+
                     plan, scan_meta = scan_and_plan(
                         FileResyncScanRequest(
                             roots=roots,
@@ -427,6 +528,10 @@ if plan:
             f"ignored temp/small files: {scan_meta.get('ignored', 0)}"
         )
     _render_summary(plan.counts)
+    st.caption(
+        "Review the plain-language report first. Use technical details only when you need "
+        "checksums, raw action codes, or index identifiers."
+    )
     rows = _plan_items_to_rows(plan.items)
     filtered_df = _render_table(rows, controls_disabled=operation_running)
 
@@ -443,6 +548,8 @@ if apply_safe_clicked and plan:
                 extra={"run_id": run_id, "ingest_missing": ingest_missing_safe},
                 logger=logger,
             ):
+                from app.usecases.file_resync_usecase import apply_plan as apply_resync_plan
+
                 result = apply_resync_plan(
                     FileResyncApplyRequest(
                         items=plan.items,
@@ -484,16 +591,18 @@ if apply_destructive_clicked and plan:
                 "action.file_resync.apply_destructive_actions",
                 extra={
                     "run_id": run_id,
-                    "ingest_missing": ingest_missing_destructive,
+                    "ingest_missing": False,
                     "delete_orphaned": delete_orphaned,
                     "retire_replaced": retire_replaced,
                 },
                 logger=logger,
             ):
+                from app.usecases.file_resync_usecase import apply_plan as apply_resync_plan
+
                 result = apply_resync_plan(
                     FileResyncApplyRequest(
                         items=plan.items,
-                        ingest_missing=ingest_missing_destructive,
+                        ingest_missing=False,
                         apply_safe_only=False,
                         delete_orphaned=delete_orphaned,
                         retire_replaced_content=retire_replaced,

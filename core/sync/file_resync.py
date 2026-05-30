@@ -37,7 +37,6 @@ from config import (
     logger,
 )
 from core.opensearch_client import get_client
-from ingestion.orchestrator import ingest_one
 from opensearchpy import helpers
 from qdrant_client import QdrantClient, models
 from utils.file_utils import compute_checksum, normalize_path
@@ -46,7 +45,6 @@ from utils.opensearch_utils import (
     delete_fulltext_by_checksum,
     get_fulltext_by_checksum,
 )
-from utils.qdrant_utils import delete_vectors_by_checksum
 from utils.timing import timed_block
 
 DEFAULT_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -761,6 +759,8 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
 
         for checksum in dict.fromkeys(delete_checksums):
             try:
+                from utils.qdrant_utils import delete_vectors_by_checksum
+
                 logger.warning("Deleting file resync content for checksum=%s", checksum)
                 delete_vectors_by_checksum(checksum)
                 delete_chunks_by_checksum(checksum)
@@ -774,6 +774,8 @@ def apply_plan(plan: ReconciliationPlan, options: ApplyOptions) -> ApplyResult:
             if not path:
                 continue
             try:
+                from ingestion.orchestrator import ingest_one
+
                 ingest_one(path, force=True, replace=True, op="resync", source="resync")
                 result.ingested += 1
             except Exception as e:  # noqa: BLE001
