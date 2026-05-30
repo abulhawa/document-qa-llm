@@ -79,19 +79,19 @@ else:
         with c1:
             if st.button("Open file", width="stretch"):
                 if not selected_paths:
-                    st.info("Select one or more rows first.")
+                    st.toast("Select one or more rows first.")
                 else:
                     for path in selected_paths:
                         open_file_local(path)
-                    st.success(f"Opened {len(selected_paths)} file(s).")
+                    st.toast(f"Opened {len(selected_paths)} file(s).")
         with c2:
             if st.button("Open containing folder", width="stretch"):
                 if not selected_paths:
-                    st.info("Select one or more rows first.")
+                    st.toast("Select one or more rows first.")
                 else:
                     for path in selected_paths:
                         show_in_folder(path)
-                    st.success("Opened containing folder(s).")
+                    st.toast("Opened containing folder(s).")
         with c3:
             if st.button("Clear selection", width="stretch"):
                 st.session_state["duplicate_table_nonce"] += 1
