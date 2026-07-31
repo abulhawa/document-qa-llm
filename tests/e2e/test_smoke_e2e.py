@@ -1,4 +1,7 @@
-import pytest, os
+import os
+
+import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
@@ -24,8 +27,6 @@ def test_smoke_e2e(streamlit_app, page):
 
     # Chat page: navigate and optionally submit a query if chat is available
     page.get_by_role("link", name="Ask Your Documents").click()
-    page.set_default_timeout(1_000)
-    page.wait_for_timeout(500)
     page.get_by_role("button", name="Get Answer", exact=True).wait_for(timeout=3_000)
     page.get_by_label("Your question", exact=True).fill("What is Document QA?")
     page.get_by_role("button", name="Get Answer", exact=True).click()
@@ -33,23 +34,27 @@ def test_smoke_e2e(streamlit_app, page):
     assert not any("error" in m.lower() for m in page.console_logs)
 
     # Index Viewer: navigate and exercise basic controls if data is present
-    page.get_by_role("link", name="File Index Viewer").click()
-    # Wait (up to ~5s) for the table to render at least one data row
+    page.get_by_role("link", name="Storage & Index", exact=True).click()
+    expect(page.get_by_role("heading", name="Storage & Index", exact=True)).to_be_visible(
+        timeout=10_000
+    )
+    section_control = page.get_by_role("radiogroup", name="Section")
+    expect(section_control).to_be_visible(timeout=10_000)
+    section_control.get_by_role("radio", name="File Index Viewer", exact=True).click()
+
+    # Give the backend-backed table enough time to render without a fixed sleep.
     table_rows = page.locator("table tbody tr")
-    for _ in range(25):
-        if table_rows.count() > 0:
-            break
-        page.wait_for_timeout(200)
-    rows_before = table_rows.count()
-    if rows_before == 0:
-        # No indexed rows yet; skip filter smoke instead of failing
-        import pytest
+    try:
+        table_rows.first.wait_for(state="visible", timeout=10_000)
+    except PlaywrightTimeoutError:
         pytest.skip("No rows in Index Viewer; skipping filter smoke check")
+    rows_before = table_rows.count()
     # Try multiple reasonable selectors for the filter box
     filter_input = page.locator(
         "input[aria-label='Filter by path substring'], input[placeholder*='Filter'], input[type='search']"
     ).first
+    expect(filter_input).to_be_visible(timeout=10_000)
     filter_input.fill("zzz")
-    page.wait_for_timeout(500)
+    expect(table_rows).not_to_have_count(rows_before, timeout=10_000)
     rows_after = table_rows.count()
     assert rows_after <= rows_before
