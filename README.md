@@ -1,259 +1,165 @@
-# 🧠 Local Document Q&A System
+# Local Document Q&A
 
-This project is a **fully local, privacy-first document Q&A system**, designed to help you search, explore, and interact with your own documents - securely and efficiently. It supports real-time ingestion of PDF, DOCX, and TXT files, applies semantic chunking and vector embedding, and uses a locally hosted LLM for natural-language answers in both single-turn and multi-turn formats.
+Local Document Q&A indexes documents and answers questions against retrieved evidence. Unlike a hosted chat-with-files service, its storage, retrieval, embedding, generation, and tracing endpoints are configurable and can run on infrastructure you control. The implemented pipeline combines OpenSearch lexical search with Qdrant dense retrieval, returns source metadata with answers, and exposes traces for inspecting pipeline behavior. Local deployment improves data control, but operators must still secure ports, logs, model services, and the host filesystem.
 
-The system prioritizes **modularity, observability, and full offline support**, making it suitable for personal knowledge bases, secure enterprise settings, or research workflows - all without sending data to the cloud.
+![Streamlit document Q&A interface](assets/screenshot_ui.png)
 
-![App Screenshot](assets/screenshot_ui.png)
+## Features
 
----
+- PDF, DOCX, and text ingestion with chunk metadata and checksum/path deduplication
+- Hybrid retrieval over OpenSearch and Qdrant, with configurable fusion, MMR, query variants, and an optional reranker
+- OpenAI-compatible local LLM integration and an optional Groq provider
+- Source filename/page or position metadata shown with generated answers
+- Streamlit pages for chat, ingestion, search, index inspection, duplicates, watchlists, task administration, and topic discovery
+- Celery/Redis asynchronous ingestion workers
+- OpenTelemetry/Phoenix tracing for ingestion and QA pipeline inspection
+- Retrieval and QA handoff evaluation scripts with checked-in evaluation fixtures and prior run artifacts
 
-## 🔭 Vision
+See [Architecture](docs/architecture.md) for component boundaries and [Pipeline map](docs/pipeline_map.md) for code-level flow.
 
-This system aims to become a **powerful and private Retrieval-Augmented Generation (RAG) engine**, capable of:
+## Architecture
 
-- Ingesting large collections of documents across folders
-- Answering questions with real-time citations
-- Summarizing or comparing multiple documents
-- Operating fully offline, powered by local vector DBs and LLMs
-- Providing traceability and observability via Phoenix & OpenTelemetry
-
----
-
-## UI Direction
-
-- Streamlit is the supported UI for this repository.
-- Gradio was removed because it was unused and added unnecessary dependency/security surface.
-
----
-
-## 🔧 Architecture Overview
-
-The system is built from modular, testable components:
-
-### ✅ 1. **Embedding Service** (Dockerized or local)
-- Runs a multilingual model (e.g., `intfloat/multilingual-e5-base`)
-- Accepts batch inputs via a local FastAPI server
-- Returns dense embeddings for semantic indexing
-
-### ✅ 2. **Qdrant** (Vector Store)
-- Stores document chunk embeddings + metadata (filename, page, position)
-- Supports efficient top-k retrieval based on similarity
-- Used for both retrieval and metadata tracking (checksums, ingestion status)
-
-### ✅ 3. **Text-Generation-WebUI (TGW)**
-- Runs your local LLM (e.g., Mistral, GPTQ, GGUF)
-- Accessible via OpenAI-compatible API (`/v1/chat/completions` or `/v1/completions`)
-- Works in both chat or completion mode
-
-### ✅ 4. **Streamlit Frontend**
-- Upload files and folders
-- Ask questions and receive cited answers
-- Adjust LLM model, temperature, mode
-- Switch between chat and completion
-
-### ✅ 5. **Phoenix Tracing**
-- Observability layer based on OpenTelemetry + Arize Phoenix
-- Captures span metadata for ingestion, embedding, retrieval, and LLM steps
-- Uses OpenInference schema for standardized analytics
-
----
-
-## 🚀 Key Features
-
-- 🔍 Semantic search over local documents
-- 📎 Supports multiple formats: PDF, DOCX, TXT
-- 💬 Chat Mode (multi-turn)
-- 🧠 Completion Mode (single Q&A)
-- 📁 Multi-file + folder ingestion, with parallel processing
-- 🧾 Source attribution (filename + page or position)
-- 🗃️ File deduplication by checksum + path tracking
-- 🧱 Modular architecture (easy to swap models or vector DB)
-- 📊 Tracing and observability with Phoenix
-- 🔒 Fully local: no cloud APIs, no internet needed
-- 🧼 **Robust text preprocessing** (PDF-first): header/footer stripping, page-number cleanup,
-  hyphenation repair, conservative soft-wrap joining, **table tagging**, and removal of
-  symbol-only / empty-bullet lines to prevent junk chunks.  
-
----
-
-## 🧩 App Components & UI Pages
-
-### Streamlit App Pages
-
-- **Ask Your Documents (Chat)**: local LLM chat or completion mode with model loading, temperature, cache toggle, and cited sources.  
-- **Ingest Documents**: file/folder picker that queues ingestion jobs with progress feedback and task panel.  
-- **Storage & Index Hub** (tabbed):  
-  - **Search** with filters, sorting, index refresh, and reingest for missing files.  
-  - **File Index Viewer** with filtering, chunk counts, open/show file helpers, and reingest/re-embed/delete actions.  
-  - **Ingestion Logs** for recent indexing activity.  
-  - **File Path Re-Sync** to reconcile on-disk paths with the index.  
-  - **Duplicate Files** manager.  
-  - **Watchlist** for tracking folders, scanning for new files, and batch ingestion.  
-- **Topic Discovery**: overview, naming, review, and admin tabs for clustering/naming document topics.  
-- **Tools Hub**: Smart File Sorter utility.  
-- **Admin Hub**: Running Tasks monitor (including revoke/clear) and Worker Emergency controls for queues and Celery.  
-
----
-
-## 🧪 Usage Guide
-
-### 📥 Ingest Documents
-- Upload one or more files and/or folders
-- Files are recursively scanned, chunked, embedded, and indexed
-- Ingestion is logged and deduplicated via checksum and path tracking
-- Duplicate files (same checksum in different locations) are indexed and viewable in the duplicates page
-
-
-### 💬 Ask Questions
-- Choose between chat or completion mode
-- Type natural-language questions (e.g., "What is this contract about?")
-- System retrieves the most relevant document chunks and builds a prompt
-- LLM answers using local knowledge + sources
-
-### 🧠 LLM Controls
-- Model, temperature, and mode are adjustable in sidebar
-- Supports any LLM with OpenAI-compatible endpoints
-
----
-
-## 🧰 Requirements
-
-- Python 3.10+
-- Qdrant running (Docker or native)
-- OpenSearch
-- Redis server for Celery broker
-- Celery worker for async embedding
-- Text-Generation-WebUI with a loaded model
-- Dockerized embedder API
-
----
-
-## 🚀 Getting Started
-
-1. **Install dependencies**
-
-   ```bash
-   pip install -r requirements/app.txt
-   ```
-
-2. **Start the services**
-
-   Ensure Qdrant, OpenSearch, Redis, the embedder API, and your Text-Generation-WebUI are running.
-   With Docker:
-
-   ```bash
-   docker-compose up qdrant opensearch redis embedder-api celery
-   ```
-
-3. **Launch the Streamlit app**
-
-   ```bash
-   streamlit run main.py
-   ```
-
-### Run tests
-
-Install development requirements and run the test suite:
-
-```bash
-pip install -r requirements/shared.txt -r requirements/dev.txt
-pytest
+```mermaid
+flowchart LR
+    D[Local documents] --> UI[Streamlit UI]
+    UI --> C[Celery worker]
+    C --> E[Embedding API]
+    C --> OS[(OpenSearch)]
+    C --> Q[(Qdrant)]
+    UI --> R[Hybrid retrieval pipeline]
+    OS --> R
+    Q --> R
+    R --> P[Prompt and grounding pipeline]
+    P --> L[OpenAI-compatible LLM]
+    L --> A[Answer and source citations]
+    UI --> PH[Phoenix tracing]
+    C --> PH
 ```
 
----
+The repository does not bundle an LLM server. The default embedding container requires CUDA; CPU operation needs an override described in [Setup](docs/setup.md).
 
-## 📌 Current Status
+## Quick start
 
-- ✅ Ingestion supports mixed file/folder input, with deduplication
-- ✅ File Index Viewer & manager UI for re-sync, stats, and delete
-- ✅ Modular pipeline orchestrated by `ingestion.py`
-- ✅ Batched embedding via API and Celery
-- ✅ Phoenix tracing across ingestion and QA flows
-- ✅ Vector store: Qdrant only (no SQLite)
-- ✅ Hybrid search (BM25 + dense vectors)
-- ✅ Source filenames and pages displayed with each answer
-- ✅ Works with both chat and completion LLMs (e.g. Mistral, GPTQ)
-- ✅ Query rewriting layer supports clarification and intent extraction
-- ✅ Progress bar and estimated time remaining during ingestion
+### Prerequisites
 
-### ⚠️ Known Limitations
+- Python 3.10+ (CI uses Python 3.13)
+- Docker Engine with the `docker compose` plugin
+- For the default embedder: NVIDIA GPU, compatible driver, and NVIDIA Container Toolkit
+- An OpenAI-compatible LLM server reachable at `http://localhost:5000` by default
+- At least 4 GB RAM for OpenSearch and the Python application in addition to model memory; actual model RAM/VRAM and disk use depend on the selected embedding and generation models
 
-- Streaming answers (token-by-token) is currently disabled
+### 1. Install
 
----
+```bash
+git clone <repository-url>
+cd document-qa-llm
+python -m venv .venv
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements/app.txt -r requirements/worker.txt -r requirements/dev.txt
+cp .env.example .env
+mkdir -p sample_docs
+```
 
-## 🔎 Query Rewriting (New Feature)
+### 2. Configure the minimum environment
 
-The system includes a **dedicated LLM-based query rewriter** that improves search accuracy by:
+For the default local endpoints, `.env.example` already contains usable non-secret values. Set `DOCUMENTS_PATH` to the host folder the worker may read and configure the LLM endpoint/model server. Do not commit `.env`.
 
-- ✅ Detecting vague or ambiguous questions (e.g., “What about that contract?”)
-- ✅ Asking for clarification when context is missing (e.g., “Who is ‘he’?”)
-- ✅ Rewriting clean questions into compressed, keyword-rich search phrases
+```dotenv
+DOCUMENTS_PATH=./sample_docs
+LLM_BASE_URL=http://localhost:5000
+USE_GROQ=false
+```
 
-![App Screenshot](assets/rewriter.png)
+All environment variables, defaults, and advanced switches are documented in [Configuration](docs/configuration.md).
 
-### 🔧 How it works:
+### 3. Start services
 
-- All user queries are passed through a **chat-tuned query rewriter**
+Start the minimum data, queue, embedding, and worker services:
 
-- The rewriter returns one of:
+```bash
+docker compose up -d qdrant opensearch redis embedder-api celery
+```
 
-  ```json
-  { "clarify": "Who are you referring to with 'he'?" }
-  ```
+Check their state and inspect failures before launching the UI:
 
-  or
+```bash
+docker compose ps
+docker compose logs --tail=100 embedder-api celery
+```
 
-  ```json
-  { "rewritten": "Ali assistant professor work years" }
-  ```
+Phoenix tracing, OpenSearch Dashboards, and Flower are optional:
 
-- If clarification is needed, the main pipeline halts and returns the message to the user
+```bash
+docker compose up -d phoenix opensearch-dashboards flower
+```
 
-### 📌 Why this matters:
+### 4. Start the application
 
-- Reduces retrieval noise from vague or malformed queries
-- Enhances accuracy when using local LLMs + vector search
-- Handles grammar errors, typos, lack of punctuation, and missing context
+Start your separately managed OpenAI-compatible LLM server, then run:
 
-### ✅ Tracing Integration
+```bash
+streamlit run main.py
+```
 
-- The `qa_chain` trace includes a "Rewrite Query" span
-- It records:
-  - Original user query
-  - Rewritten form
-  - Clarification flag (if applicable)
+Open the URL printed by Streamlit (normally `http://localhost:8501`). For setup troubleshooting, CPU embedding, service ports, and shutdown commands, see [Setup](docs/setup.md).
 
----
+> There is intentionally no one-command full startup claim: model selection, model download, GPU/CPU compatibility, and the external LLM server require operator choices that cannot be safely automated by this repository.
 
-## 🛣️ Roadmap
+## Tests and checks
 
-### ✅ Completed
-These milestones are fully implemented and working in the system:
+Install the requirements shown above, then run:
 
-- [x] Query rewriting (clarify + keywords)
-- [x] Hybrid search (BM25 + dense vectors)
-- [x] Index viewer & manager UI (status, re-sync, stats, delete)
-- [x] Embedder API + Celery pipeline
-- [x] Multi-file + folder ingestion
-- [x] Phoenix tracing (QA + ingestion)
-- [x] Deduplication + full path display
-- [x] Progress bar + ETA during ingestion
+```bash
+python -m pytest --cov -q --ignore=tests/e2e --disable-warnings
+python -m compileall -q app core ingestion qa_pipeline services ui utils worker
+```
 
-### 🔧 Near-Term Enhancements
-Next steps actively being planned or started:
+E2E tests require Docker, OpenSearch, Qdrant, Playwright Chromium, and the repository's stub services. CI documents that orchestration in [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml). Evaluation commands and the meaning of stored results are documented in [`docs/evaluation.md`](docs/evaluation.md).
 
-- [ ] Reranker (cross-encoder or LLM-based)
-- [ ] Per-document QA mode
-- [ ] Session save/load for chat + files
+## Minimum vs. optional services
 
-### 🔮 Coming Next
-Mid-term roadmap items queued for future sprints:
+| Component | Minimum interactive setup | Notes |
+| --- | --- | --- |
+| OpenSearch | Required | Lexical/full-text indexes; local Compose disables security |
+| Qdrant | Required | Dense vectors and metadata |
+| Redis + Celery | Required for asynchronous ingestion | Worker mounts only `DOCUMENTS_PATH` read-only |
+| Embedding API | Required | Default Compose configuration uses CUDA |
+| OpenAI-compatible LLM | Required for generated answers | External to this Compose file |
+| Phoenix | Optional | Trace collection and inspection |
+| OpenSearch Dashboards | Optional | OpenSearch inspection UI |
+| Flower | Optional | Celery monitoring; unauthenticated in local Compose |
+| Groq | Optional | Sends prompts/context to a third-party API; requires `GROQ_API_KEY` |
+| Cross-encoder reranking | Optional, off by default | Served by the embedding API; adds model memory and latency |
 
-- [ ] Batch summarization (map-reduce) – summarize many documents at once
-- [ ] Advanced chunking (semantic, LLM-aided) – segment text into retrieval-friendly pieces
-- [ ] Offline Docker bundle (TGW + Embedder + Qdrant + OpenSearch) – one-command local deployment
-- [ ] Agent workflows (document reasoning) – multi-step agents for deeper analysis
+## Project status
 
----
+This is a pre-1.0 learning and portfolio project. It has unit/UI tests and evaluation tooling, but it is not presented as production-ready. Defaults are designed for a trusted local development machine: several service ports are host-accessible, OpenSearch authentication is disabled, Flower is unauthenticated, document-level authorization is not implemented, and generated answers still require source verification. Streaming answer display is currently disabled.
+
+Past evaluation artifacts under `docs/runbooks/` describe specific fixtures and configurations; they are not general benchmarks or guarantees for other corpora.
+
+The [public repository audit](docs/public-repository-audit.md) identifies personal path/filename metadata in historical evaluation artifacts that the owner must review before publication.
+
+## Roadmap
+
+- Make Compose profiles for CPU/GPU embedding and optional observability services
+- Add authenticated/network-hardened deployment guidance
+- Expand retrieval, answer-support, citation-accuracy, refusal, and latency evaluation coverage
+- Define a stable pre-1.0 configuration and migration policy
+- Improve accessibility and cross-platform setup verification
+
+Roadmap items are proposals, not commitments. Discuss large changes in an issue before implementation.
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, pull-request expectations, and evaluation requirements. Community participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md); report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Ali Abul Hawa.
+
+## Acknowledgements
+
+This project builds on open-source components including Streamlit, OpenSearch, Qdrant, Celery, Redis, Sentence Transformers, Arize Phoenix, LangChain document utilities, and the Python scientific ecosystem. Their names identify dependencies and do not imply endorsement.
+
+AI coding tools have been used as implementation accelerators in parts of this learning project; architecture review, evaluation, debugging, and maintenance remain the project owner's responsibility.

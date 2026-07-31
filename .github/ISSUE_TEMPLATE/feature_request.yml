@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a focused capability or workflow improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the user need without assuming an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: What behavior would solve the problem?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification or evaluation
+      description: How should maintainers verify success? Include metrics for retrieval/RAG changes.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Additional context and scope
+      description: Dependencies, compatibility, security/privacy, operational cost, or screenshots.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and roadmap items.
+          required: true

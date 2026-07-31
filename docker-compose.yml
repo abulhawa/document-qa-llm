@@ -12,13 +12,16 @@ services:
       context: ./embedder_api_multilingual
     ports:
       - "8000:8000"
-    env_file: ./embedder_api_multilingual/.env
     volumes:
       - hf_cache:/root/.cache/huggingface
     environment:
-      - EMBEDDING_BATCH_SIZE=96
-      - EMBEDDING_DEVICE=cuda
-      - EMBEDDING_FP16=true
+      - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-intfloat/multilingual-e5-base}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-96}
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cuda}
+      - EMBEDDING_FP16=${EMBEDDING_FP16:-true}
+      - RERANK_MODEL_NAME=${RERANK_MODEL_NAME:-cross-encoder/ms-marco-MiniLM-L-6-v2}
+      - RERANK_DEVICE=${RERANK_DEVICE:-cuda}
+      - RERANK_TOP_N_DEFAULT=${RERANK_TOP_N_DEFAULT:-5}
       - UVICORN_WORKERS=1
     deploy:
       resources:
@@ -98,16 +101,16 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      - DOC_PATH_MAP=C:/=>/host-c
+      - DOC_PATH_MAP=${DOCUMENTS_PATH:-./sample_docs}=>${WORKER_DOCUMENTS_PATH:-/documents}
       - EMBEDDING_API_URL=http://embedder-api:8000/embed
       # Larger request groups + batch size to push more work per API call
-      - EMBEDDING_REQ_MAX_CHUNKS=192
-      - EMBEDDING_BATCH_SIZE=96
+      - EMBEDDING_REQ_MAX_CHUNKS=${EMBEDDING_REQ_MAX_CHUNKS:-192}
+      - EMBEDDING_BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-96}
       - QDRANT_URL=http://qdrant:6333
       - OPENSEARCH_URL=http://opensearch:9200
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
     volumes:
-      - "C:/:/host-c:ro"
+      - "${DOCUMENTS_PATH:-./sample_docs}:${WORKER_DOCUMENTS_PATH:-/documents}:ro"
     networks: [appnet]
     command: >
       celery -A worker.celery_worker:app worker
