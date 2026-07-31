@@ -42,6 +42,8 @@ jobs:
 
       # App/test env
       TEST_MODE: e2e
+      # Shared by the seed process and pytest (whose conftest also defaults to test).
+      NAMESPACE: test
       OPENSEARCH_URL: http://localhost:9200
       QDRANT_URL: http://localhost:6333
       USE_STUB_EMBEDDER: "true"
