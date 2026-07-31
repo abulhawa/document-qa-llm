@@ -6,10 +6,34 @@ on:
       - 'scripts/seed_test_backends.py'
       - 'scripts/test_backends_smoke.py'
       - '.github/workflows/e2e.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'core/**'
+      - 'ingestion/**'
+      - 'qa_pipeline/**'
+      - 'services/**'
+      - 'ui/**'
+      - 'worker/**'
+      - 'pages/**'
+      - 'tests/e2e/**'
+      - 'scripts/seed_test_backends.py'
+      - 'scripts/stub_embedder.py'
+      - 'scripts/stub_llm.py'
+      - 'requirements/**'
+      - '.github/workflows/e2e.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     env:
       # Image tags

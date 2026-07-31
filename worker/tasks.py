@@ -32,9 +32,16 @@ def _audit_fail(task_id=None, exception=None, sender=None, **_):
     log_task("failure", str(task_id), name, state="FAILURE", error=str(exception))
 
 
-# --- tiny mapper: host (Windows) -> container path (e.g., /host-c) ---
+# --- map a host-visible document path to its worker-container mount ---
 def host_to_container_path(host_path: str) -> str:
-    # Uses DOC_PATH_MAP like 'C:/=>/host-c;G:/=>/host-g'
+    """Apply the longest matching ``DOC_PATH_MAP`` prefix.
+
+    Mappings use ``source=>target`` pairs separated by semicolons. Both Windows
+    and POSIX separators are accepted, spaces are preserved, and a source only
+    matches a complete path segment (``/docs`` does not match ``/docs-old``).
+    Relative paths are returned unchanged and therefore must already be valid
+    inside the worker container.
+    """
     pairs = []
     env = os.getenv("DOC_PATH_MAP", "")
     for part in env.split(";"):
@@ -47,7 +54,7 @@ def host_to_container_path(host_path: str) -> str:
     hp = host_path.replace("\\", "/")
     low = hp.lower()
     for src, dst in pairs:
-        if low.startswith(src):
+        if low == src or low.startswith(f"{src}/"):
             return dst + hp[len(src) :]
     return hp
 

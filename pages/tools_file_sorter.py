@@ -93,7 +93,7 @@ with st.expander("How it works", expanded=False):
         """
     )
 
-root_default = os.getenv("LOCAL_SYNC_ROOT", "C:\\Users\\ali_a\\My Drive")
+root_default = os.getenv("LOCAL_SYNC_ROOT", "")
 llm_status = check_llm_status()
 
 with st.form("smart_sort_config"):

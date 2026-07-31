@@ -400,7 +400,7 @@ The exact names matter less than the ownership model:
 
 | Phase | Goal | Likely files | Risk | Benefit | Tests/eval |
 |---|---|---|---|---|---|
-| Phase 1: documentation only | Create owner-facing maps before moving anything | `docs/pipeline_map.md`, `docs/architecture.md`, `docs/file_ownership.md`, `docs/retrieval_pipeline.md`, `docs/evaluation.md`, `docs/api_flow.md` | Very low | Immediate learning and portfolio clarity | No code tests required |
+| Phase 1: documentation only | Create owner-facing maps before moving anything | `docs/pipeline_map.md`, `docs/architecture.md`, `docs/file_ownership.md`, `docs/retrieval_pipeline.md`, `docs/evaluation.md`, `docs/api_flow.md` | Very low | Immediate architecture and ownership clarity | No code tests required |
 | Phase 2: safe grouping/renaming | Only move or group files with clear wrappers and tests | Possibly docs first; later `utils/opensearch/*`, legacy UI docs, script docs | Low-medium | Reduces navigation cost | `pytest tests/test_opensearch_utils*.py tests/test_dependency_boundaries.py -q` |
 | Phase 3: interface cleanup | Make ingestion/retrieval/generation contracts explicit | `core/retrieval/pipeline.py`, `qa_pipeline/*`, `ingestion/orchestrator.py`, `app/usecases/*` | Medium-high | Defensible architecture and easier debugging | Retrieval, QA, ingestion, UI tests |
 | Phase 4: tests/evaluation stabilization | Make before/after evaluation routine and credible | `scripts/run_*eval.py`, `tests/fixtures/*`, `docs/runbooks/*` | Medium | Portfolio-grade evaluation discipline | Retrieval eval, QA handoff eval, financial eval |
