@@ -7,8 +7,8 @@
 ## Evidence
 Source artifacts:
 - `docs/runbooks/retrieval_eval_cross_encoder_2026-03-28_hitn_compare.json`
-- `docs/runbooks/retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_off.json`
-- `docs/runbooks/retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_on.json`
+- `docs/runbooks/retrieval_eval_cross_encoder_off.json`
+- `docs/runbooks/retrieval_eval_cross_encoder_on.json`
 
 Measured (`top_k=7`, sibling expansion enabled):
 

@@ -123,6 +123,8 @@ def test_audit_counts_eligibility_buckets_and_scroll_cleanup():
 
 
 def test_search_body_uses_normalized_prefix():
-    body = audit_script._search_body(batch_size=100, prefix="C:/Users/example/Documents/Synthetic Corpus")
+    body = audit_script._search_body(
+        batch_size=100, prefix="C:\\Users\\example\\Documents\\Synthetic Corpus"
+    )
     assert body["query"]["prefix"]["path"] == "C:/Users/example/Documents/Synthetic Corpus"
 

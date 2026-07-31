@@ -26,16 +26,16 @@
   },
   "artifacts": {
     "top3": {
-      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top3.json",
-      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top3.csv"
+      "json": "docs\\runbooks\\qa_handoff_eval_top3.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_top3.csv"
     },
     "top5": {
-      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top5.json",
-      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_top5.csv"
+      "json": "docs\\runbooks\\qa_handoff_eval_top5.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_top5.csv"
     },
     "dynamic": {
-      "json": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_dynamic.json",
-      "csv": "docs\\runbooks\\qa_handoff_eval_2026-03-28_compare_clean_dynamic.csv"
+      "json": "docs\\runbooks\\qa_handoff_eval_dynamic.json",
+      "csv": "docs\\runbooks\\qa_handoff_eval_dynamic.csv"
     }
   }
 }

@@ -103,7 +103,7 @@ def rewrite_query(
 
     Examples:
     User: where did ali do his bsc studies  
-    → { "rewritten": "Ali BSc study location" }
+    → { "rewritten": "Example Person BSc study location" }
 
     User: where did he do his bsc studies  
     → { "clarify": "Who are you referring to with 'he'?" }

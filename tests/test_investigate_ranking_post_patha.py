@@ -36,8 +36,8 @@ def test_reciprocal_rank_and_bucket():
 
 
 def test_text_similarity_metrics_detects_near_duplicate():
-    a = "Ali worked as a data scientist in Berlin in 2024."
-    b = "Ali worked as a data scientist in Berlin in 2024."
+    a = "Example Person worked as a data scientist in Berlin in 2024."
+    b = "Example Person worked as a data scientist in Berlin in 2024."
     metrics = ranking_script.text_similarity_metrics(a, b)
     assert metrics["near_duplicate"] is True
     assert metrics["containment_min"] >= 0.99
@@ -131,7 +131,7 @@ def test_find_first_answer_support_strict_and_equivalent_gate():
         {"checksum": "other-1"},
     ]
     metadata_cache = {
-        "expected-1": {"text_full": "Ali did his PhD in Aachen."},
+        "expected-1": {"text_full": "Example Person did his PhD in Aachen."},
         "other-1": {"text_full": "Unrelated document text."},
     }
     strict = ranking_script.find_first_answer_support(
@@ -149,8 +149,8 @@ def test_find_first_answer_support_strict_and_equivalent_gate():
         {"checksum": "other-2"},
     ]
     metadata_cache = {
-        "expected-1": {"text_full": "Ali did his PhD in Aachen in Germany."},
-        "equiv-1": {"text_full": "Ali did his PhD in Aachen in Germany."},
+        "expected-1": {"text_full": "Example Person did his PhD in Aachen in Germany."},
+        "equiv-1": {"text_full": "Example Person did his PhD in Aachen in Germany."},
         "other-2": {"text_full": "Completely unrelated content"},
     }
     equiv_default = ranking_script.find_first_answer_support(
@@ -509,14 +509,14 @@ def test_analyze_strict_canonical_hard_negatives_partitions_candidates():
                 "doc_type": "other",
             },
             "expected_doc_metadata": {
-                "path": "C:/docs/synthetic-receipt-provider_receipt.pdf",
-                "filename": "synthetic-receipt-provider_receipt.pdf",
+                "path": "C:/docs/synthetic_receipt.pdf",
+                "filename": "synthetic_receipt.pdf",
                 "doc_type": "receipt",
             },
             "winner_vs_expected_diagnostics": {
                 "title_filename_overlap_features": {
                     "winner": {"title_or_filename": "filtered_gdrive_list.txt", "overlap_count": 0},
-                    "expected": {"title_or_filename": "synthetic-receipt-provider_receipt.pdf", "overlap_count": 1},
+                    "expected": {"title_or_filename": "synthetic_receipt.pdf", "overlap_count": 1},
                 },
                 "vector_score_contribution": {"delta_winner_minus_expected": 0.02},
                 "lexical_score_contribution": {"delta_winner_minus_expected": 0.3},

@@ -43,8 +43,8 @@ DOCUMENTS_PATH=/home/example/My Documents
 DOC_PATH_MAP=/home/example/My Documents=>/documents
 
 # Windows Docker Desktop path
-DOCUMENTS_PATH=C:/Users/example/My Documents
-DOC_PATH_MAP=C:/Users/example/My Documents=>/documents
+DOCUMENTS_PATH=C:/Users/example/Documents/Synthetic Corpus
+DOC_PATH_MAP=C:/Users/example/Documents/Synthetic Corpus=>/documents
 ```
 
 Linux relative `DOCUMENTS_PATH` values are resolved by Compose relative to the

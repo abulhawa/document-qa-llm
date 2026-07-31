@@ -10,7 +10,7 @@
   - `100k` tokens/day
 - To stay within limits, investigation reused cache (`use_cache=true`) and limited variant-enabled sweeps.
 - Machine-readable artifact:
-  - `docs/runbooks/retrieval_investigation_p9_2026-03-26.json`
+  - `docs/runbooks/retrieval_investigation_summary.json`
 
 ## Stage attribution summary
 
@@ -118,7 +118,7 @@
   - `positive_clarify_count=0`
   - `control_with_results=0/3`
 - Artifacts:
-  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json`
-  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.csv`
+  - `docs/runbooks/retrieval_eval_current.json`
+  - `docs/runbooks/retrieval_eval_current.csv`
 - Gate outcome:
   - Path A thresholds met (`hit@3 >= 0.55` and `hit@1 >= 0.20`), so Path B is not triggered at this stage.

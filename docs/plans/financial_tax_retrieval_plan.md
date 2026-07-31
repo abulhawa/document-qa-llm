@@ -7,7 +7,7 @@ Status: Proposed and saved for phased execution
 
 This plan upgrades the text-based ingestion and QA pipeline so the app can answer year-scoped finance/tax evidence questions such as:
 
-"What expenses did Ali make in 2022 that can help in his tax returns for that year?"
+"What expenses did Example Person make in 2022 that can help in his tax returns for that year?"
 
 The implementation starts with metadata + evidence extraction for already indexed text documents (`pdf`, `docx`, `txt`). OCR/image ingestion remains deferred and is not the first step.
 

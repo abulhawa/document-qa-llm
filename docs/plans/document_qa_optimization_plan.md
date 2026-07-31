@@ -57,8 +57,8 @@ Baseline snapshot (2026-03-26, checksum fixture run):
   - `positive_clarify_count=2`
   - `control_with_results=2/3` and `control_clarify_count=1/3`
 - Artifacts:
-  - `docs/runbooks/retrieval_eval_baseline_2026-03-26.json`
-  - `docs/runbooks/retrieval_eval_baseline_2026-03-26.csv`
+  - `docs/runbooks/retrieval_eval_baseline.json`
+  - `docs/runbooks/retrieval_eval_baseline.csv`
 
 ## 5. Implementation plan (phased, low blast radius)
 
@@ -121,8 +121,8 @@ Execution update (2026-03-26, post-fix run):
   - `control_with_results=0/3`
   - `control_clarify_count=0/3`
 - Artifacts:
-  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.json`
-  - `docs/runbooks/retrieval_eval_postfix_2026-03-26_v3.csv`
+  - `docs/runbooks/retrieval_eval_previous.json`
+  - `docs/runbooks/retrieval_eval_previous.csv`
 - Decision for next step:
   - Proceed to P8 OCR canary planning and implementation, with retrieval gates monitored against the archived Path A fixture snapshot.
 
@@ -713,7 +713,7 @@ Status (2026-03-26):
 
 - Investigation report and decision memo completed:
   - `docs/runbooks/retrieval_investigation_p9_2026-03-26.md`
-  - `docs/runbooks/retrieval_investigation_p9_2026-03-26.json`
+  - `docs/runbooks/retrieval_investigation_summary.json`
 - Decision outcome: Path A (targeted incremental fixes) selected first.
 - Path A follow-up iteration completed in code:
   - Anchored exact-only variant gate.
@@ -723,11 +723,11 @@ Status (2026-03-26):
   - `positive_hit_at_3=12/20` (`0.60`)
   - `control_with_results=0/3`
   - Artifacts:
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json`
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.csv`
+    - `docs/runbooks/retrieval_eval_current.json`
+    - `docs/runbooks/retrieval_eval_current.csv`
 - Residual-failure sidecar analysis rerun completed (2026-03-27) under benchmark-separated framing:
   - Artifact:
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_residual_failure_analysis.json`
+    - `docs/runbooks/retrieval_eval_residual_failure_analysis.json`
   - Schema marker:
     - `schema_version=residual_failure_analysis.v2` (compatibility note included in artifact).
   - Query-type counts:
@@ -743,7 +743,7 @@ Status (2026-03-26):
   - OCR canary recommendation: **NO** (no measured text-extraction/OCR-driven residual misses).
 - Ranking-focused follow-up investigation rerun completed (2026-03-27) under benchmark-separated framing:
   - Artifact:
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1_ranking_investigation.json`
+    - `docs/runbooks/retrieval_eval_ranking_investigation.json`
   - Schema marker:
     - `schema_version=ranking_investigation.v3` (adds `probe_vs_eval_comparison` and `strict_canonical_ranking_diagnosis` blocks; legacy flat probe keys removed).
   - Deterministic deep-rank probe (`exact-query`, `probe_depth=40`) metrics:
@@ -783,8 +783,8 @@ Status (2026-03-26):
     - Prioritize a low-blast-radius lexical-priority calibration for strict canonical misses that are currently `vector dominance`, while keeping answer-support framing and OCR scope unchanged.
 - Benchmark-cleaning refresh completed (2026-03-27, post-anchorfix rerun):
   - Artifacts:
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun_ranking_investigation.json`
-    - `docs/runbooks/retrieval_eval_postfix_2026-03-27_patha_v2_anchorfix_rerun_ranking_investigation_strict_canonical_cleaned_residuals.json`
+    - `docs/runbooks/retrieval_eval_ranking_investigation.json`
+    - `docs/runbooks/retrieval_eval_cleaned_residuals.json`
   - Schema markers:
     - main ranking artifact: `schema_version=ranking_investigation.v5`
     - cleaned strict sidecar: `schema_version=strict_canonical_cleaned_residuals.v1`

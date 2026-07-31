@@ -217,19 +217,19 @@
 - `tests/test_run_financial_eval.py`
 - `core/retrieval/pipeline.py`
 - `tests/test_retrieval_pipeline.py`
-- `docs/runbooks/financial_eval_2026-03-28.json`
+- `docs/runbooks/financial_eval_current.json`
 
 ### Commands executed
 - `pytest tests\\test_run_financial_eval.py tests\\test_financial_query.py tests\\test_financial_answer.py tests\\test_retrieval_pipeline.py tests\\test_query.py tests\\test_prompt_builder.py -q`
 - `pytest tests\\test_backfill_financial_metadata.py tests\\test_backfill_identity_metadata.py tests\\test_run_financial_eval.py tests\\test_financial_query.py tests\\test_financial_answer.py tests\\test_retrieval_pipeline.py tests\\test_query.py tests\\test_prompt_builder.py -q`
-- `python scripts\\run_financial_eval.py --output docs/runbooks/financial_eval_2026-03-28.json`
+- `python scripts\\run_financial_eval.py --output docs/runbooks/financial_eval_current.json`
 
 ### Validation results
 - Focused suite: `82 passed in 0.42s`
 - Expanded finance/regression suite: `88 passed in 0.49s`
 - Finance benchmark gates: all pass.
 
-### Benchmark summary (from `financial_eval_2026-03-28.json`)
+### Benchmark summary (from `financial_eval_current.json`)
 - Baseline (`financial_enable_gating=false`):
   - `suppressed_docs_topk_total=4`
   - `avg_preferred_ratio_topk=0.5667`
@@ -284,9 +284,9 @@
 - `scripts/run_financial_eval.py`
 - `tests/test_backfill_financial_metadata.py`
 - `tests/test_run_financial_eval.py`
-- `docs/runbooks/financial_eval_live_2026-03-28.json`
-- `docs/runbooks/retrieval_eval_financial_rollout_2026-03-28_baseline_off.json`
-- `docs/runbooks/retrieval_eval_financial_rollout_2026-03-28_baseline_off.csv`
+- `docs/runbooks/financial_eval_live_current.json`
+- `docs/runbooks/retrieval_eval_financial_rollout.json`
+- `docs/runbooks/retrieval_eval_financial_rollout.csv`
 
 ### Commands executed (operational)
 - Canary apply:
@@ -303,7 +303,7 @@
 - Full broad apply (final):
   - `python scripts\backfill_financial_metadata.py --batch-size 200 --scroll-keepalive 30m`
 - Live finance eval:
-  - `python scripts\run_financial_eval.py --mode live --live-fixture tests/fixtures/retrieval_eval_queries.json --live-target-areas tax_docs finance_docs --live-top-k 5 --live-fallback-budget 2 --output docs/runbooks/financial_eval_live_2026-03-28.json`
+  - `python scripts\run_financial_eval.py --mode live --live-fixture tests/fixtures/retrieval_eval_queries.json --live-target-areas tax_docs finance_docs --live-top-k 5 --live-fallback-budget 2 --output docs/runbooks/financial_eval_live_current.json`
 - Full-corpus live benchmark:
   - `python scripts\run_retrieval_eval.py --fixture tests/fixtures/retrieval_eval_queries.json --support-labels tests/fixtures/retrieval_eval_answer_support_labels.json --output docs/runbooks/retrieval_eval_financial_rollout_2026-03-28.json --sibling-expansion-mode off --query-planning-mode baseline`
 
@@ -318,7 +318,7 @@
 - Final regression sweep (containerized):
   - `docker compose run --rm --no-deps -T -v "${PWD}:/app" celery sh -lc "python -m pip install -q pytest opentelemetry-api opentelemetry-sdk arize-phoenix-otel && python -m pytest tests/test_financial_mappings.py tests/test_financial_extractor.py tests/test_financial_records_store.py tests/test_ingest_financial.py tests/test_backfill_financial_metadata.py tests/test_backfill_identity_metadata.py tests/test_financial_query.py tests/test_financial_answer.py tests/test_retrieval_pipeline.py tests/test_query.py tests/test_prompt_builder.py tests/test_run_financial_eval.py -q"`
 - Live eval and full benchmark re-run from containerized bind-mounted path:
-  - `docker compose run --rm --no-deps -T -v "${PWD}:/app" celery sh -lc "python -m pip install -q opentelemetry-api opentelemetry-sdk arize-phoenix-otel && python scripts/run_financial_eval.py --mode live --live-fixture tests/fixtures/retrieval_eval_queries.json --live-target-areas tax_docs finance_docs --live-top-k 5 --live-fallback-budget 2 --output docs/runbooks/financial_eval_live_2026-03-28.json"`
+  - `docker compose run --rm --no-deps -T -v "${PWD}:/app" celery sh -lc "python -m pip install -q opentelemetry-api opentelemetry-sdk arize-phoenix-otel && python scripts/run_financial_eval.py --mode live --live-fixture tests/fixtures/retrieval_eval_queries.json --live-target-areas tax_docs finance_docs --live-top-k 5 --live-fallback-budget 2 --output docs/runbooks/financial_eval_live_current.json"`
   - `docker compose run --rm --no-deps -T -v "${PWD}:/app" celery sh -lc "python -m pip install -q opentelemetry-api opentelemetry-sdk arize-phoenix-otel && python scripts/run_retrieval_eval.py --fixture tests/fixtures/retrieval_eval_queries.json --support-labels tests/fixtures/retrieval_eval_answer_support_labels.json --output docs/runbooks/retrieval_eval_financial_rollout_2026-03-28.json --sibling-expansion-mode off --query-planning-mode baseline"`
 
 ### Backfill apply evidence
@@ -388,7 +388,7 @@
 - Gates: all pass.
 
 ### Full-corpus live benchmark (post-backfill)
-- Output: `docs/runbooks/retrieval_eval_financial_rollout_2026-03-28_baseline_off.json` + `.csv`
+- Output: `docs/runbooks/retrieval_eval_financial_rollout.json` + `.csv`
 - Summary:
   - `positive_hit_at_1_rate=0.45`
   - `positive_hit_at_3_rate=0.8`

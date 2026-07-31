@@ -281,7 +281,7 @@ def test_retrieval_skips_variants_for_anchored_query_when_enabled(monkeypatch):
         embed_texts=None,
         cross_encoder=None,
     )
-    query = "In Ali's latest CV, what is his most recent job title?"
+    query = "In Example Person's latest CV, what is his most recent job title?"
     result = pipeline.retrieve(query, cfg=cfg, deps=deps)
 
     assert calls["variants"] == 0
@@ -451,7 +451,7 @@ def test_retrieval_query_planning_preserves_anchored_exact_only():
         calls["keyword"].append(query)
         return []
 
-    query = "In Ali's latest CV, what is his most recent role?"
+    query = "In Example Person's latest CV, what is his most recent role?"
     cfg = RetrievalConfig(
         top_k=1,
         top_k_each=1,
@@ -583,7 +583,7 @@ def test_retrieval_prefers_bm25_for_anchored_query_when_lexical_bias_enabled():
         profile_intent_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "In Ali's latest CV, what is his most recent job title?",
+        "In Example Person's latest CV, what is his most recent job title?",
         cfg=cfg,
         deps=_build_deps(vector_hits, bm25_hits),
     )
@@ -665,7 +665,7 @@ def test_retrieval_rescues_lexical_title_match_for_canonical_anchored_query():
         profile_intent_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "In Ali's latest CV contact section, which city is listed?",
+        "In Example Person's latest CV contact section, which city is listed?",
         cfg=cfg,
         deps=_build_deps(vector_hits, bm25_hits),
     )
@@ -769,7 +769,7 @@ def test_retrieval_does_not_apply_lexical_rescue_for_non_canonical_query():
         profile_intent_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "Where did Ali do his PhD studies?",
+        "Where did Example Person do his PhD studies?",
         cfg=cfg,
         deps=_build_deps(vector_hits, bm25_hits),
     )
@@ -873,7 +873,7 @@ def test_retrieval_does_not_suppress_generic_hard_negative_for_non_canonical_que
         profile_intent_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "Where did Ali do his PhD studies?",
+        "Where did Example Person do his PhD studies?",
         cfg=cfg,
         deps=_build_deps(vector_hits, bm25_hits),
     )
@@ -1386,7 +1386,7 @@ def test_retrieval_uses_higher_canonical_sim_threshold_for_anchored_query(monkey
         canonical_anchored_sim_threshold=0.94,
     )
     pipeline.retrieve(
-        "In Ali's latest CV, what is his most recent job title?",
+        "In Example Person's latest CV, what is his most recent job title?",
         cfg=cfg,
         deps=_build_deps(
             [{"id": "v1", "text": "doc", "score": 1.0, "checksum": "c1"}],
@@ -1576,20 +1576,20 @@ def test_retrieval_collapses_cv_family_prefers_newer_when_relevance_close():
     vector_hits = [
         {
             "id": "cv_old",
-            "text": "Ali old CV",
+            "text": "Example Person old profile",
             "score": 1.0,
             "checksum": "cv-old",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2017-01-01T00:00:00+00:00",
         },
         {
             "id": "cv_new",
-            "text": "Ali new CV",
+            "text": "Example Person new profile",
             "score": 0.95,
             "checksum": "cv-new",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2026-01-01T00:00:00+00:00",
         },
         {
@@ -1622,20 +1622,20 @@ def test_retrieval_cv_family_keeps_older_when_clearly_more_relevant():
     vector_hits = [
         {
             "id": "cv_old",
-            "text": "Ali old CV",
+            "text": "Example Person old profile",
             "score": 1.0,
             "checksum": "cv-old",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2017-01-01T00:00:00+00:00",
         },
         {
             "id": "cv_new",
-            "text": "Ali new CV",
+            "text": "Example Person new profile",
             "score": 0.7,
             "checksum": "cv-new",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2026-01-01T00:00:00+00:00",
         },
         {
@@ -1667,20 +1667,20 @@ def test_profile_intent_boost_prioritizes_profile_docs_for_profile_query():
     vector_hits = [
         {
             "id": "cv_old",
-            "text": "Ali old CV",
+            "text": "Example Person old profile",
             "score": 1.0,
             "checksum": "cv-old",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2017-01-01T00:00:00+00:00",
         },
         {
             "id": "cv_new",
-            "text": "Ali new CV",
+            "text": "Example Person new profile",
             "score": 0.92,
             "checksum": "cv-new",
             "doc_type": "cv",
-            "person_name": "Ali A",
+            "person_name": "Example Person",
             "modified_at": "2026-01-01T00:00:00+00:00",
         },
         {
@@ -1715,7 +1715,7 @@ def test_retrieval_abstains_for_out_of_corpus_style_query_with_low_overlap():
     vector_hits = [
         {
             "id": "v1",
-            "text": "Ali curriculum vitae and project details",
+            "text": "Example Person profile and project details",
             "path": "C:/docs/ali_cv.pdf",
             "score": 1.0,
             "checksum": "o1",
@@ -1744,7 +1744,7 @@ def test_retrieval_does_not_abstain_for_domain_anchored_live_query():
     vector_hits = [
         {
             "id": "cv1",
-            "text": "Ali latest CV includes Senior Engineer role",
+            "text": "Example Person latest profile includes Senior Engineer role",
             "path": "C:/docs/ali_latest_cv.pdf",
             "score": 1.0,
             "checksum": "d1",
@@ -1756,7 +1756,7 @@ def test_retrieval_does_not_abstain_for_domain_anchored_live_query():
         fusion_weight_vector=1.0,
         fusion_weight_bm25=0.0,
     )
-    result = pipeline.retrieve("In Ali latest CV today, what is his role?", cfg=cfg, deps=_build_deps(vector_hits, []))
+    result = pipeline.retrieve("In Example Person latest profile today, what is his role?", cfg=cfg, deps=_build_deps(vector_hits, []))
 
     assert len(result.documents) == 1
     assert result.documents[0].get("id") == "cv1"
@@ -1792,14 +1792,14 @@ def test_retrieval_adds_temporal_sibling_for_profile_when_query():
     vector_hits = [
         {
             "id": "cv-0",
-            "text": "Ali profile summary with education highlights.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary with education highlights.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
             "score": 1.0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "contract-1",
@@ -1816,24 +1816,24 @@ def test_retrieval_adds_temporal_sibling_for_profile_when_query():
         {
             "id": "cv-0",
             "_id": "cv-0",
-            "text": "Ali profile summary with education highlights.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary with education highlights.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "cv-7",
             "_id": "cv-7",
             "text": "PhD studies completed at Coventry University in 2010.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 7,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
     ]
 
@@ -1847,7 +1847,7 @@ def test_retrieval_adds_temporal_sibling_for_profile_when_query():
         recency_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "When did Ali do his PhD studies?",
+        "When did Example Person do his PhD studies?",
         cfg=cfg,
         deps=_build_deps(
             vector_hits,
@@ -1856,7 +1856,7 @@ def test_retrieval_adds_temporal_sibling_for_profile_when_query():
         ),
     )
 
-    ali_chunks = [doc for doc in result.documents if doc.get("checksum") == "ali-cv"]
+    ali_chunks = [doc for doc in result.documents if doc.get("checksum") == "synthetic-profile"]
     assert [doc.get("chunk_index") for doc in ali_chunks] == [0, 7]
     sibling_doc = ali_chunks[1]
     assert sibling_doc.get("_sibling_expansion") is not None
@@ -1868,14 +1868,14 @@ def test_retrieval_adds_location_sibling_for_profile_where_query():
     vector_hits = [
         {
             "id": "cv-0",
-            "text": "Ali profile summary and education overview.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary and education overview.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
             "score": 1.0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         }
     ]
 
@@ -1883,24 +1883,24 @@ def test_retrieval_adds_location_sibling_for_profile_where_query():
         {
             "id": "cv-0",
             "_id": "cv-0",
-            "text": "Ali profile summary and education overview.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary and education overview.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "cv-5",
             "_id": "cv-5",
             "text": "MSc studies took place at University of Bonn.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 5,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
     ]
 
@@ -1914,7 +1914,7 @@ def test_retrieval_adds_location_sibling_for_profile_where_query():
         recency_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "Where did Ali do his MSc studies?",
+        "Where did Example Person do his MSc studies?",
         cfg=cfg,
         deps=_build_deps(
             vector_hits,
@@ -1938,13 +1938,13 @@ def test_retrieval_does_not_expand_siblings_for_non_profile_query():
     vector_hits = [
         {
             "id": "doc-1",
-            "text": "Ali resume summary.",
+            "text": "Example Person profile summary.",
             "path": "C:/docs/ali_resume.pdf",
             "chunk_index": 0,
             "score": 1.0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         }
     ]
 
@@ -1958,7 +1958,7 @@ def test_retrieval_does_not_expand_siblings_for_non_profile_query():
         recency_boost_enabled=False,
     )
     result = pipeline.retrieve(
-        "Summarize Ali's resume.",
+        "Summarize Example Person's resume.",
         cfg=cfg,
         deps=_build_deps(vector_hits, [], sibling_fetcher=_sibling_fetcher),
     )
@@ -1971,14 +1971,14 @@ def test_retrieval_sibling_expansion_keeps_same_file_chunks_bounded():
     vector_hits = [
         {
             "id": "cv-0",
-            "text": "Ali profile summary with education highlights.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary with education highlights.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
             "score": 1.0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "support-1",
@@ -1994,35 +1994,35 @@ def test_retrieval_sibling_expansion_keeps_same_file_chunks_bounded():
         {
             "id": "cv-0",
             "_id": "cv-0",
-            "text": "Ali profile summary with education highlights.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "text": "Example Person profile summary with education highlights.",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 0,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "cv-6",
             "_id": "cv-6",
             "text": "PhD research completed in 2010 at Coventry University.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 6,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
         {
             "id": "cv-7",
             "_id": "cv-7",
             "text": "MSc completed in 2008 at another university.",
-            "path": "C:/docs/Profile - Example Person 2016_11.docx",
-            "filename": "Profile - Example Person 2016_11.docx",
+            "path": "C:/docs/Profile - Example Person 2024.docx",
+            "filename": "Profile - Example Person 2024.docx",
             "chunk_index": 7,
-            "checksum": "ali-cv",
+            "checksum": "synthetic-profile",
             "doc_type": "cv",
-            "person_name": "Ali",
+            "person_name": "Example Person",
         },
     ]
 
@@ -2038,7 +2038,7 @@ def test_retrieval_sibling_expansion_keeps_same_file_chunks_bounded():
         sibling_expansion_max_chunks_per_source=2,
     )
     result = pipeline.retrieve(
-        "When did Ali do his PhD studies?",
+        "When did Example Person do his PhD studies?",
         cfg=cfg,
         deps=_build_deps(
             vector_hits,
@@ -2047,7 +2047,7 @@ def test_retrieval_sibling_expansion_keeps_same_file_chunks_bounded():
         ),
     )
 
-    ali_docs = [doc for doc in result.documents if doc.get("checksum") == "ali-cv"]
+    ali_docs = [doc for doc in result.documents if doc.get("checksum") == "synthetic-profile"]
     assert len(ali_docs) == 2
     assert [doc.get("chunk_index") for doc in ali_docs] == [0, 6]
 
@@ -2115,7 +2115,7 @@ def test_retrieval_financial_gating_suppresses_irrelevant_families():
         },
         {
             "id": "cv",
-            "text": "Ali CV profile",
+            "text": "Example Person profile profile",
             "score": 0.92,
             "checksum": "s-cv",
             "doc_type": "cv",
@@ -2135,11 +2135,11 @@ def test_retrieval_financial_gating_suppresses_irrelevant_families():
         profile_intent_boost_enabled=False,
     )
     plan = QueryPlan(
-        raw_query="What expenses did Ali make in 2022 for taxes?",
-        semantic_query="What expenses did Ali make in 2022 for taxes?",
-        bm25_query="What expenses did Ali make in 2022 for taxes?",
+        raw_query="What expenses did Example Person make in 2022 for taxes?",
+        semantic_query="What expenses did Example Person make in 2022 for taxes?",
+        bm25_query="What expenses did Example Person make in 2022 for taxes?",
         financial_query_mode=True,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_year=2022,
         target_concept="expenses",
     )
@@ -2239,11 +2239,11 @@ def test_retrieval_financial_mode_with_entity_hint_does_not_require_entity_text_
         profile_intent_boost_enabled=False,
     )
     plan = QueryPlan(
-        raw_query="What expenses did Ali make in 2022?",
-        semantic_query="What expenses did Ali make in 2022?",
-        bm25_query="What expenses did Ali make in 2022?",
+        raw_query="What expenses did Example Person make in 2022?",
+        semantic_query="What expenses did Example Person make in 2022?",
+        bm25_query="What expenses did Example Person make in 2022?",
         financial_query_mode=True,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_year=2022,
         target_concept="expenses",
     )
@@ -2258,7 +2258,7 @@ def test_retrieval_financial_mode_with_entity_hint_does_not_require_entity_text_
     assert len(result.documents) == 1
     assert result.documents[0].get("checksum") == "inv-1"
     assert result.stage_metadata is not None
-    assert result.stage_metadata.get("target_entity") == "Ali"
+    assert result.stage_metadata.get("target_entity") == "Example Person"
 
 
 def test_retrieval_financial_fallback_does_not_relax_year_when_strict_budget_met():

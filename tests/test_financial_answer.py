@@ -19,7 +19,7 @@ def _retrieval(financial_fallback: bool = False) -> RetrievalResult:
             "financial_query_mode": True,
             "fallback_used": financial_fallback,
             "target_year": 2022,
-            "target_entity": "Ali",
+            "target_entity": "Example Person",
             "target_concept": "expenses",
         },
     )
@@ -51,7 +51,7 @@ def test_build_financial_answer_uses_sidecar_records(monkeypatch):
     answer, meta = build_financial_answer(
         retrieval=_retrieval(financial_fallback=True),
         target_year=2022,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_concept="expenses",
     )
 
@@ -93,7 +93,7 @@ def test_build_financial_answer_uses_chunk_fallback_when_sidecar_incomplete(monk
     answer, meta = build_financial_answer(
         retrieval=_retrieval(financial_fallback=False),
         target_year=2022,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_concept="expenses",
     )
 
@@ -111,7 +111,7 @@ def test_build_financial_answer_suppresses_weak_mention_only_fallback_docs(monke
     )
 
     retrieval = RetrievalResult(
-        query="What expenses did Ali make in 2022?",
+        query="What expenses did Example Person make in 2022?",
         documents=[
             RetrievedDocument(
                 text="Invoice paid on 2022-05-10 amount EUR 230.00",
@@ -137,7 +137,7 @@ def test_build_financial_answer_suppresses_weak_mention_only_fallback_docs(monke
     answer, meta = build_financial_answer(
         retrieval=retrieval,
         target_year=2022,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_concept="expenses",
     )
 
@@ -176,7 +176,7 @@ def test_build_financial_answer_formats_missing_amount_without_unknown_unknown(m
     answer, _meta = build_financial_answer(
         retrieval=_retrieval(financial_fallback=False),
         target_year=2022,
-        target_entity="Ali",
+        target_entity="Example Person",
         target_concept="expenses",
     )
 

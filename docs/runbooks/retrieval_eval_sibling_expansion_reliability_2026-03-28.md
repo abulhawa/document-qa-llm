@@ -9,7 +9,7 @@
 
 ## Timeout diagnosis
 - Reproduced long probe runtime on `2026-03-28`:
-  - command: `python scripts/investigate_ranking_post_patha.py --patha-runbook docs/runbooks/retrieval_eval_postfix_2026-03-27_patha_v2_candidate.json --fixture tests/fixtures/retrieval_eval_queries.json --output docs/runbooks/_tmp_probe_runtime_check.json --cleaned-strict-output docs/runbooks/_tmp_probe_runtime_check_cleaned.json --probe-depth 60`
+  - command: `python scripts/investigate_ranking_post_patha.py --patha-runbook docs/runbooks/retrieval_eval_candidate.json --fixture tests/fixtures/retrieval_eval_queries.json --output docs/runbooks/_tmp_probe_runtime_check.json --cleaned-strict-output docs/runbooks/_tmp_probe_runtime_check_cleaned.json --probe-depth 60`
   - wall time: `~399s`
 - Dominant cost driver:
   - repeated high-depth retrieval calls in probe mode (`top_k=60`, `top_k_each=240`) with heavy semantic/embedding work.
@@ -38,10 +38,10 @@
 - `python scripts/run_retrieval_eval.py --output docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare.json --sibling-expansion-mode both`
 
 ## Artifacts
-- `docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare_off.json`
-- `docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare_off.csv`
-- `docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare_on.json`
-- `docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare_on.csv`
+- `docs/runbooks/retrieval_eval_sibling_expansion_off.json`
+- `docs/runbooks/retrieval_eval_sibling_expansion_off.csv`
+- `docs/runbooks/retrieval_eval_sibling_expansion_on.json`
+- `docs/runbooks/retrieval_eval_sibling_expansion_on.csv`
 - `docs/runbooks/retrieval_eval_sibling_expansion_2026-03-28_compare.json`
 
 ## Results snapshot

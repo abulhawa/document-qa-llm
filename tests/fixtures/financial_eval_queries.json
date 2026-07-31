@@ -1,209 +1,355 @@
 {
   "meta": {
-    "version": "v1",
-    "created_on": "2026-03-28",
-    "description": "Small hand-labeled finance retrieval eval set for gating and fallback behavior."
+    "purpose": "Synthetic fixture for financial retrieval gating evaluation; contains no private corpus metadata.",
+    "version": "synthetic-v1",
+    "generated": "2026-07-31"
   },
   "queries": [
     {
       "id": "FQ01",
-      "query": "What expenses did Ali make in 2022 for tax returns?",
+      "query": "Which 2022 synthetic invoices are relevant for household expenses?",
       "target_year": 2022,
-      "target_entity": "Ali",
+      "target_entity": "Example Person",
       "target_concept": "expenses",
-      "top_k": 5,
+      "top_k": 3,
       "fallback_residual_budget": 2,
       "candidates": [
         {
-          "id": "fq01-course",
-          "checksum": "fq01-course",
-          "score": 1.0,
-          "doc_type": "course_material",
-          "mentioned_years": [2022],
-          "text": "Course material mentioning tax expenses as a theory topic."
-        },
-        {
-          "id": "fq01-cv",
-          "checksum": "fq01-cv",
-          "score": 0.99,
-          "doc_type": "cv",
-          "mentioned_years": [2022],
-          "text": "Ali CV profile."
-        },
-        {
-          "id": "fq01-invoice-2022",
-          "checksum": "fq01-invoice-2022",
+          "checksum": "syn-fin-2022-invoice-a",
+          "source_family": "invoice",
+          "doc_type": "invoice",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
+          "financial_record_type": "expense",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2022 invoice tax expense for synthetic household service",
+          "is_financial_document": true,
           "score": 0.98,
-          "doc_type": "invoice",
-          "mentioned_years": [2022],
-          "is_financial_document": true,
-          "financial_record_type": "expense",
-          "text": "Invoice paid in 2022 for office equipment."
+          "id": "syn-fin-2022-invoice-a"
         },
         {
-          "id": "fq01-receipt-2022",
-          "checksum": "fq01-receipt-2022",
-          "score": 0.97,
+          "checksum": "syn-fin-2022-receipt-a",
+          "source_family": "receipt",
           "doc_type": "receipt",
-          "mentioned_years": [2022],
-          "is_financial_document": true,
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
           "financial_record_type": "expense",
-          "text": "Receipt paid in 2022 for medical service."
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2022 receipt tax expense for synthetic service",
+          "is_financial_document": true,
+          "score": 0.97,
+          "id": "syn-fin-2022-receipt-a"
         },
         {
-          "id": "fq01-invoice-2021",
-          "checksum": "fq01-invoice-2021",
+          "checksum": "syn-ref-2022-book-a",
+          "source_family": "book",
+          "doc_type": "book",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "general finance textbook example",
+          "is_financial_document": false,
+          "score": 1.0,
+          "id": "syn-ref-2022-book-a"
+        },
+        {
+          "checksum": "syn-ref-2021-book-a",
+          "source_family": "book",
+          "doc_type": "book",
+          "document_date": "2021-01-15",
+          "mentioned_years": [
+            2021
+          ],
+          "transaction_dates": [
+            "2021-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "older unrelated textbook example",
+          "is_financial_document": false,
           "score": 0.96,
-          "doc_type": "invoice",
-          "mentioned_years": [2021],
-          "is_financial_document": true,
-          "financial_record_type": "expense",
-          "text": "Invoice paid in 2021 for old expenses."
+          "id": "syn-ref-2021-book-a"
         }
       ]
     },
     {
       "id": "FQ02",
-      "query": "What payments were made in 2023?",
+      "query": "Which 2023 synthetic payment confirmations should be reviewed?",
       "target_year": 2023,
       "target_entity": null,
       "target_concept": "payments",
-      "top_k": 4,
+      "top_k": 3,
       "fallback_residual_budget": 2,
       "candidates": [
         {
-          "id": "fq02-publication",
-          "checksum": "fq02-publication",
-          "score": 1.0,
-          "doc_type": "research_paper",
-          "mentioned_years": [2023],
-          "text": "Publication discussing tax payment systems."
-        },
-        {
-          "id": "fq02-bank-2022",
-          "checksum": "fq02-bank-2022",
-          "score": 0.99,
-          "doc_type": "bank_statement",
-          "mentioned_years": [2022],
-          "is_financial_document": true,
-          "financial_record_type": "payment",
-          "text": "Bank statement showing transfer payment in 2022."
-        },
-        {
-          "id": "fq02-payment-2022",
-          "checksum": "fq02-payment-2022",
-          "score": 0.98,
+          "checksum": "syn-fin-2023-payment-a",
+          "source_family": "payment_confirmation",
           "doc_type": "payment_confirmation",
-          "mentioned_years": [2022],
+          "document_date": "2023-01-15",
+          "mentioned_years": [
+            2023
+          ],
+          "transaction_dates": [
+            "2023-01-10"
+          ],
+          "financial_record_type": "expense",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2023 synthetic payment confirmation tax record",
           "is_financial_document": true,
-          "financial_record_type": "payment",
-          "text": "Payment confirmation paid in 2022."
+          "score": 0.97,
+          "id": "syn-fin-2023-payment-a"
         },
         {
-          "id": "fq02-official-2023",
-          "checksum": "fq02-official-2023",
-          "score": 0.97,
-          "doc_type": "government_form",
-          "mentioned_years": [2023],
+          "checksum": "syn-fin-2023-bank-a",
+          "source_family": "bank_statement",
+          "doc_type": "bank_statement",
+          "document_date": "2023-01-15",
+          "mentioned_years": [
+            2023
+          ],
+          "transaction_dates": [
+            "2023-01-10"
+          ],
+          "financial_record_type": "expense",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2023 synthetic bank statement payment record",
           "is_financial_document": true,
-          "financial_record_type": "payment",
-          "text": "Official payment notice for 2023."
+          "score": 0.96,
+          "id": "syn-fin-2023-bank-a"
+        },
+        {
+          "checksum": "syn-ref-2023-course-a",
+          "source_family": "course_material",
+          "doc_type": "course_material",
+          "document_date": "2023-01-15",
+          "mentioned_years": [
+            2023
+          ],
+          "transaction_dates": [
+            "2023-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "course note about payments",
+          "is_financial_document": false,
+          "score": 1.0,
+          "id": "syn-ref-2023-course-a"
+        },
+        {
+          "checksum": "syn-ref-2022-book-b",
+          "source_family": "book",
+          "doc_type": "book",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "unrelated book",
+          "is_financial_document": false,
+          "score": 0.95,
+          "id": "syn-ref-2022-book-b"
         }
       ]
     },
     {
       "id": "FQ03",
-      "query": "List Ali tax relevant expenses.",
+      "query": "Which synthetic receipts for Example Person need expense review?",
       "target_year": null,
-      "target_entity": "Ali",
+      "target_entity": "Example Person",
       "target_concept": "expenses",
-      "top_k": 4,
-      "fallback_residual_budget": 1,
+      "top_k": 3,
+      "fallback_residual_budget": 2,
       "candidates": [
         {
-          "id": "fq03-reference",
-          "checksum": "fq03-reference",
-          "score": 1.0,
-          "doc_type": "reference_letter",
-          "mentioned_years": [2021],
-          "text": "Reference letter with no transactions."
-        },
-        {
-          "id": "fq03-invoice-a",
-          "checksum": "fq03-invoice-a",
-          "score": 0.99,
-          "doc_type": "invoice",
-          "mentioned_years": [2021],
-          "is_financial_document": true,
-          "financial_record_type": "expense",
-          "text": "Invoice paid for software subscription."
-        },
-        {
-          "id": "fq03-receipt-a",
-          "checksum": "fq03-receipt-a",
-          "score": 0.98,
+          "checksum": "syn-fin-2024-receipt-a",
+          "source_family": "receipt",
           "doc_type": "receipt",
-          "mentioned_years": [2020],
-          "is_financial_document": true,
+          "document_date": "2024-01-15",
+          "mentioned_years": [
+            2024
+          ],
+          "transaction_dates": [
+            "2024-01-10"
+          ],
           "financial_record_type": "expense",
-          "text": "Receipt paid for pharmacy."
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "synthetic receipt expense record",
+          "is_financial_document": true,
+          "score": 0.98,
+          "id": "syn-fin-2024-receipt-a"
         },
         {
-          "id": "fq03-book",
-          "checksum": "fq03-book",
+          "checksum": "syn-fin-2024-invoice-a",
+          "source_family": "invoice",
+          "doc_type": "invoice",
+          "document_date": "2024-01-15",
+          "mentioned_years": [
+            2024
+          ],
+          "transaction_dates": [
+            "2024-01-10"
+          ],
+          "financial_record_type": "expense",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "synthetic invoice expense record",
+          "is_financial_document": true,
           "score": 0.97,
-          "doc_type": "book",
-          "mentioned_years": [2022],
-          "text": "Book chapter on tax policy."
+          "id": "syn-fin-2024-invoice-a"
+        },
+        {
+          "checksum": "syn-ref-2024-archive-a",
+          "source_family": "archive_misc",
+          "doc_type": "archive_misc",
+          "document_date": "2024-01-15",
+          "mentioned_years": [
+            2024
+          ],
+          "transaction_dates": [
+            "2024-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "miscellaneous archived note",
+          "is_financial_document": false,
+          "score": 1.0,
+          "id": "syn-ref-2024-archive-a"
+        },
+        {
+          "checksum": "syn-ref-2024-profile-a",
+          "source_family": "cv",
+          "doc_type": "cv",
+          "document_date": "2024-01-15",
+          "mentioned_years": [
+            2024
+          ],
+          "transaction_dates": [
+            "2024-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "profile document placeholder",
+          "is_financial_document": false,
+          "score": 0.99,
+          "id": "syn-ref-2024-profile-a"
         }
       ]
     },
     {
       "id": "FQ04",
-      "query": "What expenses were paid in 2022?",
+      "query": "Which 2022 synthetic tax documents mention deductible expenses?",
       "target_year": 2022,
       "target_entity": null,
       "target_concept": "expenses",
       "top_k": 3,
-      "fallback_residual_budget": 1,
+      "fallback_residual_budget": 2,
       "candidates": [
         {
-          "id": "fq04-invoice-2022-a",
-          "checksum": "fq04-invoice-2022-a",
-          "score": 0.99,
-          "doc_type": "invoice",
-          "mentioned_years": [2022],
-          "is_financial_document": true,
+          "checksum": "syn-fin-2022-tax-a",
+          "source_family": "tax_document",
+          "doc_type": "tax_document",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
           "financial_record_type": "expense",
-          "text": "Invoice paid in 2022."
-        },
-        {
-          "id": "fq04-invoice-2022-b",
-          "checksum": "fq04-invoice-2022-b",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2022 synthetic tax document expense evidence",
+          "is_financial_document": true,
           "score": 0.98,
-          "doc_type": "invoice",
-          "mentioned_years": [2022],
-          "is_financial_document": true,
-          "financial_record_type": "expense",
-          "text": "Invoice paid in 2022 for rent."
+          "id": "syn-fin-2022-tax-a"
         },
         {
-          "id": "fq04-invoice-2021",
-          "checksum": "fq04-invoice-2021",
+          "checksum": "syn-fin-2022-bank-b",
+          "source_family": "bank_statement",
+          "doc_type": "bank_statement",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
+          "financial_record_type": "expense",
+          "tax_relevance_signals": [
+            "tax"
+          ],
+          "text": "2022 synthetic bank statement expense evidence",
+          "is_financial_document": true,
           "score": 0.97,
-          "doc_type": "invoice",
-          "mentioned_years": [2021],
-          "is_financial_document": true,
-          "financial_record_type": "expense",
-          "text": "Invoice paid in 2021."
+          "id": "syn-fin-2022-bank-b"
         },
         {
-          "id": "fq04-cv",
-          "checksum": "fq04-cv",
+          "checksum": "syn-ref-2020-publication-a",
+          "source_family": "publication",
+          "doc_type": "publication",
+          "document_date": "2020-01-15",
+          "mentioned_years": [
+            2020
+          ],
+          "transaction_dates": [
+            "2020-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "publication about tax concepts",
+          "is_financial_document": false,
           "score": 1.0,
-          "doc_type": "cv",
-          "mentioned_years": [2022],
-          "text": "Ali CV updated in 2022."
+          "id": "syn-ref-2020-publication-a"
+        },
+        {
+          "checksum": "syn-ref-2022-reference-a",
+          "source_family": "reference",
+          "doc_type": "reference",
+          "document_date": "2022-01-15",
+          "mentioned_years": [
+            2022
+          ],
+          "transaction_dates": [
+            "2022-01-10"
+          ],
+          "financial_record_type": "reference",
+          "tax_relevance_signals": null,
+          "text": "reference material placeholder",
+          "is_financial_document": false,
+          "score": 0.99,
+          "id": "syn-ref-2022-reference-a"
         }
       ]
     }

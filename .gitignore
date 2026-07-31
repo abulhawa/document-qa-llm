@@ -11,6 +11,11 @@ sample_docs/
 qdrant_threshold_eval.py
 .coverage
 artifacts/
+.tools/
+docs/runbooks/generated/
+docs/runbooks/private-eval-artifacts/
+docs/runbooks/_tmp*.json
+docs/runbooks/_tmp*.csv
 *.ipynb
 opensearch-backups/
 qdrant-snapshots/

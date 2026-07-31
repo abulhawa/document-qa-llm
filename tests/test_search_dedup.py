@@ -208,8 +208,8 @@ def test_fetch_sibling_chunks_queries_by_checksum_when_available(monkeypatch):
                         {
                             "_id": "chunk-7",
                             "_source": {
-                                "checksum": "ali-cv",
-                                "path": "C:/docs/Profile - Example Person 2016_11.docx",
+                                "checksum": "synthetic-profile",
+                                "path": "C:/docs/Profile - Example Person 2024.docx",
                                 "chunk_index": 7,
                                 "text": "PhD studies completed in 2010.",
                             },
@@ -220,11 +220,11 @@ def test_fetch_sibling_chunks_queries_by_checksum_when_available(monkeypatch):
 
     monkeypatch.setattr(opensearch_store, "get_client", lambda: DummyClient())
     result = opensearch_store.fetch_sibling_chunks(
-        {"checksum": "ali-cv", "path": "C:/docs/Profile - Example Person 2016_11.docx"},
+        {"checksum": "synthetic-profile", "path": "C:/docs/Profile - Example Person 2024.docx"},
         limit=5,
     )
 
-    assert captured["body"]["query"] == {"term": {"checksum": {"value": "ali-cv"}}}
+    assert captured["body"]["query"] == {"term": {"checksum": {"value": "synthetic-profile"}}}
     assert captured["body"]["size"] == 5
     assert result[0]["_id"] == "chunk-7"
     assert result[0]["id"] == "chunk-7"
@@ -240,9 +240,9 @@ def test_fetch_sibling_chunks_falls_back_to_path_query(monkeypatch):
             return {"hits": {"hits": []}}
 
     monkeypatch.setattr(opensearch_store, "get_client", lambda: DummyClient())
-    opensearch_store.fetch_sibling_chunks({"path": "C:/docs/Profile - Example Person 2016_11.docx"}, limit=3)
+    opensearch_store.fetch_sibling_chunks({"path": "C:/docs/Profile - Example Person 2024.docx"}, limit=3)
 
     assert captured["body"]["query"] == {
-        "term": {"path.keyword": "C:/docs/Profile - Example Person 2016_11.docx"}
+        "term": {"path.keyword": "C:/docs/Profile - Example Person 2024.docx"}
     }
     assert captured["body"]["size"] == 3

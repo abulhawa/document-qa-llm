@@ -854,7 +854,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--patha-runbook",
         type=Path,
-        default=Path("docs/runbooks/retrieval_eval_postfix_2026-03-26_patha_v1.json"),
+        default=Path("docs/runbooks/retrieval_eval_current.json"),
         help="Path to Path A retrieval eval JSON artifact.",
     )
     parser.add_argument(

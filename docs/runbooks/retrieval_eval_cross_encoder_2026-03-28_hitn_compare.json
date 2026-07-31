@@ -13,10 +13,10 @@
     "rerank_candidate_pool": 40
   },
   "artifacts": {
-    "cross_off_json": "docs\\runbooks\\retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_off.json",
-    "cross_on_json": "docs\\runbooks\\retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_on.json",
-    "cross_off_csv": "docs\\runbooks\\retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_off.csv",
-    "cross_on_csv": "docs\\runbooks\\retrieval_eval_cross_encoder_2026-03-28_hitn_compare_cross_on.csv"
+    "cross_off_json": "docs\\runbooks\\retrieval_eval_cross_encoder_off.json",
+    "cross_on_json": "docs\\runbooks\\retrieval_eval_cross_encoder_on.json",
+    "cross_off_csv": "docs\\runbooks\\retrieval_eval_cross_encoder_off.csv",
+    "cross_on_csv": "docs\\runbooks\\retrieval_eval_cross_encoder_on.csv"
   },
   "hit_curves": {
     "strict": {

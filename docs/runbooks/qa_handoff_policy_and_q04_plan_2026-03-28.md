@@ -14,14 +14,14 @@
   - `python scripts/run_qa_handoff_eval.py --output docs/runbooks/qa_handoff_eval_2026-03-28_compare_clean.json --strategies top3,top5,dynamic --dynamic-token-budget 1200 --dynamic-retrieval-top-k 7 --dynamic-min-chunks 3 --per-query-sleep-seconds 3.0`
 
 - Q04 stage artifact:
-  - `docs/runbooks/q04_retrieval_stage_investigation_2026-03-28.json`
+  - `docs/runbooks/qa_handoff_retrieval_stage_investigation.json`
 
 ## Results (Clean Run)
 Artifacts:
 - `docs/runbooks/qa_handoff_eval_2026-03-28_compare_clean.json`
-- `docs/runbooks/qa_handoff_eval_2026-03-28_compare_clean_top3.json`
-- `docs/runbooks/qa_handoff_eval_2026-03-28_compare_clean_top5.json`
-- `docs/runbooks/qa_handoff_eval_2026-03-28_compare_clean_dynamic.json`
+- `docs/runbooks/qa_handoff_eval_top3.json`
+- `docs/runbooks/qa_handoff_eval_top5.json`
+- `docs/runbooks/qa_handoff_eval_dynamic.json`
 
 Positive queries (`n=20`):
 - `top3`
@@ -66,7 +66,7 @@ Targeted profile/timeline when/where subset (`Q01`):
 
 ## Q04 Stage Isolation
 Query:
-- `Q04`: "In Ali's most recent CV contact section, which city is listed?"
+- `Q04`: "In Example Person's most recent CV contact section, which city is listed?"
 
 Observed stage behavior (`rerank off`, sibling expansion on):
 - Final top-7 has expected checksum only at rank 6 in benchmark labels.

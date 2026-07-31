@@ -284,11 +284,11 @@ def test_answer_question_bypasses_clarify_for_anchored_query(monkeypatch):
     monkeypatch.setattr("qa_pipeline.coordinator.rewrite_question", mock_rewrite)
     monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
 
-    result = answer_question("In Ali's latest CV, what is his most recent role?")
+    result = answer_question("In Example Person's latest CV, what is his most recent role?")
 
     assert calls["retrieved"] == 1
     assert result.clarification is None
-    assert result.rewritten_question == "In Ali's latest CV, what is his most recent role?"
+    assert result.rewritten_question == "In Example Person's latest CV, what is his most recent role?"
     assert result.answer == "answer"
 
 
@@ -426,9 +426,9 @@ def test_answer_question_planning_passes_typed_query_plan_to_retriever(monkeypat
     monkeypatch.setattr("qa_pipeline.coordinator.retrieve_context", mock_retrieve)
     monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", lambda *args, **kwargs: "answer")
 
-    result = answer_question("Where did Ali do his BSc studies?", retrieval_cfg=cfg)
+    result = answer_question("Where did Example Person do his BSc studies?", retrieval_cfg=cfg)
 
-    assert observed["query"] == "Where did Ali do his BSc studies?"
+    assert observed["query"] == "Where did Example Person do his BSc studies?"
     assert isinstance(observed["query_plan"], QueryPlan)
     assert observed["query_plan"].semantic_query == "semantic rewrite"
     assert result.rewritten_question == "semantic rewrite"
@@ -569,14 +569,14 @@ def test_answer_question_uses_sibling_chunk_in_prompt_context(monkeypatch):
             query=query,
             documents=[
                 RetrievedDocument(
-                    text="Ali profile summary and education highlights.",
-                    path="C:/docs/Profile - Example Person 2016_11.docx",
+                    text="Example Person profile summary and education highlights.",
+                    path="C:/docs/Profile - Example Person 2024.docx",
                     chunk_index=0,
                     score=0.97,
                 ),
                 RetrievedDocument(
                     text="PhD studies completed at Coventry University in 2010.",
-                    path="C:/docs/Profile - Example Person 2016_11.docx",
+                    path="C:/docs/Profile - Example Person 2024.docx",
                     chunk_index=7,
                     score=0.96,
                 ),
@@ -596,7 +596,7 @@ def test_answer_question_uses_sibling_chunk_in_prompt_context(monkeypatch):
     monkeypatch.setattr("qa_pipeline.coordinator.generate_answer", mock_generate)
     monkeypatch.setattr("qa_pipeline.coordinator.QA_GROUNDING_ENABLED", False)
 
-    result = answer_question("When did Ali do his PhD studies?")
+    result = answer_question("When did Example Person do his PhD studies?")
 
     assert result.answer == "2010"
     assert result.retrieval is not None
@@ -620,7 +620,7 @@ def test_answer_question_financial_mode_returns_evidence_answer(monkeypatch):
             stage_metadata={
                 "financial_query_mode": True,
                 "target_year": 2022,
-                "target_entity": "Ali",
+                "target_entity": "Example Person",
                 "target_concept": "expenses",
                 "fallback_used": False,
             },
@@ -649,7 +649,7 @@ def test_answer_question_financial_mode_returns_evidence_answer(monkeypatch):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should be bypassed")),
     )
 
-    result = answer_question("What expenses did Ali make in 2022?")
+    result = answer_question("What expenses did Example Person make in 2022?")
 
     assert result.answer == "financial answer"
     assert result.financial_answer_metadata is not None

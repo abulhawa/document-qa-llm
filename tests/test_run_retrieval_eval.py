@@ -41,7 +41,7 @@ def test_is_profile_when_where_query():
     assert eval_script.is_profile_when_where_query(
         {
             "mode": "positive",
-            "query": "Where did Ali do his PhD studies?",
+            "query": "Where did Example Person do his PhD studies?",
             "target_areas": ["career_cv_docs"],
             "expected_doc_types": ["cv"],
             "notes": "Profile and education fact.",
@@ -50,7 +50,7 @@ def test_is_profile_when_where_query():
     assert not eval_script.is_profile_when_where_query(
         {
             "mode": "positive",
-            "query": "From Ali's latest CV, list the main technical skills.",
+            "query": "From Example Person's latest CV, list the main technical skills.",
             "target_areas": ["career_cv_docs"],
             "expected_doc_types": ["cv"],
             "notes": "Profile intent but not when/where phrasing.",
@@ -134,7 +134,7 @@ def test_evaluate_single_query_uses_query_plan_when_enabled(monkeypatch):
     row = {
         "id": "q1",
         "mode": "positive",
-        "query": "Where did Ali study?",
+        "query": "Where did Example Person study?",
         "expected_checksums": [],
     }
     result = eval_script._evaluate_single_query(
@@ -146,6 +146,6 @@ def test_evaluate_single_query_uses_query_plan_when_enabled(monkeypatch):
         base_reranker=None,
     )
 
-    assert captured["query"] == "Where did Ali study?"
+    assert captured["query"] == "Where did Example Person study?"
     assert captured["query_plan"] is not None
     assert result["clarify"] is None

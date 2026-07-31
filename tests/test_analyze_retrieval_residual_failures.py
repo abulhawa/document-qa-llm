@@ -24,7 +24,7 @@ _SPEC.loader.exec_module(analysis_script)
 def test_classify_query_anchor_levels():
     assert (
         analysis_script.classify_query_anchor(
-            "In Ali's latest CV, what is his most recent job title?"
+            "In Example Person's latest CV, what is his most recent job title?"
         )
         == "anchored"
     )

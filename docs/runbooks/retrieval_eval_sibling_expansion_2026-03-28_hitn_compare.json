@@ -55,9 +55,9 @@
     }
   },
   "artifacts": {
-    "off_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_off.json",
-    "on_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_on.json",
-    "off_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_off.csv",
-    "on_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_2026-03-28_hitn_compare_on.csv"
+    "off_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_hitn_off.json",
+    "on_json": "docs\\runbooks\\retrieval_eval_sibling_expansion_hitn_on.json",
+    "off_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_hitn_off.csv",
+    "on_csv": "docs\\runbooks\\retrieval_eval_sibling_expansion_hitn_on.csv"
   }
 }

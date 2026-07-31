@@ -51,17 +51,17 @@ from core.query_rewriter import build_query_plan
 
 def test_detect_financial_query_extracts_year_entity_and_concept():
     intent = detect_financial_query(
-        "What expenses did Ali make in 2022 that help for tax returns?"
+        "What expenses did Example Person make in 2022 that help for tax returns?"
     )
 
     assert intent.financial_query_mode is True
-    assert intent.target_entity == "Ali"
+    assert intent.target_entity == "Example Person"
     assert intent.target_year == 2022
     assert intent.target_concept == "expenses"
 
 
 def test_detect_financial_query_non_finance_query_is_disabled():
-    intent = detect_financial_query("Where did Ali do his MSc studies?")
+    intent = detect_financial_query("Where did Example Person do his MSc studies?")
     assert intent.financial_query_mode is False
     assert intent.target_entity is None
     assert intent.target_year is None
@@ -71,7 +71,7 @@ def test_detect_financial_query_non_finance_query_is_disabled():
 def test_build_query_plan_includes_financial_fields(monkeypatch):
     monkeypatch.setattr(
         "core.query_rewriter.rewrite_query",
-        lambda *args, **kwargs: {"rewritten": "Ali tax expenses 2022"},
+        lambda *args, **kwargs: {"rewritten": "Example Person tax expenses 2022"},
     )
     monkeypatch.setattr(
         "core.query_rewriter._generate_hyde_passage",
@@ -79,11 +79,11 @@ def test_build_query_plan_includes_financial_fields(monkeypatch):
     )
 
     plan = build_query_plan(
-        "What expenses did Ali make in 2022 for tax?",
+        "What expenses did Example Person make in 2022 for tax?",
         enable_hyde=False,
     )
 
     assert plan.financial_query_mode is True
-    assert plan.target_entity == "Ali"
+    assert plan.target_entity == "Example Person"
     assert plan.target_year == 2022
     assert plan.target_concept == "expenses"
