@@ -115,7 +115,7 @@ python -m pytest --cov -q --ignore=tests/e2e --disable-warnings
 python -m compileall -q app core ingestion qa_pipeline services ui utils worker
 ```
 
-E2E tests require Docker, OpenSearch, Qdrant, Playwright Chromium, and the repository's stub services. CI documents that orchestration in [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml). Evaluation commands and the meaning of stored results are documented in [`docs/evaluation.md`](docs/evaluation.md).
+Unit tests run automatically for pull requests and pushes to `master`. E2E tests require Docker, OpenSearch, Qdrant, Playwright Chromium, and the repository's stub services, so maintainers launch them manually from the **E2E Tests** workflow in GitHub Actions. Run E2E before releases and before merging changes that affect navigation, ingestion, retrieval, backend integration, or E2E infrastructure. The workflow orchestration is documented in [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml), while evaluation commands and the meaning of stored results are documented in [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Minimum vs. optional services
 

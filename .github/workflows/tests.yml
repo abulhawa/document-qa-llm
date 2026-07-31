@@ -1,11 +1,10 @@
 # .github/workflows/tests.yml
 name: Unit tests
 
-on: 
+on:
   push:
-    paths-ignore:
-      - 'docs/**'
-      - 'README.md'
+    branches:
+      - master
   pull_request:
 
 permissions:
