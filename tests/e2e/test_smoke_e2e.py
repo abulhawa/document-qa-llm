@@ -10,7 +10,7 @@ def test_smoke_e2e(streamlit_app, page):
     """High-level smoke test covering primary UI flows."""
     # Verify app loads and navigation updates heading
     page.goto(streamlit_app)
-    expect(page.locator("h1")).to_contain_text("Talk to Your Documents")
+    expect(page.locator("h1")).to_contain_text("Ask Your Documents")
     page.get_by_role("link", name="Ingest Documents").click()
     expect(page.locator("h1")).to_contain_text("Ingest Documents")
 

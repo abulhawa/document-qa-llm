@@ -36,9 +36,14 @@ def test_duplicate_table_renders(monkeypatch):
     at = AppTest.from_file("pages/3_duplicates_viewer.py", default_timeout=10)
     at.run()
 
-    # One dataframe showing all duplicate files
-    assert len(at.dataframe) == 1
-    df = at.dataframe[0].value
+    # The page also renders an intentionally separate technical-details table.
+    # Select the interactive duplicate-files table by its stable widget key.
+    duplicate_table = next(
+        dataframe
+        for dataframe in at.dataframe
+        if dataframe.key == "duplicate_table_0"
+    )
+    df = duplicate_table.value
     assert len(df) == 3
     assert "Checksum" not in df.columns
     assert "Canonical Path" not in df.columns
