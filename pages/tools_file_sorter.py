@@ -98,7 +98,7 @@ llm_status = check_llm_status()
 
 with st.form("smart_sort_config"):
     root = st.text_input("Root folder to scan", value=root_default)
-    st.caption("Example: `C:\\Users\\example\\Synthetic Corpus`. All files under this root will be considered.")
+    st.caption("Example: `C:/Users/example/Documents/Synthetic Corpus`. All files under this root will be considered.")
     include_content = st.checkbox("Use file content (PDF/DOCX/TXT)", value=True)
     st.caption("When enabled, PDFs/DOCX/TXT contribute text embeddings. Large files are skipped.")
     max_files_choice = st.selectbox("Max files preset", options=[50, 200, 1000, "All"], index=3)
