@@ -10,7 +10,7 @@
 
 ## Project Purpose
 
-This is a learning and portfolio project, not only a software project.
+This is an early-stage open-source project, not only a software project.
 
 The owner is an experienced Senior Data Scientist with strong background in NLP, semantic search, Elasticsearch relevance engineering, embeddings, knowledge graphs, Python, SQL, and production search systems.
 

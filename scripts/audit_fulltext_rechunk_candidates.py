@@ -21,7 +21,7 @@ Usage
 - Audit all docs:
     python scripts/audit_fulltext_rechunk_candidates.py
 - Audit specific prefix:
-    python scripts/audit_fulltext_rechunk_candidates.py --prefix "C:/Users/example/Documents/Synthetic Corpus"
+    python scripts/audit_fulltext_rechunk_candidates.py --prefix "/path/to/documents"
 - Audit first 500 docs:
     python scripts/audit_fulltext_rechunk_candidates.py --limit 500
 """

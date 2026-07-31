@@ -17,9 +17,9 @@ Notes
 
 Usage
 - Dry-run canary:
-    python scripts/rechunk_from_fulltext.py --prefix "C:/Users/example/Documents/Synthetic Corpus" --limit 20
+    python scripts/rechunk_from_fulltext.py --prefix "/path/to/documents" --limit 20
 - Apply canary:
-    python scripts/rechunk_from_fulltext.py --prefix "C:/Users/example/Documents/Synthetic Corpus" --limit 20 --apply
+    python scripts/rechunk_from_fulltext.py --prefix "/path/to/documents" --limit 20 --apply
 - Target specific checksums:
     python scripts/rechunk_from_fulltext.py --checksums "abc,def,ghi" --apply
 """

@@ -34,3 +34,17 @@ downloads/
 opensearch-backups/
 qdrant-snapshots/
 .venv/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+# The worker image currently has no runtime imports from these directories.
+tests/
+docs/
+assets/
+*.pem
+*.key
+*.p12
+*.pfx
+models/
+sample_docs/
