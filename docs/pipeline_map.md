@@ -22,7 +22,7 @@ This project is more mature than a simple RAG demo. It includes:
 - local/OpenAI-compatible LLM answer generation
 - optional grounding checks
 - financial document enrichment and financial-query answer handling
-- Streamlit UI only; Gradio was removed because it was unused and added unnecessary dependency/security surface
+- Streamlit UI
 - Celery worker ingestion
 - Docker Compose local infrastructure
 - retrieval, QA handoff, and financial evaluation scripts
@@ -279,7 +279,7 @@ portfolio strength.
 | `utils/opensearch_utils.py` is too broad | It owns mappings, chunk indexing, fulltext indexing, deletion, search, logs, financial mappings, and duplicate utilities. Wrappers in `utils/opensearch/*` partially hide that. |
 | `services/topic_naming.py` is extremely large | It mixes topic profiling, OpenSearch keyword logic, Qdrant vectors, LLM naming, caching, metrics, and postprocessing. |
 | `app/usecases/*` is not consistently UI-agnostic | Some files are clean use cases; others render Streamlit pages by `runpy.run_path`, which creates hidden path dependencies. |
-| Active Streamlit is the supported UI | Gradio was removed because it was unused and added unnecessary dependency/security surface. |
+| Active Streamlit is the supported UI | The application UI is centered on Streamlit pages and supporting use cases. |
 | `core/ingestion.py` is a compatibility shim | The real ingestion source of truth is `ingestion/orchestrator.py`; the shim is useful but can confuse readers. |
 | Scripts rely on repo-root `sys.path` and relative paths | Moving scripts, fixtures, or runbooks could break direct execution. |
 | Worker path mapping is Windows/container-specific | `DOC_PATH_MAP=C:/=>/host-c` is essential for Docker ingestion behavior. |

@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Local input/output data and developer environment files.
 sample_docs/
 .vscode/
 .env
