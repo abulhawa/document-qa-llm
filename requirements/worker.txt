@@ -2,6 +2,8 @@
 langchain-core==1.3.*
 langchain-community==0.4.*
 langchain-text-splitters==1.1.*
-pypdf==6.10.*
+# Keep the lower bound at or above the releases that fix the known PDF
+# denial-of-service advisories; the upper bound preserves minor-version pinning.
+pypdf>=6.14.2,<6.15
 docx2txt==0.9.*
 ftfy==6.3.*
