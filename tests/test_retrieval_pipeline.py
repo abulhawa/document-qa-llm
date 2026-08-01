@@ -1744,8 +1744,8 @@ def test_retrieval_does_not_abstain_for_domain_anchored_live_query():
     vector_hits = [
         {
             "id": "cv1",
-            "text": "Example Person latest profile includes Senior Engineer role",
-            "path": "C:/docs/ali_latest_cv.pdf",
+            "text": "Sample Candidate latest CV includes Senior Engineer role",
+            "path": "/synthetic/sample_candidate_latest_cv.pdf",
             "score": 1.0,
             "checksum": "d1",
         }
@@ -1756,7 +1756,7 @@ def test_retrieval_does_not_abstain_for_domain_anchored_live_query():
         fusion_weight_vector=1.0,
         fusion_weight_bm25=0.0,
     )
-    result = pipeline.retrieve("In Example Person latest profile today, what is his role?", cfg=cfg, deps=_build_deps(vector_hits, []))
+    result = pipeline.retrieve("In Sample Candidate latest CV today, what is their role?", cfg=cfg, deps=_build_deps(vector_hits, []))
 
     assert len(result.documents) == 1
     assert result.documents[0].get("id") == "cv1"
