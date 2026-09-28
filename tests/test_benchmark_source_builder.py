@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from scripts.build_benchmark_source import (
+    _load_json_file,
     _safe_name,
     _select_hf_parquet_files,
     _split_source_files,
@@ -56,3 +57,13 @@ def test_pending_lock_file_is_valid_json():
     path = Path("evaluation/benchmarks/composite_v1.lock.json")
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["benchmark_id"] == "composite-v1"
+
+
+def test_load_json_file_supports_gzip(tmp_path):
+    import gzip
+    import json
+
+    path = tmp_path / "lock.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        json.dump({"status": "locked", "value": 7}, fh)
+    assert _load_json_file(path) == {"status": "locked", "value": 7}

@@ -1,7 +1,25 @@
 {
   "schema_version": 1,
   "benchmark_id": "composite-v1",
-  "status": "pending-first-source-build",
-  "selection_algorithm": "stable-sha256-v1",
-  "note": "The manual Benchmark 1 - Source Corpus workflow resolves immutable Hugging Face revisions and selected IDs. Review its generated lock artifact, then replace this pending file."
+  "status": "frozen",
+  "canonical_lock": "evaluation/benchmarks/composite_v1.lock.json.gz",
+  "canonical_lock_format": "gzip-compressed JSON",
+  "lock_sha256_uncompressed": "63e26c96cb15e4401bdf9eb4e6bc12f4d69a41f0bc715fd25f5022428023bd46",
+  "lock_sha256_compressed": "7f8f8c23bde2e4aece5dfc05f0a6fdf2346f4c5c2296efc01138a5cb05f973a7",
+  "source_build_run_id": 36475735954,
+  "source_build_commit": "820d361df823cd9418ab78ad6b9da7a84f1aa2f2",
+  "source_revisions": {
+    "open_ragbench": "63f6b052ff83508b08e242db42263ee708815c26",
+    "officeqa": "763a8366abf2a3605c381d53586d844dc60fa756",
+    "miracl_de": "6fc379ecaf1250956d1d146f00d708ea64c4f74b",
+    "miracl_ar": "6b466232a1e23d79c4a40264aa1c7d45a6429ea1",
+    "nfcorpus_sha256": "efe5be03f8c5b86a5870102d0599d227c8c6e2484328e68c6522560385671b0b"
+  },
+  "selection_summary": {
+    "open_ragbench": {"documents": 200, "queries": 160},
+    "officeqa": {"documents": 150, "queries": 50},
+    "nfcorpus": {"documents": 3633, "queries": 100},
+    "miracl_de": {"documents": 430, "queries": 50},
+    "miracl_ar": {"documents": 456, "queries": 50}
+  }
 }

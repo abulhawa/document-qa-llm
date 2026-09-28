@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import hashlib
 import io
 import json
@@ -304,10 +305,17 @@ def _spec_sha(spec_path: Path) -> str:
     return _sha256_file(spec_path)
 
 
+def _load_json_file(path: Path) -> Any:
+    if path.suffix == ".gz":
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            return json.load(fh)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def _pending_lock(path: Path) -> bool:
     if not path.exists():
         return True
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = _load_json_file(path)
     return data.get("status") != "locked"
 
 
@@ -492,7 +500,7 @@ def _load_lock_or_resolve(
     token: str,
 ) -> dict[str, Any]:
     if not _pending_lock(lock_path):
-        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        lock = _load_json_file(lock_path)
         if lock.get("benchmark_id") != spec.get("benchmark_id"):
             raise ValueError("lock benchmark_id does not match composition")
         if lock.get("spec_sha256") != _spec_sha(spec_path):
