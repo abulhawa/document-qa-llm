@@ -1,0 +1,36 @@
+# Skeleton only. This workflow does not compute benchmark embeddings yet.
+name: Benchmark 4 - Embed
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunks_artifact:
+        description: Upstream chunks artifact ID or digest
+        required: true
+        default: benchmark-chunks:mixed-v1
+        type: string
+      embeddings_artifact:
+        description: Intended embeddings artifact label
+        required: true
+        default: benchmark-embeddings:mixed-v1
+        type: string
+      embedding_model:
+        description: Embedding model identifier/revision
+        required: true
+        default: intfloat/multilingual-e5-base
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Embedding stage skeleton
+        run: |
+          echo "Skeleton only: restore chunks and compute real document embeddings."
+          echo "Planned output: embedding matrix + chunk IDs + lineage manifest."
+          echo "No model is downloaded and no embeddings are computed by this skeleton."

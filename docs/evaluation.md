@@ -30,7 +30,7 @@ The project is heavily containerized for local deployment, but CI does not need 
 |---|---|---|---:|
 | Unit/UI CI | Verify application logic and deterministic behavior | Every PR and push | under 5 minutes |
 | Container integration smoke | Verify Docker/service wiring and ingestion plumbing | Relevant infrastructure/backend changes | 5-10 minutes |
-| Retrieval regression evaluation | Measure retrieval quality against a fixed public benchmark snapshot | Relevant retrieval changes or manual run | 5-15 minutes |
+| Retrieval regression evaluation | Measure retrieval quality against a fixed benchmark snapshot | Relevant retrieval changes or manual run | 5-15 minutes |
 | Full raw-document evaluation | Rebuild from source documents through parsing, chunking, embedding and indexing | Manual, release, or ingestion/model changes | 30+ minutes is acceptable |
 
 The slowest layer should not block ordinary development unless the change actually affects that layer.
@@ -48,126 +48,233 @@ The current workflows are intentionally lighter than the full Docker Compose dep
 
 This means the existing E2E workflow is best understood as an application smoke test against real storage backends, not a full deployment or ML-quality test.
 
-The E2E backend versions should also be kept aligned with the deployment versions in `docker-compose.yml`. At the time this guide was updated, the E2E workflow used older OpenSearch and Qdrant image tags than the main Compose file.
+The E2E backend versions should eventually be aligned with the deployment versions in `docker-compose.yml`. That change is intentionally separate from the benchmark skeleton so the existing runtime is not changed before review.
 
-## Public benchmark evaluation
+## Mixed public benchmark
 
-Use an established public, redistributable benchmark as the main retrieval-quality reference rather than personal documents. The benchmark should pass through the same retrieval code used by the application.
+Use a fixed mixed benchmark instead of personal documents and instead of relying on only one domain.
 
-Keep retrieval evaluation separate from generation evaluation:
+The initial benchmark mix should draw selected, license-compatible material from established sources such as:
 
-1. Retrieval evaluation measures whether the correct document/chunk is retrieved and ranked well.
-2. QA evaluation measures whether retrieved evidence is handed off correctly and the generated answer is supported.
-3. A later answer-generation benchmark may add correctness, faithfulness, citation quality, abstention, and latency.
+- Open RAGBench for scientific/technical PDF retrieval and hard negatives.
+- OfficeQA for office, government, financial, table-heavy document questions.
+- Selected BEIR datasets for additional retrieval domains when the source format fits the evaluation goal.
+- Additional benchmarks may be added later only when they cover a real gap.
 
-For retrieval, prefer standard metrics such as:
-
-- Recall/Hit@1, @3, and @5
-- MRR
-- nDCG@5
-- latency
-
-Report results against a fixed benchmark revision and fixed evaluation snapshot.
-
-## Versioned evaluation snapshots
-
-Parsing, chunking, and document embeddings are expensive but deterministic for a fixed corpus and configuration. They should not be recomputed on every retrieval experiment.
-
-Treat the evaluation pipeline as dependency-aware stages:
+Do not merge these sources into an opaque dataset. Every document and query must retain provenance:
 
 ```text
-raw benchmark documents
-        ↓
-parsing
-        ↓
-parsed documents
-        ↓
-chunking
-        ↓
-canonical chunks
-        ↓
-embedding
-        ↓
-vectors
-        ↓
-index population
-        ↓
-retrieval/ranking experiments
-        ↓
-metrics
+source_benchmark
+source_version
+source_document_id
+source_query_id
+domain
+question_type
+modality
+qrels
+license/provenance metadata
 ```
 
-A retrieval-only change should reuse all compatible upstream artifacts.
+Report per-source metrics first. A composite score may be reported as a convenience, but it must not hide weak performance on one benchmark behind an easier benchmark.
 
-Each snapshot should record enough lineage to determine whether it is still valid. At minimum include:
+The benchmark source selection must be deterministic and versioned. Re-running the source stage with the same source revisions, filters, and selection seed must produce the same corpus manifest.
 
-- benchmark name and revision/subset
-- source-document checksums
+## Evaluation artifact DAG
+
+The full evaluation system is a dependency-aware artifact pipeline:
+
+```text
+1. source corpus
+      ↓
+2. parsed documents
+      ↓
+3. chunked documents
+      ↓
+4. embeddings
+      ↓
+5. OpenSearch + Qdrant indexes
+      ↓
+6. evaluation results
+```
+
+Every stage is reproducible, but ordinary evaluation should start from the newest compatible downstream artifact instead of recomputing upstream work.
+
+### Stage 1: source corpus
+
+The source artifact contains the fixed mixed benchmark inputs needed to reproduce the evaluation corpus:
+
+```text
+benchmark-source/
+├── manifest.json
+├── queries/
+├── qrels/
+├── provenance/
+└── documents/ or source references permitted by each benchmark
+```
+
+Raw PDFs should be cached where licensing/access terms permit. For gated or restricted sources, store them privately or retain reproducible source references/checksums rather than republishing them.
+
+### Stage 2: parsed documents
+
+Rebuild when the source corpus, parser, loader, or parser-affecting preprocessing changes.
+
+Typical contents:
+
+```text
+parsed/
+├── documents.jsonl
+├── pages.jsonl
+├── metadata.jsonl
+└── manifest.json
+```
+
+### Stage 3: chunks
+
+Rebuild when chunking or chunk-affecting preprocessing changes.
+
+Typical contents:
+
+```text
+chunks/
+├── chunks.jsonl
+├── chunk_metadata.jsonl
+└── manifest.json
+```
+
+For the normal case, parsing and chunking should be reused for a long time rather than repeated during every retrieval experiment.
+
+### Stage 4: embeddings
+
+Rebuild when chunks, the embedding model/revision, dimensionality, normalization, or embedding configuration changes.
+
+Typical contents:
+
+```text
+embeddings/
+├── embeddings.npy
+├── chunk_ids.json
+└── manifest.json
+```
+
+The chunk artifact plus embeddings form the portable canonical representation used to rebuild search-engine-specific indexes.
+
+### Stage 5: native search indexes
+
+Build native OpenSearch and Qdrant snapshots from the chunk and embedding artifacts.
+
+These snapshots are a late-stage performance cache:
+
+```text
+chunks + embeddings
+        ↓
+OpenSearch snapshot
+Qdrant snapshot
+```
+
+They are deliberately not the only canonical representation. If an engine snapshot becomes incompatible, the indexes can be rebuilt from portable chunks and embeddings without reparsing PDFs or recomputing document embeddings.
+
+Pin backend versions rather than using floating `latest` tags. The benchmark skeleton currently targets:
+
+```text
+OpenSearch 3.8.0
+Qdrant 1.19.1
+```
+
+Backend upgrades are explicit maintenance changes. They should not occur automatically simply because a newer image exists.
+
+### Stage 6: evaluation
+
+The common retrieval evaluation path should restore compatible native indexes, run the application retrieval pipeline, and calculate metrics.
+
+Normal retrieval evaluation should not require:
+
+- PDF parsing
+- chunking
+- document embedding
+- Celery
+- Redis
+- Streamlit
+- Flower
+- Phoenix
+- an answer-generation LLM
+
+Use the real retrieval code and real document embeddings. Generation evaluation remains a separate layer.
+
+## Artifact lineage and fingerprints
+
+Every stage must include a manifest that identifies its direct parent and all configuration that can affect its output.
+
+At minimum record:
+
+- artifact type and schema version
+- parent artifact ID/fingerprint
+- benchmark source names, revisions, filters, and subset
+- source-document checksums where available
 - parser implementation/configuration fingerprint
 - preprocessing fingerprint
 - chunking strategy, size, and overlap
-- embedding model name and model revision
-- embedding dimension and normalization settings
-- repository revision used to build the snapshot
-- snapshot schema/version
+- embedding model name and revision
+- embedding dimension and normalization
+- OpenSearch/Qdrant versions and index schema fingerprint for index artifacts
+- repository revision used to build the artifact
+- creation timestamp for traceability, but not as the compatibility key
 
-A cache key or snapshot ID should be derived from the inputs that affect the generated artifact, not from a manually chosen label alone.
+Compatibility must be determined from functional inputs, not from a manually chosen artifact name or timestamp.
 
-### Invalidation rules
+If a required parent fingerprint does not match, the downstream workflow must fail clearly rather than silently use stale data.
+
+## Invalidation and rebuild rules
 
 Use the narrowest rebuild that preserves correctness:
 
-| Change | Reuse | Rebuild |
-|---|---|---|
-| Retrieval fusion, MMR, filters, top-k, ranking policy | parsed docs, chunks, embeddings | indexes/query run as needed |
-| Query rewriting/planning | parsed docs, chunks, embeddings | query run |
-| Reranker | parsed docs, chunks, document embeddings | reranking/query run |
-| Embedding model/config | parsed docs, chunks | embeddings and vector index |
-| Chunker/preprocessing | parsed docs when compatible | chunks, embeddings, indexes |
-| Parser/loader | source documents only | parsing and everything downstream |
+| Change | First stage to rerun |
+|---|---|
+| Retrieval fusion, MMR, filters, top-k, ranking policy | evaluation |
+| Query rewriting/planning | evaluation |
+| Reranker | evaluation, unless its model artifact is separately cached |
+| OpenSearch/Qdrant mapping/index configuration | index |
+| OpenSearch/Qdrant version | index |
+| Embedding model/configuration | embed |
+| Chunker/chunk-affecting preprocessing | chunk |
+| Parser/loader | parse |
+| Benchmark source selection/revision | source |
 
-Do not silently reuse an incompatible snapshot. A benchmark run should fail clearly if the required snapshot fingerprint does not match.
+After rerunning a stage, all downstream artifacts are considered stale until deliberately rebuilt.
 
-## Manual evaluation-snapshot build workflow
+Do not automatically cascade expensive downstream rebuilds while the implementation is still being reviewed. Manual stage boundaries keep Actions usage predictable and avoid rebuilding several expensive layers while an upstream change is still experimental.
 
-A dedicated manual GitHub Actions workflow is the preferred way to rebuild the expensive evaluation snapshot when ingestion-facing behavior changes.
+## Manual workflow skeleton
 
-Conceptually:
+The repository contains manual-only skeleton workflows for each stage:
 
 ```text
-workflow_dispatch
-      ↓
-download fixed public benchmark source
-      ↓
-run real parser/preprocessor/chunker
-      ↓
-run real embedding model
-      ↓
-build canonical snapshot
-      ↓
-validate manifest/fingerprints
-      ↓
-publish immutable versioned snapshot
+.github/workflows/benchmark-source.yml
+.github/workflows/benchmark-parse.yml
+.github/workflows/benchmark-chunk.yml
+.github/workflows/benchmark-embed.yml
+.github/workflows/benchmark-index.yml
+.github/workflows/benchmark-eval.yml
 ```
 
-This workflow should be separate from normal PR CI. Rebuilding the snapshot is an explicit maintenance action, not a hidden side effect of a retrieval test.
+At this stage they are intentionally non-operational planning shells. They expose the intended manual inputs and dependency boundaries but do not download corpora, models, build snapshots, publish artifacts, or run evaluation.
 
-Useful manual inputs may include:
+This allows the artifact contracts and storage choices to be reviewed before CI begins consuming significant time or storage.
 
-- benchmark subset: smoke / medium / full
-- force rebuild: true / false
-- benchmark revision
-- optional snapshot label for human readability
+## Artifact storage
 
-The generated snapshot should include the canonical chunks, metadata/manifest, qrels/query files required by the benchmark adapter, and precomputed document embeddings when licensing permits.
+Do not use ordinary GitHub Actions cache as the only durable source of benchmark artifacts. Actions cache is useful for disposable acceleration but can be evicted.
 
-### Snapshot storage
+The intended storage model is:
 
-Do not rely on the ordinary GitHub Actions cache as the only source of truth for evaluation snapshots. Actions caches are optimized for build acceleration and may be evicted.
+```text
+durable/versioned artifact store
+        +
+Actions cache for local acceleration
+```
 
-Prefer an immutable/versioned artifact store for durable benchmark snapshots. GitHub Container Registry as an OCI artifact is a reasonable long-term choice because snapshots can be versioned and fetched by CI without committing large generated data to Git. A simpler workflow artifact can be used during initial development, but it should not be treated as permanent storage.
+GitHub Container Registry using OCI artifacts is the preferred long-term candidate for versioned source/parsed/chunk/embedding/index artifacts. Workflow artifacts may be used while the design is being developed, but should not become the permanent system of record.
 
-Normal CI may still use `actions/cache` for disposable acceleration such as Python packages, model downloads, Docker layers, or a recently fetched snapshot.
+The exact publication mechanism remains intentionally unimplemented until benchmark licensing, artifact sizes, retention, and access requirements are reviewed.
 
 ## Trigger policy
 
@@ -176,9 +283,12 @@ Avoid running evaluation because an unrelated file changed.
 Examples:
 
 - Documentation or cosmetic UI changes: unit/UI checks only.
-- Retrieval-policy changes: unit tests plus the small cached retrieval benchmark.
-- Parser/chunker/embedding changes: unit tests; mark the current evaluation snapshot incompatible and rebuild it explicitly before comparing quality.
-- Deployment/Docker changes: container integration smoke.
+- Retrieval-policy changes: unit tests plus the small cached retrieval benchmark when enabled.
+- Index mapping or backend-version changes: rebuild index artifact, then evaluate.
+- Embedding changes: rebuild embeddings, index, then evaluate.
+- Chunking changes: rebuild chunks, embeddings, index, then evaluate.
+- Parser changes: rebuild parsed documents and every downstream stage.
+- Benchmark composition changes: rebuild from source.
 - Release candidate: run the larger/full evaluation appropriate to the release.
 
 Independent jobs should run in parallel where possible so wall-clock CI time is determined by the slowest required layer rather than the sum of all layers.
@@ -205,17 +315,18 @@ assert indexed state
 
 The embedding and LLM services may remain deterministic stubs in this workflow because its purpose is deployment/integration correctness, not ML quality.
 
-The retrieval benchmark should use real embeddings, but it does not need Streamlit, Celery, Redis, Flower, Phoenix, or an LLM when evaluating retrieval only.
+The retrieval benchmark should use real embeddings, but it does not need the full application stack when evaluating retrieval only.
 
 ## Safe fixtures and artifacts
 
 Only commit synthetic, licensed, or otherwise redistributable fixtures. Remove personal paths, document contents, credentials, and identifiers. Store large/generated run outputs outside Git unless a small artifact is intentionally retained as a documented baseline.
 
-Benchmark results should state whether they came from:
+Benchmark results should state:
 
-- a cached retrieval snapshot
-- a full raw-document rebuild
-- the small smoke subset
-- the larger/full benchmark
+- source benchmark and subset
+- artifact fingerprints used
+- backend/model versions
+- whether native indexes were restored or rebuilt
+- whether the run used the smoke, medium, or full evaluation set
 
 This prevents a fast regression run from being mistaken for a complete end-to-end evaluation.
