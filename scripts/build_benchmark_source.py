@@ -19,9 +19,6 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import requests
-import yaml
-from datasets import load_dataset
-from huggingface_hub import HfApi, hf_hub_download
 
 from evaluation.benchmarks.selection import (
     DEFAULT_SEED,
@@ -118,7 +115,7 @@ def _download_http_pdf(url: str, cache_path: Path, *, session: requests.Session)
     raise AssertionError("unreachable")
 
 
-def _resolve_revision(api: HfApi, repo_id: str, token: str | None) -> str:
+def _resolve_revision(api: Any, repo_id: str, token: str | None) -> str:
     info = api.dataset_info(repo_id=repo_id, revision="main", token=token)
     if not info.sha:
         raise RuntimeError(f"Hugging Face did not return an immutable revision for {repo_id}")
@@ -126,6 +123,8 @@ def _resolve_revision(api: HfApi, repo_id: str, token: str | None) -> str:
 
 
 def _hf_json(repo_id: str, filename: str, revision: str, token: str | None) -> Any:
+    from huggingface_hub import hf_hub_download
+
     path = hf_hub_download(
         repo_id=repo_id,
         repo_type="dataset",
@@ -137,6 +136,8 @@ def _hf_json(repo_id: str, filename: str, revision: str, token: str | None) -> A
 
 
 def _load_csv(repo_id: str, filename: str, revision: str, token: str | None) -> list[dict[str, Any]]:
+    from huggingface_hub import hf_hub_download
+
     path = hf_hub_download(
         repo_id=repo_id,
         repo_type="dataset",
@@ -165,6 +166,9 @@ def _resolve_and_select(
     *,
     token: str,
 ) -> dict[str, Any]:
+    from datasets import load_dataset
+    from huggingface_hub import HfApi
+
     api = HfApi()
     seed = int(spec.get("selection_seed", DEFAULT_SEED))
     sources = spec["sources"]
@@ -377,6 +381,8 @@ def _materialize_officeqa(
     *,
     token: str,
 ) -> dict[str, Any]:
+    from huggingface_hub import hf_hub_download
+
     track = "officeqa"
     source = lock["sources"][track]
     selected = lock["selection"][track]
@@ -438,6 +444,8 @@ def _materialize_nfcorpus(
     *,
     token: str,
 ) -> dict[str, Any]:
+    from datasets import load_dataset
+
     track = "nfcorpus"
     source = lock["sources"][track]
     qrels_source = lock["sources"]["nfcorpus_qrels"]
@@ -490,6 +498,8 @@ def _materialize_miracl(
     *,
     token: str,
 ) -> dict[str, Any]:
+    from datasets import load_dataset
+
     source = lock["sources"][track]
     selected = lock["selection"][track]
     selected_queries = set(selected["query_ids"])
@@ -539,6 +549,8 @@ def build_source(
     *,
     token: str,
 ) -> Path:
+    import yaml
+
     spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
     benchmark_id = str(spec["benchmark_id"])
     output_dir = output_root / benchmark_id
