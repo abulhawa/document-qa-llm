@@ -1,0 +1,146 @@
+# Proposed benchmark composition. The source workflow is still a non-running skeleton.
+schema_version: 1
+benchmark_id: composite-v1
+status: proposed
+selection_seed: 20260928
+
+principles:
+  - deterministic_selection
+  - preserve_source_provenance
+  - per_source_metrics
+  - no_runtime_resampling
+  - private_corpus_artifacts_by_default
+  - source_native_runs_separate_from_composite_scores
+
+tiers:
+  smoke:
+    total_queries: 40
+    queries:
+      open_ragbench: 10
+      officeqa: 10
+      nfcorpus: 10
+      miracl_de: 5
+      miracl_ar: 5
+  medium:
+    total_queries: 120
+    queries:
+      open_ragbench: 40
+      officeqa: 20
+      nfcorpus: 30
+      miracl_de: 15
+      miracl_ar: 15
+  full:
+    total_queries: 410
+    queries:
+      open_ragbench: 160
+      officeqa: 50
+      nfcorpus: 100
+      miracl_de: 50
+      miracl_ar: 50
+
+sources:
+  open_ragbench:
+    upstream: vectara/open_ragbench
+    upstream_revision: TO_BE_PINNED
+    license: CC-BY-NC-4.0
+    source_format: pdf
+    selection:
+      positive_documents: 80
+      hard_negative_documents: 120
+      questions: 160
+      modality: text_only
+      questions_per_positive_target: 2
+      stratify_by:
+        - arxiv_category
+        - query_type_when_available
+    notes:
+      - Use published hard negatives.
+      - Exact document/query IDs are written into the generated source manifest.
+
+  officeqa:
+    upstream: databricks/officeqa
+    upstream_revision: TO_BE_PINNED
+    license: CC-BY-SA-4.0
+    access: gated_huggingface
+    source_format: pdf
+    selection:
+      dataset: officeqa_full
+      questions: 50
+      easy_questions: 25
+      hard_questions: 25
+      include_all_referenced_source_documents: true
+      distractor_documents_target_total_pdfs: 150
+      stratify_by:
+        - decade
+        - difficulty
+    notes:
+      - Requires HF_TOKEN when source acquisition is implemented.
+      - Pro V2 is intentionally deferred from composite-v1.
+
+  nfcorpus:
+    upstream: BEIR/nfcorpus
+    upstream_revision: TO_BE_PINNED
+    source_format: text
+    selection:
+      corpus: full
+      corpus_documents_approx: 3600
+      test_queries: 100
+    notes:
+      - Full corpus is retained because it is small.
+      - Query IDs are fixed in the generated source manifest.
+
+  miracl_de:
+    upstream: mteb/miracl-hard-negatives
+    upstream_revision: TO_BE_PINNED
+    license: CC-BY-SA-4.0
+    source_format: text
+    language: de
+    selection:
+      queries: 50
+      hard_negatives_per_query_max: 20
+      include_all_positives: true
+
+  miracl_ar:
+    upstream: mteb/miracl-hard-negatives
+    upstream_revision: TO_BE_PINNED
+    license: CC-BY-SA-4.0
+    source_format: text
+    language: ar
+    selection:
+      queries: 50
+      hard_negatives_per_query_max: 20
+      include_all_positives: true
+
+reporting:
+  primary_metrics:
+    - recall_at_1
+    - recall_at_3
+    - recall_at_5
+    - mrr
+    - ndcg_at_5
+    - latency
+  per_track_required: true
+  composite:
+    enabled: true
+    aggregation: macro_average_across_tracks
+    tracks:
+      - open_ragbench
+      - officeqa
+      - nfcorpus
+      - miracl_de
+      - miracl_ar
+
+storage:
+  corpus_artifacts_visibility: private
+  durable_store_candidate: ghcr_oci
+  actions_cache_role: acceleration_only
+  native_index_snapshots:
+    opensearch: 3.8.0
+    qdrant: 1.19.1
+
+unresolved_before_activation:
+  - Pin exact upstream dataset revisions/commits.
+  - Validate each upstream dataset's redistribution terms for cached artifacts.
+  - Materialize deterministic query/document IDs.
+  - Measure source, chunk, embedding, and native-index artifact sizes.
+  - Confirm GitHub-hosted runner disk headroom for restoring native index snapshots.

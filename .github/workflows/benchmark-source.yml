@@ -7,7 +7,12 @@ on:
       benchmark_id:
         description: Versioned mixed benchmark identifier
         required: true
-        default: mixed-v1
+        default: composite-v1
+        type: string
+      composition_file:
+        description: Versioned benchmark composition specification
+        required: true
+        default: evaluation/benchmarks/composite_v1.yaml
         type: string
       subset:
         description: Planned corpus size
@@ -31,6 +36,7 @@ jobs:
       - name: Source stage skeleton
         run: |
           echo "Skeleton only: build deterministic mixed benchmark source corpus."
-          echo "Planned sources: Open RAGBench, OfficeQA, selected BEIR material."
+          echo "Composition: ${{ inputs.composition_file }}"
+          echo "Planned sources: Open RAGBench, OfficeQA, BEIR NFCorpus, MIRACL German/Arabic hard-negative subsets."
           echo "Planned output: versioned source artifact + provenance manifest."
           echo "No corpus is downloaded or published by this skeleton."

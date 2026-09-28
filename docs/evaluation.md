@@ -79,6 +79,49 @@ Report per-source metrics first. A composite score may be reported as a convenie
 
 The benchmark source selection must be deterministic and versioned. Re-running the source stage with the same source revisions, filters, and selection seed must produce the same corpus manifest.
 
+
+### Proposed composite-v1 composition
+
+`composite-v1` is a project regression benchmark derived from established datasets. It is not presented as an official score on any source benchmark because several source corpora are deliberately subsetted to keep rebuild and CI costs practical.
+
+| Track | Planned corpus | Planned evaluation queries | Purpose |
+|---|---:|---:|---|
+| Open RAGBench text-only | 200 PDFs: 80 positive PDFs + 120 published hard-negative PDFs | 160 | Scientific/technical PDFs, paraphrase/extractive retrieval, realistic negative documents |
+| OfficeQA Full | All source PDFs needed by 50 selected questions plus distractor Treasury Bulletins, targeting about 150 PDFs | 50: 25 easy + 25 hard | Financial/government PDFs, tables, long documents, temporal similarity |
+| BEIR NFCorpus | Full corpus, about 3.6K text documents | 100 fixed test queries | Biomedical/health retrieval with multiple relevant documents and graded-ranking pressure |
+| MIRACL hard-negative subsets | German and Arabic positives plus up to 20 hard negatives per query | 100: 50 German + 50 Arabic | Multilingual retrieval using the project's multilingual embedding model |
+
+Target total: **410 evaluation queries**, roughly **350 PDF documents plus a few thousand text/passages**, with exact counts recorded after deterministic source selection and de-duplication.
+
+Selection rules:
+
+- Open RAGBench: choose 80 positive PDFs across available arXiv categories, select two text-only questions per chosen positive document where possible, and add 120 of the benchmark's published hard-negative PDFs. Prefer a mix of extractive and abstractive questions where the source metadata allows it.
+- OfficeQA: use OfficeQA Full rather than only Pro so the regression set contains both easy and hard cases. Select 25 easy and 25 hard questions across years/decades, include every referenced source PDF, then add unreferenced Treasury Bulletins as distractors to target about 150 PDFs. Do not include Pro V2 in v1 because its separate 1,435-document corpus and much larger PDF download materially increase the source-stage cost.
+- NFCorpus: retain the full small corpus so retrieval difficulty is not altered by negative-document sampling. Select 100 fixed test queries for routine evaluation; source-native full-query evaluation remains possible.
+- MIRACL: use German and Arabic because they exercise the multilingual model in two different scripts. Use the published hard-negative form rather than indexing the multi-million-passage full corpora. Select 50 fixed queries per language and retain positives plus up to the top 20 published hard negatives for each query.
+
+The exact selected IDs must be materialized into the source artifact manifest. No workflow should randomly resample at runtime.
+
+### Evaluation tiers
+
+All tiers use the same corpus/index artifact. Only the number of evaluated queries changes, so the expensive corpus, chunk, embedding, and index stages are not duplicated.
+
+| Tier | Query count | Intended use |
+|---|---:|---|
+| smoke | 40 | Fast validation: 10 Open RAGBench, 10 OfficeQA, 10 NFCorpus, 5 German MIRACL, 5 Arabic MIRACL |
+| medium | 120 | Routine retrieval regression: 40 Open RAGBench, 20 OfficeQA, 30 NFCorpus, 15 German MIRACL, 15 Arabic MIRACL |
+| full | 410 | Manual/release evaluation using all composite-v1 queries |
+
+Smoke and medium IDs must be fixed subsets of the full set, selected once and stored in the source manifest. They must never be sampled dynamically during CI.
+
+Report metrics separately for Open RAGBench, OfficeQA, NFCorpus, MIRACL German, and MIRACL Arabic. If a single composite number is shown, use a macro-average across tracks so a source with more questions cannot dominate the result.
+
+### Source-native benchmark runs
+
+Where practical, keep adapters capable of running a source benchmark with its native corpus/query set. These runs are separate from `composite-v1` and are the appropriate place for comparisons against published benchmark results.
+
+The composite benchmark optimizes for project regression coverage and CI practicality. Source-native runs optimize for external benchmark comparability.
+
 ## Evaluation artifact DAG
 
 The full evaluation system is a dependency-aware artifact pipeline:
@@ -274,7 +317,11 @@ Actions cache for local acceleration
 
 GitHub Container Registry using OCI artifacts is the preferred long-term candidate for versioned source/parsed/chunk/embedding/index artifacts. Workflow artifacts may be used while the design is being developed, but should not become the permanent system of record.
 
-The exact publication mechanism remains intentionally unimplemented until benchmark licensing, artifact sizes, retention, and access requirements are reviewed.
+For `composite-v1`, keep corpus-bearing artifacts private by default. OfficeQA is gated, and other benchmark sources have their own redistribution terms. The public repository should contain the composition specification, source/revision metadata, checksums/fingerprints where appropriate, workflow code, and evaluation results, but not assume that every upstream document or answer key can be republished.
+
+The preferred long-term layout is one private/versioned OCI package family in GHCR for source, parsed, chunk, embedding, and index artifacts, addressed by immutable digests. Human-readable tags such as `composite-v1-source` may point to those digests, but compatibility checks must use manifest fingerprints/digests rather than mutable tags.
+
+Exact GHCR publication commands and package visibility remain intentionally unimplemented until the first source artifact size and access behavior have been reviewed.
 
 ## Trigger policy
 
