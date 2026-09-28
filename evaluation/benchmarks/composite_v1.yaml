@@ -1,0 +1,165 @@
+# Proposed benchmark composition. Source acquisition is manual-only but implemented.
+schema_version: 1
+benchmark_id: composite-v1
+status: source-acquisition-ready
+selection_seed: 20260928
+selection_algorithm: stable-sha256-v1
+
+principles:
+  - deterministic_selection
+  - preserve_source_provenance
+  - per_source_metrics
+  - no_runtime_resampling
+  - private_corpus_artifacts_by_default
+  - source_native_runs_separate_from_composite_scores
+
+tiers:
+  smoke:
+    total_queries: 40
+    queries:
+      open_ragbench: 10
+      officeqa: 10
+      nfcorpus: 10
+      miracl_de: 5
+      miracl_ar: 5
+  medium:
+    total_queries: 120
+    queries:
+      open_ragbench: 40
+      officeqa: 20
+      nfcorpus: 30
+      miracl_de: 15
+      miracl_ar: 15
+  full:
+    total_queries: 410
+    queries:
+      open_ragbench: 160
+      officeqa: 50
+      nfcorpus: 100
+      miracl_de: 50
+      miracl_ar: 50
+
+sources:
+  open_ragbench:
+    upstream: vectara/open_ragbench
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
+    license: CC-BY-NC-4.0
+    source_format: pdf
+    selection:
+      positive_documents: 80
+      hard_negative_documents: 120
+      questions: 160
+      modality: text_only
+      questions_per_positive_target: 2
+      eligibility:
+        query_source: text
+        min_eligible_queries_per_positive_document: 2
+      query_selection:
+        prefer_one_extractive_and_one_abstractive_per_document: true
+        fallback: stable_hash
+      hard_negative_pool: documents_not_gold_for_any_query
+    notes:
+      - Use only upstream labels and stable hashing; never use Document QA scores.
+      - Record observed arXiv category distribution after selection rather than optimizing against retrieval performance.
+      - Exact document/query IDs are written into the generated source manifest.
+
+  officeqa:
+    upstream: databricks/officeqa
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
+    license: CC-BY-SA-4.0
+    access: gated_huggingface
+    source_format: pdf
+    selection:
+      dataset: officeqa_full
+      questions: 50
+      easy_questions: 25
+      hard_questions: 25
+      include_all_referenced_source_documents: true
+      distractor_documents_target_total_pdfs: 150
+      question_selection:
+        difficulty_quotas:
+          easy: 25
+          hard: 25
+        balance_within_difficulty_by: source_document_decade
+        ordering: stable_hash
+      distractor_selection:
+        prefer_same_decades_as_selected_sources: true
+        fallback: stable_hash_from_remaining_corpus
+    notes:
+      - Requires HF_TOKEN when source acquisition is implemented.
+      - Pro V2 is intentionally deferred from composite-v1.
+
+  nfcorpus:
+    upstream: BEIR/nfcorpus
+    qrels_upstream: BEIR/nfcorpus-qrels
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
+    source_format: text
+    selection:
+      corpus: full
+      corpus_documents_approx: 3600
+      test_queries: 100
+      query_ordering: stable_hash
+    notes:
+      - Full corpus is retained because it is small.
+      - Query IDs are fixed in the generated source manifest.
+
+  miracl_de:
+    upstream: mteb/MIRACLRetrieval_de_top_250_only_w_correct-v2
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
+    license: CC-BY-SA-4.0
+    source_format: text
+    language: de
+    selection:
+      queries: 50
+      split: dev
+      hard_negatives_per_query_max: 20
+      include_all_positives: true
+      query_ordering: stable_hash
+      negative_ordering: stable_hash
+
+  miracl_ar:
+    upstream: mteb/MIRACLRetrieval_ar_top_250_only_w_correct-v2
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
+    license: CC-BY-SA-4.0
+    source_format: text
+    language: ar
+    selection:
+      queries: 50
+      split: dev
+      hard_negatives_per_query_max: 20
+      include_all_positives: true
+      query_ordering: stable_hash
+      negative_ordering: stable_hash
+
+reporting:
+  primary_metrics:
+    - recall_at_1
+    - recall_at_3
+    - recall_at_5
+    - mrr
+    - ndcg_at_5
+    - latency
+  per_track_required: true
+  composite:
+    enabled: true
+    aggregation: macro_average_across_tracks
+    tracks:
+      - open_ragbench
+      - officeqa
+      - nfcorpus
+      - miracl_de
+      - miracl_ar
+
+storage:
+  corpus_artifacts_visibility: private
+  durable_store_candidate: ghcr_oci
+  actions_cache_role: acceleration_only
+  native_index_snapshots:
+    opensearch: 3.8.0
+    qdrant: 1.19.1
+
+unresolved_before_activation:
+  - Run the manual source workflow once and review the generated immutable lock.
+  - Replace the pending committed lock with the reviewed generated lock.
+  - Measure source, chunk, embedding, and native-index artifact sizes.
+  - Confirm GitHub-hosted runner disk headroom for restoring native index snapshots.

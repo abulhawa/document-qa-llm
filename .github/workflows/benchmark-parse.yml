@@ -1,0 +1,31 @@
+# Skeleton only. This workflow does not parse benchmark documents yet.
+name: Benchmark 2 - Parse
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_artifact:
+        description: Upstream source artifact ID or digest
+        required: true
+        default: benchmark-source:mixed-v1
+        type: string
+      parsed_artifact:
+        description: Intended parsed artifact label
+        required: true
+        default: benchmark-parsed:mixed-v1
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse stage skeleton
+        run: |
+          echo "Skeleton only: restore source corpus and run the real parser/preprocessor."
+          echo "Planned output: parsed documents/pages/metadata + lineage manifest."
+          echo "No benchmark documents are parsed by this skeleton."

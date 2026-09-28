@@ -1,0 +1,111 @@
+name: Benchmark 1 - Source Corpus
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_id:
+        description: Versioned mixed benchmark identifier
+        required: true
+        default: composite-v1
+        type: string
+      composition_file:
+        description: Versioned benchmark composition specification
+        required: true
+        default: evaluation/benchmarks/composite_v1.yaml
+        type: string
+      lock_file:
+        description: Pending or frozen source lock
+        required: true
+        default: evaluation/benchmarks/composite_v1.lock.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-source-${{ inputs.benchmark_id }}
+  cancel-in-progress: false
+
+jobs:
+  build-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: requirements/eval.txt
+
+      - name: Verify Hugging Face token is configured
+        shell: bash
+        run: |
+          if [[ -z "${HF_TOKEN}" ]]; then
+            echo "::error::Repository secret HF_TOKEN is required for gated OfficeQA access."
+            exit 1
+          fi
+
+      - name: Install source-build dependencies
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements/eval.txt
+
+      - name: Restore public Open RAGBench PDF cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .benchmark/cache/source/open_ragbench
+          key: open-ragbench-pdfs-${{ runner.os }}-${{ hashFiles(inputs.composition_file) }}
+          restore-keys: |
+            open-ragbench-pdfs-${{ runner.os }}-
+
+      - name: Build deterministic source corpus
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/build_benchmark_source.py             --spec "${{ inputs.composition_file }}"             --lock "${{ inputs.lock_file }}"             --output-root .benchmark/source             --cache-dir .benchmark/cache/source
+
+      - name: Compute lock digest and source size
+        id: source-meta
+        shell: bash
+        run: |
+          LOCK=".benchmark/source/${{ inputs.benchmark_id }}/source.lock.json"
+          LOCK_SHA="$(sha256sum "$LOCK" | awk '{print $1}')"
+          SOURCE_BYTES="$(du -sb ".benchmark/source/${{ inputs.benchmark_id }}" | awk '{print $1}')"
+          echo "lock_sha=$LOCK_SHA" >> "$GITHUB_OUTPUT"
+          echo "source_bytes=$SOURCE_BYTES" >> "$GITHUB_OUTPUT"
+
+      - name: Save public Open RAGBench PDF cache
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: .benchmark/cache/source/open_ragbench
+          key: open-ragbench-pdfs-${{ runner.os }}-${{ steps.source-meta.outputs.lock_sha }}
+
+      - name: Upload lock and manifest for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.benchmark_id }}-source-lock-${{ steps.source-meta.outputs.lock_sha }}
+          path: |
+            .benchmark/source/${{ inputs.benchmark_id }}/source.lock.json
+            .benchmark/source/${{ inputs.benchmark_id }}/manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Write job summary
+        shell: bash
+        run: |
+          {
+            echo "## Benchmark source build"
+            echo
+            echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
+            echo "- Lock SHA256: \`${{ steps.source-meta.outputs.lock_sha }}\`"
+            echo "- Reconstructed source bytes: \`${{ steps.source-meta.outputs.source_bytes }}\`"
+            echo "- Mixed corpus is not uploaded or cached because OfficeQA is gated."
+            echo
+            echo "Review the uploaded lock/manifest artifact before replacing the pending committed lock."
+          } >> "$GITHUB_STEP_SUMMARY"

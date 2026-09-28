@@ -1,0 +1,42 @@
+# Skeleton only. This workflow does not build native index snapshots yet.
+name: Benchmark 5 - Index
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunks_artifact:
+        description: Upstream chunks artifact ID or digest
+        required: true
+        default: benchmark-chunks:mixed-v1
+        type: string
+      embeddings_artifact:
+        description: Upstream embeddings artifact ID or digest
+        required: true
+        default: benchmark-embeddings:mixed-v1
+        type: string
+      index_artifact:
+        description: Intended native-index artifact label
+        required: true
+        default: benchmark-index:mixed-v1
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  OPENSEARCH_IMAGE: opensearchproject/opensearch:3.8.0
+  QDRANT_IMAGE: qdrant/qdrant:v1.19.1
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Index stage skeleton
+        run: |
+          echo "Skeleton only: restore chunks/embeddings and build native search-engine snapshots."
+          echo "Pinned OpenSearch: $OPENSEARCH_IMAGE"
+          echo "Pinned Qdrant: $QDRANT_IMAGE"
+          echo "Planned output: OpenSearch snapshot + Qdrant snapshot + lineage manifest."
+          echo "No containers are started and no indexes are built by this skeleton."
