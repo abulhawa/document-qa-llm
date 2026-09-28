@@ -97,6 +97,7 @@ def _artifact_fingerprint(
     parser_fingerprint: str,
     package_versions: Mapping[str, str],
     python_version: str,
+    pypdf_xform_limit: int,
 ) -> str:
     payload = {
         "parent_source_artifact_fingerprint": parent_source_fingerprint,
@@ -104,12 +105,15 @@ def _artifact_fingerprint(
         "parser_fingerprint": parser_fingerprint,
         "package_versions": dict(sorted(package_versions.items())),
         "python_version": python_version,
+        "pypdf_xform_maximum_invocations_per_extraction": pypdf_xform_limit,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _parse_one(task: Mapping[str, Any]) -> dict[str, Any]:
+    from pypdf import apply_configuration
+
     from core.document_preprocessor import PreprocessConfig, preprocess_to_documents
     from core.file_loader import load_documents
 
@@ -120,9 +124,13 @@ def _parse_one(task: Mapping[str, Any]) -> dict[str, Any]:
     source_document_id = str(entry["source_document_id"])
     ext = file_path.suffix.lower().lstrip(".")
     logical_source = f"benchmark://{benchmark_id}/{track}/{source_document_id}"
+    pypdf_xform_limit = int(task["pypdf_xform_limit"])
 
     try:
-        loaded = load_documents(str(file_path))
+        with apply_configuration(
+            xform_maximum_invocations_per_extraction=pypdf_xform_limit
+        ):
+            loaded = load_documents(str(file_path))
         docs = preprocess_to_documents(
             loaded,
             source_path=logical_source,
@@ -200,6 +208,7 @@ def parse_source(
     max_failures: int,
     repo_revision: str,
     parent_source_fingerprint: str,
+    pypdf_xform_limit: int,
 ) -> Path:
     output_dir = output_root / benchmark_id
     if output_dir.exists():
@@ -230,6 +239,7 @@ def parse_source(
                 "benchmark_id": benchmark_id,
                 "entry": entry,
                 "file_path": str(source_track / str(entry["path"])),
+                "pypdf_xform_limit": pypdf_xform_limit,
             }
             for entry in entries
         ]
@@ -290,6 +300,7 @@ def parse_source(
         parser_fingerprint,
         package_versions,
         python_version,
+        pypdf_xform_limit,
     )
     manifest = {
         "schema_version": 1,
@@ -302,6 +313,9 @@ def parse_source(
         "repository_revision": repo_revision,
         "python_version": python_version,
         "package_versions": package_versions,
+        "parser_config": {
+            "pypdf_xform_maximum_invocations_per_extraction": pypdf_xform_limit,
+        },
         "workers": max(1, workers),
         "stats": track_stats,
         "total_failures": len(all_errors),
@@ -333,8 +347,11 @@ def main() -> int:
     parser.add_argument("--benchmark-id", default="composite-v1")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-failures", type=int, default=0)
+    parser.add_argument("--pypdf-xform-limit", type=int, default=50_000)
     parser.add_argument("--parent-source-fingerprint", required=True)
     args = parser.parse_args()
+    if not 5_000 <= args.pypdf_xform_limit <= 50_000:
+        parser.error("--pypdf-xform-limit must be between 5000 and 50000")
 
     try:
         output = parse_source(
@@ -345,6 +362,7 @@ def main() -> int:
             max_failures=args.max_failures,
             repo_revision=os.environ.get("GITHUB_SHA", "local"),
             parent_source_fingerprint=args.parent_source_fingerprint,
+            pypdf_xform_limit=args.pypdf_xform_limit,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Benchmark parse failed: {exc}", file=sys.stderr)

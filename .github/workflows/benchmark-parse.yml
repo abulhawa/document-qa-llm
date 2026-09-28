@@ -28,6 +28,11 @@ on:
         required: true
         default: "0"
         type: string
+      pypdf_xform_limit:
+        description: Trusted-benchmark Form XObject invocation cap per extraction
+        required: true
+        default: "50000"
+        type: string
 
 permissions:
   contents: read
@@ -153,6 +158,7 @@ jobs:
             --benchmark-id "${{ inputs.benchmark_id }}" \
             --workers "${{ inputs.workers }}" \
             --max-failures "${{ inputs.max_failures }}" \
+            --pypdf-xform-limit "${{ inputs.pypdf_xform_limit }}" \
             --parent-source-fingerprint "${{ steps.source.outputs.artifact_fingerprint }}"
 
       - name: Read parsed artifact metadata

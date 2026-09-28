@@ -26,6 +26,7 @@ def test_artifact_fingerprint_includes_resolved_runtime():
         "parser-code",
         {"pypdf": "6.19.0", "fonttools": "4.58.0", "ftfy": "6.3.1"},
         "3.13.15",
+        50_000,
     )
     package_change = _artifact_fingerprint(
         "source-artifact",
@@ -33,6 +34,7 @@ def test_artifact_fingerprint_includes_resolved_runtime():
         "parser-code",
         {"pypdf": "6.19.1", "fonttools": "4.58.0", "ftfy": "6.3.1"},
         "3.13.15",
+        50_000,
     )
     python_change = _artifact_fingerprint(
         "source-artifact",
@@ -40,6 +42,7 @@ def test_artifact_fingerprint_includes_resolved_runtime():
         "parser-code",
         {"pypdf": "6.19.0", "fonttools": "4.58.0", "ftfy": "6.3.1"},
         "3.13.16",
+        50_000,
     )
     fonttools_change = _artifact_fingerprint(
         "source-artifact",
@@ -47,11 +50,21 @@ def test_artifact_fingerprint_includes_resolved_runtime():
         "parser-code",
         {"pypdf": "6.19.0", "fonttools": "4.59.0", "ftfy": "6.3.1"},
         "3.13.15",
+        50_000,
     )
     assert len(base) == 64
     assert base != package_change
     assert base != python_change
+    xform_limit_change = _artifact_fingerprint(
+        "source-artifact",
+        "source-lock",
+        "parser-code",
+        {"pypdf": "6.19.0", "fonttools": "4.58.0", "ftfy": "6.3.1"},
+        "3.13.15",
+        25_000,
+    )
     assert base != fonttools_change
+    assert base != xform_limit_change
 
 
 def test_artifact_fingerprint_changes_with_parent_source_artifact():
@@ -61,6 +74,7 @@ def test_artifact_fingerprint_changes_with_parent_source_artifact():
         "parser-code",
         {"pypdf": "6.14.2"},
         "3.13.15",
+        50_000,
     )
     second = _artifact_fingerprint(
         "source-b",
@@ -68,5 +82,6 @@ def test_artifact_fingerprint_changes_with_parent_source_artifact():
         "parser-code",
         {"pypdf": "6.14.2"},
         "3.13.15",
+        50_000,
     )
     assert first != second
