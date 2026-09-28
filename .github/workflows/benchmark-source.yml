@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 60
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -50,24 +51,28 @@ jobs:
             exit 1
           fi
 
-      - name: Install source-build dependencies
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements/eval.txt
+      - name: Install minimal source-build dependencies
+        run: python -m pip install -r requirements/eval.txt
 
-      - name: Restore public Open RAGBench PDF cache
+      - name: Restore public source download cache
         uses: actions/cache/restore@v4
         with:
-          path: .benchmark/cache/source/open_ragbench
-          key: open-ragbench-pdfs-${{ runner.os }}-${{ hashFiles(inputs.composition_file) }}
+          path: |
+            .benchmark/cache/source/open_ragbench
+            .benchmark/cache/source/nfcorpus
+          key: benchmark-public-source-${{ runner.os }}-${{ hashFiles(inputs.composition_file) }}
           restore-keys: |
-            open-ragbench-pdfs-${{ runner.os }}-
+            benchmark-public-source-${{ runner.os }}-
 
       - name: Build deterministic source corpus
         env:
           PYTHONPATH: .
         run: |
-          python scripts/build_benchmark_source.py             --spec "${{ inputs.composition_file }}"             --lock "${{ inputs.lock_file }}"             --output-root .benchmark/source             --cache-dir .benchmark/cache/source
+          python scripts/build_benchmark_source.py \
+            --spec "${{ inputs.composition_file }}" \
+            --lock "${{ inputs.lock_file }}" \
+            --output-root .benchmark/source \
+            --cache-dir .benchmark/cache/source
 
       - name: Compute lock digest and source size
         id: source-meta
@@ -79,12 +84,14 @@ jobs:
           echo "lock_sha=$LOCK_SHA" >> "$GITHUB_OUTPUT"
           echo "source_bytes=$SOURCE_BYTES" >> "$GITHUB_OUTPUT"
 
-      - name: Save public Open RAGBench PDF cache
+      - name: Save public source download cache
         uses: actions/cache/save@v4
         continue-on-error: true
         with:
-          path: .benchmark/cache/source/open_ragbench
-          key: open-ragbench-pdfs-${{ runner.os }}-${{ steps.source-meta.outputs.lock_sha }}
+          path: |
+            .benchmark/cache/source/open_ragbench
+            .benchmark/cache/source/nfcorpus
+          key: benchmark-public-source-${{ runner.os }}-${{ steps.source-meta.outputs.lock_sha }}
 
       - name: Upload lock and manifest for review
         uses: actions/upload-artifact@v4
@@ -105,7 +112,7 @@ jobs:
             echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
             echo "- Lock SHA256: \`${{ steps.source-meta.outputs.lock_sha }}\`"
             echo "- Reconstructed source bytes: \`${{ steps.source-meta.outputs.source_bytes }}\`"
-            echo "- Mixed corpus is not uploaded or cached because OfficeQA is gated."
+            echo "- Gated OfficeQA data and the mixed corpus are not stored in Actions cache."
             echo
             echo "Review the uploaded lock/manifest artifact before replacing the pending committed lock."
           } >> "$GITHUB_STEP_SUMMARY"
