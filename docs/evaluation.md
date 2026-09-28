@@ -122,6 +122,62 @@ Where practical, keep adapters capable of running a source benchmark with its na
 
 The composite benchmark optimizes for project regression coverage and CI practicality. Source-native runs optimize for external benchmark comparability.
 
+
+### Deterministic source-selection policy
+
+Benchmark membership must never depend on Document QA retrieval scores, embedding similarity, reranker output, or a previous evaluation result. Selection uses upstream labels/metadata plus a fixed SHA-256 ordering (`stable-sha256-v1`) seeded by the benchmark specification.
+
+This avoids two failure modes:
+
+- accidentally choosing examples that the current system already retrieves well
+- changing benchmark membership when retrieval code changes
+
+Open RAGBench selection:
+
+1. Read `queries.json`, `qrels.json`, and the document IDs from `pdf_urls.json`.
+2. Keep only queries whose upstream `source` is `text`.
+3. Group those queries by their gold `doc_id`.
+4. Keep positive documents with at least two eligible text-only queries.
+5. Select 80 positive document IDs by stable SHA-256 ordering.
+6. For each selected positive document, prefer one extractive and one abstractive query when both types exist; otherwise choose two eligible queries by the same stable ordering.
+7. Derive the hard-negative pool as document IDs that are not a gold document for any query, then select 120 by stable ordering.
+8. Do not select documents based on Document QA retrieval performance. The resulting arXiv category distribution is recorded in the manifest for audit rather than optimized after seeing scores.
+
+The upstream benchmark explicitly distinguishes 400 positive documents, 600 hard-negative documents, and query generation source/type, so this policy uses those labels directly.
+
+OfficeQA selection:
+
+1. Load `officeqa_full.csv`.
+2. Split questions by upstream `difficulty`.
+3. Select 25 easy and 25 hard questions.
+4. Within each difficulty class, round-robin across source-document decades; order candidates inside each decade with stable SHA-256.
+5. Include every `source_file` required by the selected questions.
+6. Fill the corpus to approximately 150 PDFs with unreferenced Treasury Bulletins.
+7. Prefer distractors from the same decades represented by selected source documents, then fill any remaining capacity from the rest of the corpus.
+8. Do not use answer values, retrieval scores, or model performance to choose distractors.
+
+This keeps OfficeQA negatives temporally similar to the positives instead of making the task artificially easy through obvious date separation.
+
+NFCorpus selection:
+
+1. Keep the complete corpus.
+2. Select 100 test-query IDs by stable SHA-256 ordering.
+3. Retain the original qrels for those queries without altering relevance grades.
+
+Keeping the full small corpus preserves the retrieval problem instead of weakening it by sampling negatives.
+
+MIRACL German and Arabic selection:
+
+1. Use the hard-negative dev split.
+2. Select 50 query IDs per language by stable SHA-256 ordering.
+3. Keep every published positive (`score > 0`) for each selected query.
+4. Select up to 20 published hard negatives (`score <= 0`) per selected query by stable ordering.
+5. The corpus for a language is the union of all selected positive and hard-negative candidate documents, so documents associated with other selected queries also act as additional negatives.
+
+The composite MIRACL tracks are intentionally smaller project regression subsets, not official MIRACL scores.
+
+The source manifest must record the exact selected IDs, source revisions, selection algorithm version, and seed. Once `composite-v1` is frozen, normal rebuilds consume those IDs directly rather than selecting them again.
+
 ## Evaluation artifact DAG
 
 The full evaluation system is a dependency-aware artifact pipeline:
