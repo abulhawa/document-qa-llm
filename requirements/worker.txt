@@ -5,5 +5,6 @@ langchain-text-splitters==1.1.*
 # Keep the lower bound at or above the releases that fix the known PDF
 # denial-of-service advisories; the upper bound preserves minor-version pinning.
 pypdf>=6.19.0,<6.20
+fonttools>=4.58,<5
 docx2txt==0.9.*
 ftfy==6.3.*
