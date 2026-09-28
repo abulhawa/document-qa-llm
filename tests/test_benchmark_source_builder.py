@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scripts.build_benchmark_source import (
     _load_json_file,
+    _source_artifact_fingerprint,
     _safe_name,
     _select_hf_parquet_files,
     _split_source_files,
@@ -67,3 +68,24 @@ def test_load_json_file_supports_gzip(tmp_path):
     with gzip.open(path, "wt", encoding="utf-8") as fh:
         json.dump({"status": "locked", "value": 7}, fh)
     assert _load_json_file(path) == {"status": "locked", "value": 7}
+
+
+def test_source_artifact_fingerprint_is_order_independent_and_content_sensitive():
+    files_a = [
+        {"path": "b.pdf", "sha256": "bbb", "bytes": 20},
+        {"path": "a.pdf", "sha256": "aaa", "bytes": 10},
+    ]
+    files_b = list(reversed(files_a))
+    first = _source_artifact_fingerprint("lock", "spec", files_a)
+    second = _source_artifact_fingerprint("lock", "spec", files_b)
+    changed = _source_artifact_fingerprint(
+        "lock",
+        "spec",
+        [
+            {"path": "b.pdf", "sha256": "ccc", "bytes": 20},
+            {"path": "a.pdf", "sha256": "aaa", "bytes": 10},
+        ],
+    )
+    assert first == second
+    assert len(first) == 64
+    assert first != changed

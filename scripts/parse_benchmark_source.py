@@ -92,12 +92,14 @@ def _package_versions() -> dict[str, str]:
 
 
 def _artifact_fingerprint(
+    parent_source_fingerprint: str,
     parent_lock_sha: str,
     parser_fingerprint: str,
     package_versions: Mapping[str, str],
     python_version: str,
 ) -> str:
     payload = {
+        "parent_source_artifact_fingerprint": parent_source_fingerprint,
         "parent_source_lock_sha256": parent_lock_sha,
         "parser_fingerprint": parser_fingerprint,
         "package_versions": dict(sorted(package_versions.items())),
@@ -197,6 +199,7 @@ def parse_source(
     workers: int,
     max_failures: int,
     repo_revision: str,
+    parent_source_fingerprint: str,
 ) -> Path:
     output_dir = output_root / benchmark_id
     if output_dir.exists():
@@ -282,6 +285,7 @@ def parse_source(
     package_versions = _package_versions()
     python_version = platform.python_version()
     artifact_digest = _artifact_fingerprint(
+        parent_source_fingerprint,
         parent_lock_sha,
         parser_fingerprint,
         package_versions,
@@ -292,6 +296,7 @@ def parse_source(
         "benchmark_id": benchmark_id,
         "artifact_type": "parsed",
         "artifact_fingerprint": artifact_digest,
+        "parent_source_artifact_fingerprint": parent_source_fingerprint,
         "parent_source_lock_sha256": parent_lock_sha,
         "parser_fingerprint": parser_fingerprint,
         "repository_revision": repo_revision,
@@ -328,6 +333,7 @@ def main() -> int:
     parser.add_argument("--benchmark-id", default="composite-v1")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-failures", type=int, default=0)
+    parser.add_argument("--parent-source-fingerprint", required=True)
     args = parser.parse_args()
 
     try:
@@ -338,6 +344,7 @@ def main() -> int:
             workers=args.workers,
             max_failures=args.max_failures,
             repo_revision=os.environ.get("GITHUB_SHA", "local"),
+            parent_source_fingerprint=args.parent_source_fingerprint,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"Benchmark parse failed: {exc}", file=sys.stderr)

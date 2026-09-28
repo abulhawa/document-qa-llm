@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
@@ -77,15 +77,114 @@ jobs:
             --output-root .benchmark/source \
             --cache-dir .benchmark/cache/source
 
-      - name: Compute lock digest and source size
+      - name: Read source artifact metadata
         id: source-meta
         shell: bash
         run: |
-          LOCK=".benchmark/source/${{ inputs.benchmark_id }}/source.lock.json"
-          LOCK_SHA="$(sha256sum "$LOCK" | awk '{print $1}')"
-          SOURCE_BYTES="$(du -sb ".benchmark/source/${{ inputs.benchmark_id }}" | awk '{print $1}')"
-          echo "lock_sha=$LOCK_SHA" >> "$GITHUB_OUTPUT"
-          echo "source_bytes=$SOURCE_BYTES" >> "$GITHUB_OUTPUT"
+          MANIFEST=".benchmark/source/${{ inputs.benchmark_id }}/manifest.json"
+          python - "$MANIFEST" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          source_bytes = sum(int(item["bytes"]) for item in manifest["files"])
+          with Path(sys.argv[2]).open("a", encoding="utf-8") as out:
+              out.write(f"artifact_fingerprint={manifest['artifact_fingerprint']}\n")
+              out.write(f"lock_sha={manifest['lock_sha256']}\n")
+              out.write(f"spec_sha={manifest['spec_sha256']}\n")
+              out.write(f"source_bytes={source_bytes}\n")
+          PY
+
+      - name: Persist source artifact to private Hugging Face bucket
+        id: persist
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          unset HF_TOKEN
+          BUCKET_TOKEN="$(hf auth token)"
+          if [[ -z "$BUCKET_TOKEN" ]]; then
+            echo "::error::Hugging Face bucket OIDC exchange returned an empty token."
+            exit 1
+          fi
+          echo "::add-mask::$BUCKET_TOKEN"
+
+          LOCAL=".benchmark/source/${{ inputs.benchmark_id }}"
+          FINGERPRINT="${{ steps.source-meta.outputs.artifact_fingerprint }}"
+          REMOTE="hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/source/${FINGERPRINT}"
+          REMOTE_MANIFEST="$RUNNER_TEMP/source-remote-manifest.json"
+          POINTER="$RUNNER_TEMP/source-current.json"
+
+          if HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "${REMOTE}/manifest.json" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
+            python - "$REMOTE_MANIFEST" "$FINGERPRINT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = sys.argv[2]
+          if manifest.get("artifact_fingerprint") != expected:
+              raise SystemExit(
+                  "remote source manifest does not match its fingerprinted path"
+              )
+          PY
+            cp "$REMOTE_MANIFEST" "$LOCAL/manifest.json"
+            REUSED=true
+          else
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$LOCAL" "$REMOTE" --exclude "manifest.json"
+
+            python - "$LOCAL/manifest.json" "$REMOTE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          manifest["persistence"].update(
+              {
+                  "persisted": True,
+                  "artifact_uri": sys.argv[2],
+                  "reused_existing": False,
+              }
+          )
+          path.write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$LOCAL/manifest.json" "${REMOTE}/manifest.json"
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "${REMOTE}/manifest.json" "$REMOTE_MANIFEST"
+            cmp "$LOCAL/manifest.json" "$REMOTE_MANIFEST"
+            REUSED=false
+          fi
+
+          python - "$LOCAL/manifest.json" "$POINTER" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          pointer = {
+              "schema_version": 1,
+              "artifact_type": "source-pointer",
+              "benchmark_id": manifest["benchmark_id"],
+              "artifact_fingerprint": manifest["artifact_fingerprint"],
+              "artifact_uri": manifest["persistence"]["artifact_uri"],
+              "lock_sha256": manifest["lock_sha256"],
+              "spec_sha256": manifest["spec_sha256"],
+          }
+          Path(sys.argv[2]).write_text(
+              json.dumps(pointer, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$POINTER" \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/source/current.json"
+
+          echo "artifact_uri=$REMOTE" >> "$GITHUB_OUTPUT"
+          echo "reused_existing=$REUSED" >> "$GITHUB_OUTPUT"
 
       - name: Save public source download cache
         uses: actions/cache/save@v4
@@ -96,10 +195,10 @@ jobs:
             .benchmark/cache/source/nfcorpus
           key: benchmark-public-source-${{ runner.os }}-${{ steps.source-meta.outputs.lock_sha }}
 
-      - name: Upload lock and manifest for review
+      - name: Upload source manifest for review
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.benchmark_id }}-source-lock-${{ steps.source-meta.outputs.lock_sha }}
+          name: ${{ inputs.benchmark_id }}-source-manifest-${{ steps.source-meta.outputs.artifact_fingerprint }}
           path: |
             .benchmark/source/${{ inputs.benchmark_id }}/source.lock.json
             .benchmark/source/${{ inputs.benchmark_id }}/manifest.json
@@ -113,8 +212,9 @@ jobs:
             echo "## Benchmark source build"
             echo
             echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
-            echo "- Lock SHA256: \`${{ steps.source-meta.outputs.lock_sha }}\`"
-            echo "- Reconstructed source bytes: \`${{ steps.source-meta.outputs.source_bytes }}\`"
-            echo "- Hugging Face authentication: short-lived OIDC token."
-            echo "- Gated OfficeQA data and the mixed corpus are not stored in Actions cache."
+            echo "- Artifact fingerprint: \`${{ steps.source-meta.outputs.artifact_fingerprint }}\`"
+            echo "- Source bytes: \`${{ steps.source-meta.outputs.source_bytes }}\`"
+            echo "- Artifact URI: \`${{ steps.persist.outputs.artifact_uri }}\`"
+            echo "- Reused existing artifact: \`${{ steps.persist.outputs.reused_existing }}\`"
+            echo "- Authentication: short-lived Hugging Face OIDC tokens."
           } >> "$GITHUB_STEP_SUMMARY"
