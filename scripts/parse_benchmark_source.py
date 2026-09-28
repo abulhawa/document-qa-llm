@@ -83,7 +83,7 @@ def _parser_fingerprint() -> str:
 
 def _package_versions() -> dict[str, str]:
     result: dict[str, str] = {}
-    for name in ("langchain-core", "langchain-community", "pypdf", "ftfy"):
+    for name in ("langchain-core", "langchain-community", "pypdf", "fonttools", "ftfy"):
         try:
             result[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
