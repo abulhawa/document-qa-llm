@@ -355,11 +355,11 @@ The repository contains a manual workflow for each stage:
 .github/workflows/benchmark-eval.yml
 ```
 
-The **source** workflow is now implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, writes a source lock and manifest, and stores the reconstructed source corpus in an Actions cache keyed by the lock digest. It requires the repository secret `HF_TOKEN` because OfficeQA is gated.
+The **source** workflow is now implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. It requires the repository secret `HF_TOKEN` because OfficeQA is gated.
 
 The parse, chunk, embed, index, and evaluation workflows remain non-operational planning shells. No workflow is triggered automatically.
 
-The committed `evaluation/benchmarks/composite_v1.lock.json` starts in a pending state. The first source build produces a locked copy as an artifact. After review, that generated lock should replace the pending file in the repository; subsequent source rebuilds then use the exact pinned revisions and selected IDs rather than resolving upstream `main` again.
+The committed `evaluation/benchmarks/composite_v1.lock.json` starts in a pending state. The first source build produces a locked copy as an artifact. After review, that generated lock should replace the pending file in the repository; subsequent source rebuilds then use the exact pinned revisions and selected IDs rather than resolving upstream `main` again. Until a private durable artifact store is wired, the workflow uploads only the lock and manifest; the downloaded mixed corpus exists only for the duration of that workflow run.
 
 ## Artifact storage
 
@@ -369,15 +369,15 @@ The intended storage model is:
 
 ```text
 committed source lock + upstream immutable revisions   <- canonical source definition
-Actions cache keyed by source-lock digest              <- reconstructible raw source acceleration
-durable/versioned downstream artifact store            <- parsed/chunks/embeddings/index snapshots
+public-only download cache                              <- optional acceleration
+private durable artifact store                          <- gated source + parsed/chunks/embeddings/index
 ```
 
 GitHub Container Registry using OCI artifacts is the preferred long-term candidate for versioned source/parsed/chunk/embedding/index artifacts. Workflow artifacts may be used while the design is being developed, but should not become the permanent system of record.
 
-For `composite-v1`, keep corpus-bearing artifacts private by default. OfficeQA is gated, and other benchmark sources have their own redistribution terms. The public repository should contain the composition specification, source/revision metadata, checksums/fingerprints where appropriate, workflow code, and evaluation results, but not assume that every upstream document or answer key can be republished.
+For `composite-v1`, keep corpus-bearing artifacts private by default. OfficeQA is gated, and other benchmark sources have their own redistribution terms. **Do not put OfficeQA PDFs, CSV answer keys, or the mixed source bundle in GitHub Actions cache for this public repository.** Actions cache is not an appropriate privacy boundary for gated benchmark content. Only clearly public/reconstructible downloads may use Actions cache. The public repository should contain the composition specification, source/revision metadata, checksums/fingerprints where appropriate, workflow code, and evaluation results, but not assume that every upstream document or answer key can be republished.
 
-The preferred long-term layout is one private/versioned OCI package family in GHCR for parsed, chunk, embedding, and index artifacts, addressed by immutable digests. Raw source files do not need to be a permanent OCI package because they are reproducible from the committed source lock; they are cached to avoid repeated downloads. Human-readable tags such as `composite-v1-source` may point to those digests, but compatibility checks must use manifest fingerprints/digests rather than mutable tags.
+The preferred long-term layout is one private/versioned OCI package family in GHCR for the gated/mixed source bundle and parsed, chunk, embedding, and index artifacts, addressed by immutable digests. The source lock remains sufficient to reconstruct the bundle if it is lost. Human-readable tags such as `composite-v1-source` may point to those digests, but compatibility checks must use manifest fingerprints/digests rather than mutable tags.
 
 Exact GHCR publication commands and package visibility remain intentionally unimplemented until the first source artifact size and access behavior have been reviewed.
 
