@@ -1,8 +1,8 @@
 """Parse a reconstructed benchmark corpus with the application's real loaders.
 
-The parsed corpus can contain gated OfficeQA text. This script writes it to the
-runner filesystem, while the workflow currently publishes only manifest/error
-metadata until a private durable artifact store is configured.
+The parsed corpus can contain gated OfficeQA text. This script writes a deterministic
+runner-local artifact. The GitHub workflow persists successful artifacts to a private
+Hugging Face Storage Bucket using short-lived OIDC credentials.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import platform
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,7 @@ from typing import Any, Iterable, Mapping
 
 TRACKS = ("open_ragbench", "officeqa", "nfcorpus", "miracl_de", "miracl_ar")
 PARSER_INPUTS = (
+    Path("scripts/parse_benchmark_source.py"),
     Path("core/file_loader.py"),
     Path("core/document_preprocessor.py"),
     Path("core/text_preprocess.py"),
@@ -87,6 +89,22 @@ def _package_versions() -> dict[str, str]:
         except importlib.metadata.PackageNotFoundError:
             result[name] = "missing"
     return result
+
+
+def _artifact_fingerprint(
+    parent_lock_sha: str,
+    parser_fingerprint: str,
+    package_versions: Mapping[str, str],
+    python_version: str,
+) -> str:
+    payload = {
+        "parent_source_lock_sha256": parent_lock_sha,
+        "parser_fingerprint": parser_fingerprint,
+        "package_versions": dict(sorted(package_versions.items())),
+        "python_version": python_version,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _parse_one(task: Mapping[str, Any]) -> dict[str, Any]:
@@ -261,9 +279,14 @@ def parse_source(
 
     parser_fingerprint = _parser_fingerprint()
     parent_lock_sha = _sha256_file(source_lock)
-    artifact_digest = hashlib.sha256(
-        f"{parent_lock_sha}\0{parser_fingerprint}".encode("utf-8")
-    ).hexdigest()
+    package_versions = _package_versions()
+    python_version = platform.python_version()
+    artifact_digest = _artifact_fingerprint(
+        parent_lock_sha,
+        parser_fingerprint,
+        package_versions,
+        python_version,
+    )
     manifest = {
         "schema_version": 1,
         "benchmark_id": benchmark_id,
@@ -272,15 +295,18 @@ def parse_source(
         "parent_source_lock_sha256": parent_lock_sha,
         "parser_fingerprint": parser_fingerprint,
         "repository_revision": repo_revision,
-        "package_versions": _package_versions(),
+        "python_version": python_version,
+        "package_versions": package_versions,
         "workers": max(1, workers),
         "stats": track_stats,
         "total_failures": len(all_errors),
         "parsed_bytes": parsed_bytes,
         "files": files,
         "persistence": {
-            "parsed_content_published": False,
-            "reason": "mixed corpus contains gated OfficeQA content",
+            "backend": "huggingface-storage-bucket",
+            "private": True,
+            "persisted": False,
+            "artifact_uri": None,
         },
     }
     (output_dir / "manifest.json").write_text(
