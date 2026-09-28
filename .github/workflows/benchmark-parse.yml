@@ -72,11 +72,12 @@ jobs:
             "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/source/current.json" \
             "$POINTER"
 
+          SOURCE_META="$RUNNER_TEMP/source-meta.env"
           python - \
             "$POINTER" \
             "${{ inputs.lock_file }}" \
             "${{ inputs.composition_file }}" \
-            "$GITHUB_OUTPUT" <<'PY'
+            "$SOURCE_META" <<'PY'
           import gzip
           import hashlib
           import json
@@ -113,17 +114,21 @@ jobs:
           if pointer.get("spec_sha256") != expected_spec_sha:
               raise SystemExit("source pointer does not match the benchmark composition")
 
-          with output_path.open("a", encoding="utf-8") as out:
-              out.write(f"artifact_fingerprint={pointer['artifact_fingerprint']}\n")
-              out.write(f"artifact_uri={pointer['artifact_uri']}\n")
+          with output_path.open("w", encoding="utf-8") as out:
+              out.write(f"ARTIFACT_FINGERPRINT={pointer['artifact_fingerprint']}\n")
+              out.write(f"ARTIFACT_URI={pointer['artifact_uri']}\n")
           PY
+
+          source "$SOURCE_META"
+          echo "artifact_fingerprint=$ARTIFACT_FINGERPRINT" >> "$GITHUB_OUTPUT"
+          echo "artifact_uri=$ARTIFACT_URI" >> "$GITHUB_OUTPUT"
 
           LOCAL=".benchmark/source/${{ inputs.benchmark_id }}"
           HF_TOKEN="$BUCKET_TOKEN" hf buckets sync \
-            "${{ steps.source.outputs.artifact_uri }}" \
+            "$ARTIFACT_URI" \
             "$LOCAL"
 
-          python - "$LOCAL/manifest.json" "${{ steps.source.outputs.artifact_fingerprint }}" <<'PY'
+          python - "$LOCAL/manifest.json" "$ARTIFACT_FINGERPRINT" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -151,7 +156,7 @@ jobs:
             --parent-source-fingerprint "${{ steps.source.outputs.artifact_fingerprint }}"
 
       - name: Read parsed artifact metadata
-        if: always()
+        if: steps.parse.outcome == 'success' || steps.parse.outcome == 'failure'
         id: parsed-meta
         shell: bash
         run: |
@@ -239,7 +244,7 @@ jobs:
           echo "reused_existing=$REUSED" >> "$GITHUB_OUTPUT"
 
       - name: Finalize manifest metadata
-        if: always()
+        if: steps.parse.outcome == 'success' || steps.parse.outcome == 'failure'
         id: final-meta
         shell: bash
         run: |
@@ -251,7 +256,7 @@ jobs:
           echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Upload parse manifest and errors
-        if: always()
+        if: steps.parse.outcome == 'success' || steps.parse.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.benchmark_id }}-parse-manifest-${{ steps.final-meta.outputs.manifest_sha }}
