@@ -51,41 +51,90 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install source + parse dependencies
+      - name: Install parse dependencies
         run: python -m pip install -r requirements/parse.txt
 
-      - name: Mint short-lived Hugging Face read token
+      - name: Restore frozen source artifact from private Hugging Face bucket
+        id: source
         shell: bash
         env:
-          HF_OIDC_RESOURCE: abulhawa
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
         run: |
-          TOKEN="$(hf auth token)"
-          if [[ -z "$TOKEN" ]]; then
-            echo "::error::Hugging Face account OIDC exchange returned an empty token."
+          BUCKET_TOKEN="$(hf auth token)"
+          if [[ -z "$BUCKET_TOKEN" ]]; then
+            echo "::error::Hugging Face bucket OIDC exchange returned an empty token."
             exit 1
           fi
-          echo "::add-mask::$TOKEN"
-          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "::add-mask::$BUCKET_TOKEN"
 
-      - name: Restore public source download cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .benchmark/cache/source/open_ragbench
-            .benchmark/cache/source/nfcorpus
-          key: benchmark-public-source-${{ runner.os }}-${{ hashFiles(inputs.composition_file) }}
-          restore-keys: |
-            benchmark-public-source-${{ runner.os }}-
+          POINTER="$RUNNER_TEMP/source-current.json"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets cp \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/source/current.json" \
+            "$POINTER"
 
-      - name: Reconstruct frozen source corpus
-        env:
-          PYTHONPATH: .
-        run: |
-          python scripts/build_benchmark_source.py \
-            --spec "${{ inputs.composition_file }}" \
-            --lock "${{ inputs.lock_file }}" \
-            --output-root .benchmark/source \
-            --cache-dir .benchmark/cache/source
+          python - \
+            "$POINTER" \
+            "${{ inputs.lock_file }}" \
+            "${{ inputs.composition_file }}" \
+            "$GITHUB_OUTPUT" <<'PY'
+          import gzip
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          pointer_path, lock_path, spec_path, output_path = map(Path, sys.argv[1:])
+          pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+
+          if lock_path.suffix == ".gz":
+              with gzip.open(lock_path, "rt", encoding="utf-8") as fh:
+                  lock = json.load(fh)
+          else:
+              lock = json.loads(lock_path.read_text(encoding="utf-8"))
+
+          canonical_lock = (
+              json.dumps(lock, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+          ).encode("utf-8")
+          expected_lock_sha = hashlib.sha256(canonical_lock).hexdigest()
+          expected_spec_sha = hashlib.sha256(spec_path.read_bytes()).hexdigest()
+
+          benchmark_id = "${{ inputs.benchmark_id }}"
+          if pointer.get("benchmark_id") != benchmark_id:
+              raise SystemExit("source pointer benchmark_id mismatch")
+          fingerprint = pointer.get("artifact_fingerprint")
+          expected_uri = (
+              "hf://buckets/abulhawa/document-qa-artifacts/"
+              f"{benchmark_id}/source/{fingerprint}"
+          )
+          if pointer.get("artifact_uri") != expected_uri:
+              raise SystemExit("source pointer artifact URI/fingerprint mismatch")
+          if pointer.get("lock_sha256") != expected_lock_sha:
+              raise SystemExit("source pointer does not match the frozen source lock")
+          if pointer.get("spec_sha256") != expected_spec_sha:
+              raise SystemExit("source pointer does not match the benchmark composition")
+
+          with output_path.open("a", encoding="utf-8") as out:
+              out.write(f"artifact_fingerprint={pointer['artifact_fingerprint']}\n")
+              out.write(f"artifact_uri={pointer['artifact_uri']}\n")
+          PY
+
+          LOCAL=".benchmark/source/${{ inputs.benchmark_id }}"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync \
+            "${{ steps.source.outputs.artifact_uri }}" \
+            "$LOCAL"
+
+          python - "$LOCAL/manifest.json" "${{ steps.source.outputs.artifact_fingerprint }}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = sys.argv[2]
+          if manifest.get("artifact_fingerprint") != expected:
+              raise SystemExit("restored source manifest fingerprint mismatch")
+          if not manifest.get("persistence", {}).get("persisted"):
+              raise SystemExit("restored source manifest is not marked persisted")
+          PY
 
       - name: Parse with application loaders and preprocessing
         id: parse
@@ -98,7 +147,8 @@ jobs:
             --output-root .benchmark/parsed \
             --benchmark-id "${{ inputs.benchmark_id }}" \
             --workers "${{ inputs.workers }}" \
-            --max-failures "${{ inputs.max_failures }}"
+            --max-failures "${{ inputs.max_failures }}" \
+            --parent-source-fingerprint "${{ steps.source.outputs.artifact_fingerprint }}"
 
       - name: Read parsed artifact metadata
         if: always()
@@ -129,7 +179,6 @@ jobs:
         env:
           HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
         run: |
-          unset HF_TOKEN
           BUCKET_TOKEN="$(hf auth token)"
           if [[ -z "$BUCKET_TOKEN" ]]; then
             echo "::error::Hugging Face bucket OIDC exchange returned an empty token."
@@ -156,6 +205,7 @@ jobs:
                   f"remote artifact fingerprint mismatch: expected {expected}, got {actual}"
               )
           PY
+            cp "$REMOTE_MANIFEST" "$LOCAL/manifest.json"
             REUSED=true
           else
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$LOCAL" "$REMOTE" --exclude "manifest.json"
@@ -183,33 +233,6 @@ jobs:
             HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "${REMOTE}/manifest.json" "$REMOTE_MANIFEST"
             cmp "$LOCAL/manifest.json" "$REMOTE_MANIFEST"
             REUSED=false
-          fi
-
-          if [[ "$REUSED" == "true" ]]; then
-            python - "$LOCAL/manifest.json" "$REMOTE" "$REMOTE_MANIFEST" <<'PY'
-          import hashlib
-          import json
-          import sys
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          remote_manifest = Path(sys.argv[3])
-          manifest = json.loads(path.read_text(encoding="utf-8"))
-          manifest["persistence"].update(
-              {
-                  "persisted": True,
-                  "artifact_uri": sys.argv[2],
-                  "reused_existing": True,
-                  "remote_manifest_sha256": hashlib.sha256(
-                      remote_manifest.read_bytes()
-                  ).hexdigest(),
-              }
-          )
-          path.write_text(
-              json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
           fi
 
           echo "artifact_uri=$REMOTE" >> "$GITHUB_OUTPUT"
@@ -246,13 +269,13 @@ jobs:
             echo "## Benchmark parse"
             echo
             echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
-            echo "- Artifact fingerprint: \`${{ steps.parsed-meta.outputs.artifact_fingerprint }}\`"
+            echo "- Source artifact: \`${{ steps.source.outputs.artifact_fingerprint }}\`"
+            echo "- Parsed artifact: \`${{ steps.parsed-meta.outputs.artifact_fingerprint }}\`"
             echo "- Parsed bytes: \`${{ steps.parsed-meta.outputs.parsed_bytes }}\`"
             echo "- Parse failures: \`${{ steps.parsed-meta.outputs.failures }}\`"
-            echo "- Manifest SHA256: \`${{ steps.final-meta.outputs.manifest_sha }}\`"
             echo "- Artifact URI: \`${{ steps.persist.outputs.artifact_uri }}\`"
-            echo "- Reused existing artifact: \`${{ steps.persist.outputs.reused_existing }}\`"
-            echo "- Authentication: short-lived Hugging Face OIDC tokens; no long-lived HF secret."
+            echo "- Reused existing parsed artifact: \`${{ steps.persist.outputs.reused_existing }}\`"
+            echo "- Authentication: short-lived Hugging Face OIDC tokens."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if parser failed

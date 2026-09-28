@@ -56,6 +56,34 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+SOURCE_ARTIFACT_SCHEMA_VERSION = 1
+
+
+def _source_artifact_fingerprint(
+    lock_sha256: str,
+    spec_sha256: str,
+    files: Sequence[Mapping[str, Any]],
+) -> str:
+    payload = {
+        "artifact_schema_version": SOURCE_ARTIFACT_SCHEMA_VERSION,
+        "lock_sha256": lock_sha256,
+        "spec_sha256": spec_sha256,
+        "files": sorted(
+            (
+                {
+                    "path": str(item["path"]),
+                    "sha256": str(item["sha256"]),
+                    "bytes": int(item["bytes"]),
+                }
+                for item in files
+            ),
+            key=lambda item: item["path"],
+        ),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _safe_name(value: str) -> str:
     clean = re.sub(r"[^A-Za-z0-9._-]+", "__", value).strip("._")
     return clean or hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
@@ -902,14 +930,29 @@ def build_source(
                 }
             )
 
+    lock_sha256 = _sha256_file(output_dir / "source.lock.json")
+    spec_sha256 = _spec_sha(spec_path)
+    artifact_fingerprint = _source_artifact_fingerprint(
+        lock_sha256,
+        spec_sha256,
+        files,
+    )
     manifest = {
         "schema_version": 1,
+        "artifact_schema_version": SOURCE_ARTIFACT_SCHEMA_VERSION,
         "benchmark_id": benchmark_id,
         "artifact_type": "source",
-        "lock_sha256": _sha256_file(output_dir / "source.lock.json"),
-        "spec_sha256": _spec_sha(spec_path),
+        "artifact_fingerprint": artifact_fingerprint,
+        "lock_sha256": lock_sha256,
+        "spec_sha256": spec_sha256,
         "stats": stats,
         "files": files,
+        "persistence": {
+            "backend": "huggingface-storage-bucket",
+            "private": True,
+            "persisted": False,
+            "artifact_uri": None,
+        },
     }
     _json_dump(output_dir / "manifest.json", manifest)
     return output_dir

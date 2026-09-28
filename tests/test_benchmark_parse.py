@@ -21,18 +21,21 @@ def test_parser_fingerprint_is_stable():
 
 def test_artifact_fingerprint_includes_resolved_runtime():
     base = _artifact_fingerprint(
+        "source-artifact",
         "source-lock",
         "parser-code",
         {"pypdf": "6.14.2", "ftfy": "6.3.1"},
         "3.13.15",
     )
     package_change = _artifact_fingerprint(
+        "source-artifact",
         "source-lock",
         "parser-code",
         {"pypdf": "6.14.3", "ftfy": "6.3.1"},
         "3.13.15",
     )
     python_change = _artifact_fingerprint(
+        "source-artifact",
         "source-lock",
         "parser-code",
         {"pypdf": "6.14.2", "ftfy": "6.3.1"},
@@ -41,3 +44,21 @@ def test_artifact_fingerprint_includes_resolved_runtime():
     assert len(base) == 64
     assert base != package_change
     assert base != python_change
+
+
+def test_artifact_fingerprint_changes_with_parent_source_artifact():
+    first = _artifact_fingerprint(
+        "source-a",
+        "source-lock",
+        "parser-code",
+        {"pypdf": "6.14.2"},
+        "3.13.15",
+    )
+    second = _artifact_fingerprint(
+        "source-b",
+        "source-lock",
+        "parser-code",
+        {"pypdf": "6.14.2"},
+        "3.13.15",
+    )
+    assert first != second
