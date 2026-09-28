@@ -168,7 +168,7 @@ Keeping the full small corpus preserves the retrieval problem instead of weakeni
 
 MIRACL German and Arabic selection:
 
-1. Use the hard-negative dev split.
+1. Use the hard-negative repository's `test` split.
 2. Select 50 query IDs per language by stable SHA-256 ordering.
 3. Keep every published positive (`score > 0`) for each selected query.
 4. Select up to 20 published hard negatives (`score <= 0`) per selected query by stable ordering.
@@ -355,9 +355,21 @@ The repository contains a manual workflow for each stage:
 .github/workflows/benchmark-eval.yml
 ```
 
-The **source** workflow is now implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. It requires the repository secret `HF_TOKEN` because OfficeQA is gated.
+The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. The workflow requires the repository secret `HF_TOKEN` because OfficeQA is gated.
 
 The parse, chunk, embed, index, and evaluation workflows remain non-operational planning shells. No workflow is triggered automatically.
+
+
+### Source-workflow dependency footprint
+
+Keep acquisition dependencies narrower than ML/runtime dependencies. The source workflow installs only:
+
+- `huggingface-hub` for immutable Hugging Face revisions and file downloads
+- `pyarrow` for MIRACL Parquet shards
+- `requests` for public PDF/BEIR downloads
+- `PyYAML` for the benchmark composition file
+
+Do not install `datasets`, pandas, embedding libraries, or application dependencies in the source workflow. They belong to later stages if needed.
 
 The committed `evaluation/benchmarks/composite_v1.lock.json` starts in a pending state. The first source build produces a locked copy as an artifact. After review, that generated lock should replace the pending file in the repository; subsequent source rebuilds then use the exact pinned revisions and selected IDs rather than resolving upstream `main` again. Until a private durable artifact store is wired, the workflow uploads only the lock and manifest; the downloaded mixed corpus exists only for the duration of that workflow run.
 
