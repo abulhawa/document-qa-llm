@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: benchmark-parse-${{ inputs.benchmark_id }}
@@ -41,7 +42,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
     steps:
@@ -51,16 +51,21 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Verify Hugging Face token is configured
-        shell: bash
-        run: |
-          if [[ -z "${HF_TOKEN}" ]]; then
-            echo "::error::Repository secret HF_TOKEN is required to reconstruct gated OfficeQA source files."
-            exit 1
-          fi
-
       - name: Install source + parse dependencies
         run: python -m pip install -r requirements/parse.txt
+
+      - name: Mint short-lived Hugging Face read token
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: abulhawa
+        run: |
+          TOKEN="$(hf auth token)"
+          if [[ -z "$TOKEN" ]]; then
+            echo "::error::Hugging Face account OIDC exchange returned an empty token."
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       - name: Restore public source download cache
         uses: actions/cache/restore@v4
@@ -95,7 +100,7 @@ jobs:
             --workers "${{ inputs.workers }}" \
             --max-failures "${{ inputs.max_failures }}"
 
-      - name: Summarize parsed artifact
+      - name: Read parsed artifact metadata
         if: always()
         id: parsed-meta
         shell: bash
@@ -105,30 +110,128 @@ jobs:
             echo "::error::Parse manifest was not created."
             exit 1
           fi
-          MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
-          PARSED_BYTES="$(python - <<'PY'
+          python - "$MANIFEST" "$GITHUB_OUTPUT" <<'PY'
           import json
+          import sys
           from pathlib import Path
-          p = Path(".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json")
-          print(json.loads(p.read_text())["parsed_bytes"])
-          PY
-          )"
-          FAILURES="$(python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path(".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json")
-          print(json.loads(p.read_text())["total_failures"])
-          PY
-          )"
-          echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
-          echo "parsed_bytes=$PARSED_BYTES" >> "$GITHUB_OUTPUT"
-          echo "failures=$FAILURES" >> "$GITHUB_OUTPUT"
 
-      - name: Upload parse manifest and errors only
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          with Path(sys.argv[2]).open("a", encoding="utf-8") as out:
+              out.write(f"artifact_fingerprint={manifest['artifact_fingerprint']}\n")
+              out.write(f"parsed_bytes={manifest['parsed_bytes']}\n")
+              out.write(f"failures={manifest['total_failures']}\n")
+          PY
+
+      - name: Persist parsed artifact to private Hugging Face bucket
+        if: steps.parse.outcome == 'success'
+        id: persist
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          unset HF_TOKEN
+          BUCKET_TOKEN="$(hf auth token)"
+          if [[ -z "$BUCKET_TOKEN" ]]; then
+            echo "::error::Hugging Face bucket OIDC exchange returned an empty token."
+            exit 1
+          fi
+          echo "::add-mask::$BUCKET_TOKEN"
+
+          LOCAL=".benchmark/parsed/${{ inputs.benchmark_id }}"
+          FINGERPRINT="${{ steps.parsed-meta.outputs.artifact_fingerprint }}"
+          REMOTE="hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/parsed/${FINGERPRINT}"
+          REMOTE_MANIFEST="$RUNNER_TEMP/remote-manifest.json"
+
+          if HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "${REMOTE}/manifest.json" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
+            python - "$REMOTE_MANIFEST" "$FINGERPRINT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = sys.argv[2]
+          actual = manifest.get("artifact_fingerprint")
+          if actual != expected:
+              raise SystemExit(
+                  f"remote artifact fingerprint mismatch: expected {expected}, got {actual}"
+              )
+          PY
+            REUSED=true
+          else
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$LOCAL" "$REMOTE" --exclude "manifest.json"
+
+            python - "$LOCAL/manifest.json" "$REMOTE" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          manifest["persistence"].update(
+              {
+                  "persisted": True,
+                  "artifact_uri": sys.argv[2],
+                  "reused_existing": False,
+              }
+          )
+          path.write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$LOCAL/manifest.json" "${REMOTE}/manifest.json"
+            HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "${REMOTE}/manifest.json" "$REMOTE_MANIFEST"
+            cmp "$LOCAL/manifest.json" "$REMOTE_MANIFEST"
+            REUSED=false
+          fi
+
+          if [[ "$REUSED" == "true" ]]; then
+            python - "$LOCAL/manifest.json" "$REMOTE" "$REMOTE_MANIFEST" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          remote_manifest = Path(sys.argv[3])
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          manifest["persistence"].update(
+              {
+                  "persisted": True,
+                  "artifact_uri": sys.argv[2],
+                  "reused_existing": True,
+                  "remote_manifest_sha256": hashlib.sha256(
+                      remote_manifest.read_bytes()
+                  ).hexdigest(),
+              }
+          )
+          path.write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          fi
+
+          echo "artifact_uri=$REMOTE" >> "$GITHUB_OUTPUT"
+          echo "reused_existing=$REUSED" >> "$GITHUB_OUTPUT"
+
+      - name: Finalize manifest metadata
+        if: always()
+        id: final-meta
+        shell: bash
+        run: |
+          MANIFEST=".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json"
+          if [[ ! -f "$MANIFEST" ]]; then
+            exit 1
+          fi
+          MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
+          echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload parse manifest and errors
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.benchmark_id }}-parse-manifest-${{ steps.parsed-meta.outputs.manifest_sha }}
+          name: ${{ inputs.benchmark_id }}-parse-manifest-${{ steps.final-meta.outputs.manifest_sha }}
           path: |
             .benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json
             .benchmark/parsed/${{ inputs.benchmark_id }}/errors.jsonl
@@ -143,10 +246,13 @@ jobs:
             echo "## Benchmark parse"
             echo
             echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
-            echo "- Parsed bytes on runner: \`${{ steps.parsed-meta.outputs.parsed_bytes }}\`"
+            echo "- Artifact fingerprint: \`${{ steps.parsed-meta.outputs.artifact_fingerprint }}\`"
+            echo "- Parsed bytes: \`${{ steps.parsed-meta.outputs.parsed_bytes }}\`"
             echo "- Parse failures: \`${{ steps.parsed-meta.outputs.failures }}\`"
-            echo "- Manifest SHA256: \`${{ steps.parsed-meta.outputs.manifest_sha }}\`"
-            echo "- Parsed content was not uploaded because the mixed corpus contains gated OfficeQA material."
+            echo "- Manifest SHA256: \`${{ steps.final-meta.outputs.manifest_sha }}\`"
+            echo "- Artifact URI: \`${{ steps.persist.outputs.artifact_uri }}\`"
+            echo "- Reused existing artifact: \`${{ steps.persist.outputs.reused_existing }}\`"
+            echo "- Authentication: short-lived Hugging Face OIDC tokens; no long-lived HF secret."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail if parser failed

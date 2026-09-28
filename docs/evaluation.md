@@ -376,9 +376,9 @@ The repository contains a manual workflow for each stage:
 .github/workflows/benchmark-eval.yml
 ```
 
-The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. The workflow requires the repository secret `HF_TOKEN` because OfficeQA is gated.
+The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. GitHub Actions obtains a short-lived read-only Hugging Face token through the account CI/CD OIDC identity, so no long-lived `HF_TOKEN` secret is required.
 
-The parse workflow is now operational and manual-only. It reconstructs the frozen source corpus, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. Because the parsed corpus contains transformed gated OfficeQA content, the workflow uploads only `manifest.json` and `errors.jsonl`; parsed text is not published. Chunk, embed, index, and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
+The parse workflow is operational and manual-only. It reconstructs the frozen source corpus, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. GitHub Actions obtains separate short-lived OIDC credentials for gated source reads and bucket writes. GitHub workflow artifacts still contain only `manifest.json` and `errors.jsonl`. Chunk, embed, index, and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
 
 
 ### Source-workflow dependency footprint
@@ -392,7 +392,7 @@ Keep acquisition dependencies narrower than ML/runtime dependencies. The source 
 
 Do not install `datasets`, pandas, embedding libraries, or application dependencies in the source workflow. They belong to later stages if needed.
 
-`composite-v1` is now frozen from successful source build run `36475735954`. The canonical machine lock is `evaluation/benchmarks/composite_v1.lock.json.gz`; `composite_v1.lock.json` is a small human-readable pointer/summary. The frozen lock records exact upstream revisions and selected IDs. Source reconstruction therefore no longer resolves or resamples benchmark membership. Until a private durable artifact store is wired, the downloaded mixed corpus exists only for the duration of a workflow run.
+`composite-v1` is frozen from successful source build run `36475735954`. The canonical machine lock is `evaluation/benchmarks/composite_v1.lock.json.gz`; `composite_v1.lock.json` is a small human-readable pointer/summary. The frozen lock records exact upstream revisions and selected IDs. Source reconstruction therefore no longer resolves or resamples benchmark membership. Raw mixed source is still reconstructed on demand; parsed and later derived artifacts are persisted privately in the Hugging Face Storage Bucket.
 
 ## Artifact storage
 
@@ -406,13 +406,23 @@ public-only download cache                              <- optional acceleration
 private durable artifact store                          <- gated source + parsed/chunks/embeddings/index
 ```
 
-GitHub Container Registry using OCI artifacts is the preferred long-term candidate for versioned source/parsed/chunk/embedding/index artifacts. Workflow artifacts may be used while the design is being developed, but should not become the permanent system of record.
+The private Hugging Face Storage Bucket `abulhawa/document-qa-artifacts` is the durable store for derived benchmark artifacts. Paths are content/configuration fingerprinted rather than timestamped, so downstream workflows can restore an exact compatible parent. GitHub Actions artifacts remain useful for small manifests and diagnostics but are not the system of record for corpus-bearing outputs.
 
 For `composite-v1`, keep corpus-bearing artifacts private by default. OfficeQA is gated, and other benchmark sources have their own redistribution terms. **Do not put OfficeQA PDFs, CSV answer keys, or the mixed source bundle in GitHub Actions cache for this public repository.** Actions cache is not an appropriate privacy boundary for gated benchmark content. Only clearly public/reconstructible downloads may use Actions cache. The public repository should contain the composition specification, source/revision metadata, checksums/fingerprints where appropriate, workflow code, and evaluation results, but not assume that every upstream document or answer key can be republished.
 
-The preferred long-term layout is one private/versioned OCI package family in GHCR for the gated/mixed source bundle and parsed, chunk, embedding, and index artifacts, addressed by immutable digests. The source lock remains sufficient to reconstruct the bundle if it is lost. Human-readable tags such as `composite-v1-source` may point to those digests, but compatibility checks must use manifest fingerprints/digests rather than mutable tags.
+The durable layout is:
 
-Exact GHCR publication commands and package visibility remain intentionally unimplemented until the first source artifact size and access behavior have been reviewed.
+```text
+hf://buckets/abulhawa/document-qa-artifacts/
+└── composite-v1/
+    ├── parsed/<fingerprint>/
+    ├── chunks/<fingerprint>/
+    ├── embeddings/<fingerprint>/
+    ├── qdrant/<fingerprint>/
+    └── opensearch/<fingerprint>/
+```
+
+The bucket is private. GitHub Actions uses Hugging Face Trusted Publisher / account CI/CD OIDC identities restricted to `abulhawa/document-qa-llm` on `refs/heads/master`. No long-lived Hugging Face write token is stored in GitHub. The source lock remains sufficient to reconstruct raw benchmark inputs if the bucket is lost.
 
 ## Trigger policy
 
