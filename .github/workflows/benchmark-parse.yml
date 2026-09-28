@@ -1,31 +1,154 @@
-# Skeleton only. This workflow does not parse benchmark documents yet.
 name: Benchmark 2 - Parse
 
 on:
   workflow_dispatch:
     inputs:
-      source_artifact:
-        description: Upstream source artifact ID or digest
+      benchmark_id:
+        description: Frozen benchmark identifier
         required: true
-        default: benchmark-source:mixed-v1
+        default: composite-v1
         type: string
-      parsed_artifact:
-        description: Intended parsed artifact label
+      composition_file:
+        description: Benchmark composition specification
         required: true
-        default: benchmark-parsed:mixed-v1
+        default: evaluation/benchmarks/composite_v1.yaml
+        type: string
+      lock_file:
+        description: Frozen source lock
+        required: true
+        default: evaluation/benchmarks/composite_v1.lock.json.gz
+        type: string
+      workers:
+        description: Parallel parser workers
+        required: true
+        default: "4"
+        type: string
+      max_failures:
+        description: Allowed parse failures before failing the workflow
+        required: true
+        default: "0"
         type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: benchmark-parse-${{ inputs.benchmark_id }}
+  cancel-in-progress: false
+
 jobs:
-  plan:
+  parse:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 90
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
     steps:
       - uses: actions/checkout@v4
-      - name: Parse stage skeleton
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify Hugging Face token is configured
+        shell: bash
         run: |
-          echo "Skeleton only: restore source corpus and run the real parser/preprocessor."
-          echo "Planned output: parsed documents/pages/metadata + lineage manifest."
-          echo "No benchmark documents are parsed by this skeleton."
+          if [[ -z "${HF_TOKEN}" ]]; then
+            echo "::error::Repository secret HF_TOKEN is required to reconstruct gated OfficeQA source files."
+            exit 1
+          fi
+
+      - name: Install source + parse dependencies
+        run: python -m pip install -r requirements/parse.txt
+
+      - name: Restore public source download cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .benchmark/cache/source/open_ragbench
+            .benchmark/cache/source/nfcorpus
+          key: benchmark-public-source-${{ runner.os }}-${{ hashFiles(inputs.composition_file) }}
+          restore-keys: |
+            benchmark-public-source-${{ runner.os }}-
+
+      - name: Reconstruct frozen source corpus
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/build_benchmark_source.py \
+            --spec "${{ inputs.composition_file }}" \
+            --lock "${{ inputs.lock_file }}" \
+            --output-root .benchmark/source \
+            --cache-dir .benchmark/cache/source
+
+      - name: Parse with application loaders and preprocessing
+        id: parse
+        continue-on-error: true
+        env:
+          PYTHONPATH: .
+        run: |
+          python scripts/parse_benchmark_source.py \
+            --source-root ".benchmark/source/${{ inputs.benchmark_id }}" \
+            --output-root .benchmark/parsed \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --workers "${{ inputs.workers }}" \
+            --max-failures "${{ inputs.max_failures }}"
+
+      - name: Summarize parsed artifact
+        if: always()
+        id: parsed-meta
+        shell: bash
+        run: |
+          MANIFEST=".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json"
+          if [[ ! -f "$MANIFEST" ]]; then
+            echo "::error::Parse manifest was not created."
+            exit 1
+          fi
+          MANIFEST_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
+          PARSED_BYTES="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path(".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json")
+          print(json.loads(p.read_text())["parsed_bytes"])
+          PY
+          )"
+          FAILURES="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path(".benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json")
+          print(json.loads(p.read_text())["total_failures"])
+          PY
+          )"
+          echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "parsed_bytes=$PARSED_BYTES" >> "$GITHUB_OUTPUT"
+          echo "failures=$FAILURES" >> "$GITHUB_OUTPUT"
+
+      - name: Upload parse manifest and errors only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.benchmark_id }}-parse-manifest-${{ steps.parsed-meta.outputs.manifest_sha }}
+          path: |
+            .benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json
+            .benchmark/parsed/${{ inputs.benchmark_id }}/errors.jsonl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Write job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Benchmark parse"
+            echo
+            echo "- Benchmark: \`${{ inputs.benchmark_id }}\`"
+            echo "- Parsed bytes on runner: \`${{ steps.parsed-meta.outputs.parsed_bytes }}\`"
+            echo "- Parse failures: \`${{ steps.parsed-meta.outputs.failures }}\`"
+            echo "- Manifest SHA256: \`${{ steps.parsed-meta.outputs.manifest_sha }}\`"
+            echo "- Parsed content was not uploaded because the mixed corpus contains gated OfficeQA material."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if parser failed
+        if: steps.parse.outcome != 'success'
+        run: exit 1

@@ -16,7 +16,7 @@ on:
       lock_file:
         description: Pending or frozen source lock
         required: true
-        default: evaluation/benchmarks/composite_v1.lock.json
+        default: evaluation/benchmarks/composite_v1.lock.json.gz
         type: string
 
 permissions:
@@ -40,8 +40,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: "pip"
-          cache-dependency-path: requirements/eval.txt
 
       - name: Verify Hugging Face token is configured
         shell: bash

@@ -178,6 +178,20 @@ The composite MIRACL tracks are intentionally smaller project regression subsets
 
 The source manifest must record the exact selected IDs, source revisions, selection algorithm version, and seed. Once `composite-v1` is frozen, normal rebuilds consume those IDs directly rather than selecting them again.
 
+## Successful source-build baseline
+
+The first successful frozen source build was GitHub Actions run `36475735954` at repository revision `820d361df823cd9418ab78ad6b9da7a84f1aa2f2`.
+
+| Track | Documents | Queries | Qrels |
+|---|---:|---:|---:|
+| Open RAGBench | 200 | 160 | 160 |
+| OfficeQA | 150 | 50 | 89 |
+| NFCorpus | 3,633 | 100 | 3,476 |
+| MIRACL German | 430 | 50 | 517 |
+| MIRACL Arabic | 456 | 50 | 502 |
+
+The reconstructed source occupied 1,511,505,720 bytes on the runner. Only public Open RAGBench/NFCorpus download material is eligible for the Actions cache; gated OfficeQA remains reconstruct-only until a private durable artifact store is configured.
+
 ## Evaluation artifact DAG
 
 The full evaluation system is a dependency-aware artifact pipeline:
@@ -217,15 +231,22 @@ Raw PDFs should be cached where licensing/access terms permit. For gated or rest
 
 Rebuild when the source corpus, parser, loader, or parser-affecting preprocessing changes.
 
-Typical contents:
+Current parse-stage layout:
 
 ```text
 parsed/
-├── documents.jsonl
-├── pages.jsonl
-├── metadata.jsonl
+├── <source-track>/
+│   ├── documents.jsonl
+│   ├── pages.jsonl
+│   └── evaluation/
+│       ├── queries.jsonl
+│       ├── qrels.jsonl
+│       └── answers.jsonl   # where supplied upstream
+├── errors.jsonl
 └── manifest.json
 ```
+
+The document rows contain file-level parse statistics and source checksums; page rows carry cleaned page text plus normalized loader metadata. Runner-local absolute paths are replaced with stable `benchmark://...` logical sources.
 
 ### Stage 3: chunks
 
@@ -357,7 +378,7 @@ The repository contains a manual workflow for each stage:
 
 The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. The workflow requires the repository secret `HF_TOKEN` because OfficeQA is gated.
 
-The parse, chunk, embed, index, and evaluation workflows remain non-operational planning shells. No workflow is triggered automatically.
+The parse workflow is now operational and manual-only. It reconstructs the frozen source corpus, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. Because the parsed corpus contains transformed gated OfficeQA content, the workflow uploads only `manifest.json` and `errors.jsonl`; parsed text is not published. Chunk, embed, index, and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
 
 
 ### Source-workflow dependency footprint
@@ -371,7 +392,7 @@ Keep acquisition dependencies narrower than ML/runtime dependencies. The source 
 
 Do not install `datasets`, pandas, embedding libraries, or application dependencies in the source workflow. They belong to later stages if needed.
 
-The committed `evaluation/benchmarks/composite_v1.lock.json` starts in a pending state. The first source build produces a locked copy as an artifact. After review, that generated lock should replace the pending file in the repository; subsequent source rebuilds then use the exact pinned revisions and selected IDs rather than resolving upstream `main` again. Until a private durable artifact store is wired, the workflow uploads only the lock and manifest; the downloaded mixed corpus exists only for the duration of that workflow run.
+`composite-v1` is now frozen from successful source build run `36475735954`. The canonical machine lock is `evaluation/benchmarks/composite_v1.lock.json.gz`; `composite_v1.lock.json` is a small human-readable pointer/summary. The frozen lock records exact upstream revisions and selected IDs. Source reconstruction therefore no longer resolves or resamples benchmark membership. Until a private durable artifact store is wired, the downloaded mixed corpus exists only for the duration of a workflow run.
 
 ## Artifact storage
 
