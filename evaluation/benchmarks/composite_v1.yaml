@@ -1,7 +1,7 @@
-# Proposed benchmark composition. The source workflow is still a non-running skeleton.
+# Proposed benchmark composition. Source acquisition is manual-only but implemented.
 schema_version: 1
 benchmark_id: composite-v1
-status: proposed
+status: source-acquisition-ready
 selection_seed: 20260928
 selection_algorithm: stable-sha256-v1
 
@@ -42,7 +42,7 @@ tiers:
 sources:
   open_ragbench:
     upstream: vectara/open_ragbench
-    upstream_revision: TO_BE_PINNED
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
     license: CC-BY-NC-4.0
     source_format: pdf
     selection:
@@ -65,7 +65,7 @@ sources:
 
   officeqa:
     upstream: databricks/officeqa
-    upstream_revision: TO_BE_PINNED
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
     license: CC-BY-SA-4.0
     access: gated_huggingface
     source_format: pdf
@@ -91,7 +91,8 @@ sources:
 
   nfcorpus:
     upstream: BEIR/nfcorpus
-    upstream_revision: TO_BE_PINNED
+    qrels_upstream: BEIR/nfcorpus-qrels
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
     source_format: text
     selection:
       corpus: full
@@ -103,8 +104,8 @@ sources:
       - Query IDs are fixed in the generated source manifest.
 
   miracl_de:
-    upstream: mteb/miracl-hard-negatives
-    upstream_revision: TO_BE_PINNED
+    upstream: mteb/MIRACLRetrieval_de_top_250_only_w_correct-v2
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
     license: CC-BY-SA-4.0
     source_format: text
     language: de
@@ -117,15 +118,18 @@ sources:
       negative_ordering: stable_hash
 
   miracl_ar:
-    upstream: mteb/miracl-hard-negatives
-    upstream_revision: TO_BE_PINNED
+    upstream: mteb/MIRACLRetrieval_ar_top_250_only_w_correct-v2
+    upstream_revision: LOCKED_AT_SOURCE_BUILD
     license: CC-BY-SA-4.0
     source_format: text
     language: ar
     selection:
       queries: 50
+      split: dev
       hard_negatives_per_query_max: 20
       include_all_positives: true
+      query_ordering: stable_hash
+      negative_ordering: stable_hash
 
 reporting:
   primary_metrics:
@@ -155,8 +159,7 @@ storage:
     qdrant: 1.19.1
 
 unresolved_before_activation:
-  - Pin exact upstream dataset revisions/commits.
-  - Validate each upstream dataset's redistribution terms for cached artifacts.
-  - Materialize deterministic query/document IDs.
+  - Run the manual source workflow once and review the generated immutable lock.
+  - Replace the pending committed lock with the reviewed generated lock.
   - Measure source, chunk, embedding, and native-index artifact sizes.
   - Confirm GitHub-hosted runner disk headroom for restoring native index snapshots.
