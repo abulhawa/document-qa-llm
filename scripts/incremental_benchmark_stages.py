@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts import chunk_benchmark_parsed as chunker
+from scripts import checkpoint_benchmark_embeddings as checkpoint
 from scripts import embed_benchmark_chunks as embedder
 from scripts import parse_benchmark_source as parser
 from scripts.seed_benchmark_cache import document_digest, signature
@@ -231,28 +232,41 @@ def embed(args: argparse.Namespace) -> None:
                 qid = record["query_id"]
                 query_vectors[(track, qid, old_queries[qid])] = matrix[i]
 
-    selected = embedder._selected_chunks(args.chunks_root, shard_index=args.shard_index, shard_count=args.shard_count)
     query_tracks = [track for track in embedder.TRACKS if (args.chunks_root / track / "evaluation" / "queries.jsonl").exists()]
     original = embedder._encode
     counts = {"vectors_reused": 0, "vectors_computed": 0, "queries_reused": 0, "queries_computed": 0}
     query_cursor = 0
 
+    def passage_vectors(rows: list[dict[str, Any]], model: Any, *, batch_size: int, input_format: str) -> np.ndarray:
+        texts = [str(row["text"]) for row in rows]
+        keys = [(str(row["id"]), hashlib.sha256(text.encode()).hexdigest()) for row, text in zip(rows, texts)]
+        found = [vectors.get(key) for key in keys]
+        missing = [i for i, value in enumerate(found) if value is None]
+        if missing:
+            computed = original(
+                [texts[i] for i in missing], model=model, input_type="passage",
+                input_format=input_format, batch_size=batch_size,
+            )
+            if len(computed) != len(missing):
+                raise ValueError("new embedding count mismatch")
+            for i, value in zip(missing, computed):
+                found[i] = value
+        counts["vectors_reused"] += len(keys) - len(missing)
+        counts["vectors_computed"] += len(missing)
+        return np.stack(found).astype(np.float32)
+
     def cached(texts: list[str], **kwargs: Any) -> np.ndarray:
         nonlocal query_cursor
         input_type = kwargs["input_type"]
         if input_type == "passage":
-            if len(texts) != len(selected):
-                raise ValueError("selected chunk count changed during embedding")
-            keys = [(str(row["id"]), hashlib.sha256(text.encode()).hexdigest()) for row, text in zip(selected, texts)]
-        else:
-            track = query_tracks[query_cursor]
-            query_cursor += 1
-            rows = _rows(args.chunks_root / track / "evaluation" / "queries.jsonl")
-            if [str(row["text"]) for row in rows] != texts:
-                raise ValueError("query order changed during embedding")
-            keys = [(track, str(row["query_id"]), str(row["text"])) for row in rows]
-        cache = vectors if input_type == "passage" else query_vectors
-        found = [cache.get(key) for key in keys]
+            raise ValueError("checkpoint must pass chunk identities to vector provider")
+        track = query_tracks[query_cursor]
+        query_cursor += 1
+        rows = _rows(args.chunks_root / track / "evaluation" / "queries.jsonl")
+        if [str(row["text"]) for row in rows] != texts:
+            raise ValueError("query order changed during embedding")
+        keys = [(track, str(row["query_id"]), str(row["text"])) for row in rows]
+        found = [query_vectors.get(key) for key in keys]
         missing = [i for i, value in enumerate(found) if value is None]
         if missing:
             computed = original([texts[i] for i in missing], **kwargs)
@@ -261,23 +275,34 @@ def embed(args: argparse.Namespace) -> None:
             for i, value in zip(missing, computed):
                 found[i] = value
         reused = len(keys) - len(missing)
-        counts["vectors_reused" if input_type == "passage" else "queries_reused"] += reused
-        counts["vectors_computed" if input_type == "passage" else "queries_computed"] += len(missing)
+        counts["queries_reused"] += reused
+        counts["queries_computed"] += len(missing)
         if found:
             return np.stack(found).astype(np.float32)
         return np.empty((0, int(base["vector_dimension"])), dtype=np.float32)
 
     embedder._encode = cached
     try:
-        output = embedder.build_shard(
-            args.chunks_root, args.output_root, benchmark_id=args.benchmark_id,
-            parent_chunks_fingerprint=args.parent_fingerprint,
+        common = dict(
+            benchmark_id=args.benchmark_id, parent_chunks_fingerprint=args.parent_fingerprint,
             model_name=args.model_name, model_revision=args.model_revision,
             input_format=args.input_format, execution_device=args.execution_device,
             batch_size=args.batch_size, shard_index=args.shard_index,
-            shard_count=args.shard_count, fingerprint_only=args.fingerprint_only,
-            repo_revision=args.repo_revision,
+            shard_count=args.shard_count, repo_revision=args.repo_revision,
         )
+        if args.fingerprint_only:
+            output = embedder.build_shard(
+                args.chunks_root, args.output_root, fingerprint_only=True, **common,
+            )
+        else:
+            output = checkpoint.build_checkpointed_shard(
+                args.chunks_root, args.output_root, args.checkpoint_root,
+                artifact_fingerprint=args.artifact_fingerprint,
+                checkpoint_size=args.checkpoint_size,
+                remote_root=args.remote_root,
+                vector_provider=passage_vectors,
+                **common,
+            )
     finally:
         embedder._encode = original
     if not args.fingerprint_only:
@@ -318,6 +343,10 @@ def main() -> None:
             command.add_argument("--shard-index", type=int, required=True)
             command.add_argument("--shard-count", type=int, required=True)
             command.add_argument("--fingerprint-only", action="store_true")
+            command.add_argument("--artifact-fingerprint")
+            command.add_argument("--checkpoint-root", type=Path)
+            command.add_argument("--checkpoint-size", type=int, default=2048)
+            command.add_argument("--remote-root")
     args = cli.parse_args()
     {"parse": parse, "chunk": chunk, "embed": embed}[args.stage](args)
 
