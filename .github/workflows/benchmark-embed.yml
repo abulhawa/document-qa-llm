@@ -224,7 +224,7 @@ jobs:
           source "$GITHUB_ENV"
           BASE="hf://buckets/abulhawa/document-qa-artifacts/composite-v1"
           HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$BASE/chunks/$BASE_CHUNKS_FP" ".benchmark/base/chunks"
-          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$BASE/embeddings/$BASE_EMBED_FP" ".benchmark/base/embeddings"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$BASE/embeddings/$BASE_EMBED_FP" ".benchmark/base/embeddings" --exclude "work/*" --exclude "runs/*"
 
       - name: Compute embedding identity
         id: identity
