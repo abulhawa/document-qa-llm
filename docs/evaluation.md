@@ -289,27 +289,49 @@ The chunk artifact plus embeddings form the portable canonical representation us
 
 ### Stage 5: native search indexes
 
-Build native OpenSearch and Qdrant snapshots from the chunk and embedding artifacts.
+Benchmark 5 builds native OpenSearch and Qdrant snapshots from the portable chunk and embedding artifacts. The two engines are built and persisted independently so one successful engine is never rebuilt merely because the other engine failed.
 
-These snapshots are a late-stage performance cache:
+The engine identities deliberately have different invalidation boundaries:
+
+- OpenSearch depends on the chunks artifact, pinned OpenSearch version, and the production chunk-index mapping/settings contract. It does not depend on the embedding artifact.
+- Qdrant depends on both chunks and embeddings, the pinned Qdrant version, vector dimension/distance, and the minimal production payload contract (`id`, `checksum`, `path`).
+
+This means an embedding-model change can reuse an unchanged OpenSearch snapshot while rebuilding only Qdrant.
+
+Completed engine artifacts are immutable and reused by engine fingerprint. Initial builds also use coarse resumable checkpoints, 50,000 indexed rows by default. A checkpoint is a real engine-native snapshot: an OpenSearch filesystem-repository snapshot or a Qdrant collection snapshot. Checkpoint data and manifest are uploaded before `work/current.json` is advanced, so a failed new checkpoint does not replace the previous good recovery point.
+
+Checkpoint compatibility is intentionally separate from final engine identity. Partial checkpoints require both the semantic engine fingerprint and a checkpoint signature derived from the current index-builder implementation. Therefore a change to checkpoint/recovery mechanics invalidates partial work without invalidating an already completed native index whose actual data/schema contract is unchanged.
+
+Persisted layout is conceptually:
 
 ```text
-chunks + embeddings
-        ↓
-OpenSearch snapshot
-Qdrant snapshot
+indexes/
+├── opensearch/<engine-fingerprint>/
+│   ├── snapshot.tar.gz
+│   ├── manifest.json
+│   └── work/
+│       ├── current.json
+│       └── checkpoints/<rows>/...
+├── qdrant/<engine-fingerprint>/
+│   ├── snapshot.snapshot
+│   ├── manifest.json
+│   └── work/
+│       ├── current.json
+│       └── checkpoints/<rows>/...
+├── artifacts/<combined-index-fingerprint>/manifest.json
+└── current.json
 ```
 
-They are deliberately not the only canonical representation. If an engine snapshot becomes incompatible, the indexes can be rebuilt from portable chunks and embeddings without reparsing PDFs or recomputing document embeddings.
+The combined index manifest records the exact chunk and embedding parents plus the independently addressable OpenSearch and Qdrant engine artifacts.
 
-Pin backend versions rather than using floating `latest` tags. The benchmark skeleton currently targets:
+Benchmark 5 pins:
 
 ```text
 OpenSearch 3.8.0
 Qdrant 1.19.1
 ```
 
-Backend upgrades are explicit maintenance changes. They should not occur automatically simply because a newer image exists.
+Native backend snapshots are version-coupled performance artifacts. Benchmark 6 must restore them with compatible pinned backend versions. The chunk and embedding artifacts remain the canonical portable representation; if a native snapshot becomes incompatible after a backend upgrade, rebuild only the affected index stage rather than reparsing or re-embedding the corpus.
 
 ### Stage 6: evaluation
 
@@ -387,7 +409,7 @@ The repository contains a manual workflow for each stage:
 
 The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. GitHub Actions obtains a short-lived read-only Hugging Face token through the account CI/CD OIDC identity, then persists the complete mixed source artifact privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/source/<fingerprint>/`. A small mutable `source/current.json` pointer identifies the current immutable source artifact.
 
-The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Benchmark 4 embedding is operational and manual-only; index and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
+The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Benchmark 4 embedding and Benchmark 5 native indexing are operational and manual-only; the evaluation workflow remains a non-operational planning shell. No benchmark workflow is triggered automatically.
 
 
 ### Source-workflow dependency footprint

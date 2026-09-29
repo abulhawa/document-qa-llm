@@ -1,42 +1,443 @@
-# Skeleton only. This workflow does not build native index snapshots yet.
 name: Benchmark 5 - Index
 
 on:
   workflow_dispatch:
     inputs:
-      chunks_artifact:
-        description: Upstream chunks artifact ID or digest
+      benchmark_id:
+        description: Frozen benchmark identifier
         required: true
-        default: benchmark-chunks:mixed-v1
+        default: composite-v1
         type: string
-      embeddings_artifact:
-        description: Upstream embeddings artifact ID or digest
+      chunks_artifact_fingerprint:
+        description: Exact persisted Benchmark 3 chunks artifact fingerprint
         required: true
-        default: benchmark-embeddings:mixed-v1
+        default: 6a74a3676d91669a55284269ade30866f8c9cc8bc27691f8251522856efad2a6
         type: string
-      index_artifact:
-        description: Intended native-index artifact label
+      embeddings_artifact_fingerprint:
+        description: Exact persisted Benchmark 4 embeddings artifact fingerprint
         required: true
-        default: benchmark-index:mixed-v1
+        default: 36c51103d21b57ef165890f724410e5dcaf5675b13b5b5d0383ff672b99f87c0
+        type: string
+      opensearch_version:
+        description: OpenSearch image/version used for the native snapshot
+        required: true
+        default: 3.8.0
+        type: string
+      qdrant_version:
+        description: Qdrant image/version used for the native snapshot
+        required: true
+        default: 1.19.1
+        type: string
+      checkpoint_rows:
+        description: Persist a coarse native-engine checkpoint after this many indexed rows
+        required: true
+        default: "50000"
+        type: string
+      opensearch_batch_size:
+        description: OpenSearch bulk indexing batch size
+        required: true
+        default: "2000"
+        type: string
+      qdrant_batch_size:
+        description: Qdrant upsert batch size
+        required: true
+        default: "256"
         type: string
 
 permissions:
   contents: read
+  id-token: write
+
+concurrency:
+  group: benchmark-index-${{ inputs.benchmark_id }}
+  cancel-in-progress: false
 
 env:
-  OPENSEARCH_IMAGE: opensearchproject/opensearch:3.8.0
-  QDRANT_IMAGE: qdrant/qdrant:v1.19.1
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  plan:
+  opensearch:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 120
+    outputs:
+      engine_fingerprint: ${{ steps.identity.outputs.engine_fingerprint }}
+      reused_existing: ${{ steps.reuse.outputs.reused_existing }}
+      artifact_uri: ${{ steps.identity.outputs.artifact_uri }}
     steps:
       - uses: actions/checkout@v4
-      - name: Index stage skeleton
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements/index.txt
+
+      - name: Install index runtime
+        run: python -m pip install -r requirements/index.txt
+
+      - name: Mint short-lived Hugging Face bucket token
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
         run: |
-          echo "Skeleton only: restore chunks/embeddings and build native search-engine snapshots."
-          echo "Pinned OpenSearch: $OPENSEARCH_IMAGE"
-          echo "Pinned Qdrant: $QDRANT_IMAGE"
-          echo "Planned output: OpenSearch snapshot + Qdrant snapshot + lineage manifest."
-          echo "No containers are started and no indexes are built by this skeleton."
+          TOKEN="$(hf auth token)"
+          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Restore chunk manifest for identity
+        run: |
+          ROOT=".benchmark/chunks/${{ inputs.benchmark_id }}"
+          mkdir -p "$ROOT"
+          HF_TOKEN="$HF_TOKEN" hf buckets cp \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/chunks/${{ inputs.chunks_artifact_fingerprint }}/manifest.json" \
+            "$ROOT/manifest.json"
+
+      - name: Compute OpenSearch index identity
+        id: identity
+        shell: bash
+        run: |
+          OUT="$RUNNER_TEMP/opensearch-identity.json"
+          python -m scripts.build_benchmark_indexes identity \
+            --engine opensearch \
+            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+            --backend-version "${{ inputs.opensearch_version }}" \
+            --output "$OUT"
+          FP="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine_fingerprint"])' "$OUT")"
+          URI="hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/indexes/opensearch/$FP"
+          echo "engine_fingerprint=$FP" >> "$GITHUB_OUTPUT"
+          echo "artifact_uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse completed OpenSearch snapshot when compatible
+        id: reuse
+        shell: bash
+        run: |
+          REMOTE="${{ steps.identity.outputs.artifact_uri }}/manifest.json"
+          LOCAL="$RUNNER_TEMP/opensearch-existing.json"
+          if HF_TOKEN="$HF_TOKEN" hf buckets cp "$REMOTE" "$LOCAL" >/dev/null 2>&1; then
+            python - "$LOCAL" "${{ steps.identity.outputs.engine_fingerprint }}" "${{ inputs.chunks_artifact_fingerprint }}" <<'PY'
+          import json, sys
+          m=json.load(open(sys.argv[1], encoding="utf-8"))
+          if m.get("artifact_type") != "native-index-engine" or m.get("engine") != "opensearch":
+              raise SystemExit("invalid OpenSearch engine manifest")
+          if m.get("engine_fingerprint") != sys.argv[2]:
+              raise SystemExit("OpenSearch engine fingerprint mismatch")
+          if m.get("parent_chunks_artifact_fingerprint") != sys.argv[3]:
+              raise SystemExit("OpenSearch parent chunks mismatch")
+          if not m.get("persistence", {}).get("persisted"):
+              raise SystemExit("OpenSearch engine artifact is not marked persisted")
+          PY
+            echo "reused_existing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused_existing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore full chunks artifact
+        if: steps.reuse.outputs.reused_existing != 'true'
+        run: |
+          HF_TOKEN="$HF_TOKEN" hf buckets sync \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/chunks/${{ inputs.chunks_artifact_fingerprint }}" \
+            ".benchmark/chunks/${{ inputs.benchmark_id }}"
+
+      - name: Start OpenSearch
+        if: steps.reuse.outputs.reused_existing != 'true'
+        shell: bash
+        run: |
+          REPO_DIR="$RUNNER_TEMP/opensearch-snapshots"
+          mkdir -p "$REPO_DIR"
+          chmod 0777 "$REPO_DIR"
+          docker run -d --name benchmark-opensearch \
+            --ulimit memlock=-1:-1 \
+            -p 9200:9200 \
+            -e discovery.type=single-node \
+            -e DISABLE_INSTALL_DEMO_CONFIG=true \
+            -e DISABLE_SECURITY_PLUGIN=true \
+            -e OPENSEARCH_JAVA_OPTS="-Xms1g -Xmx1g" \
+            -e path.repo=/mnt/opensearch-backups \
+            -v "$REPO_DIR:/mnt/opensearch-backups" \
+            "opensearchproject/opensearch:${{ inputs.opensearch_version }}"
+
+      - name: Build, checkpoint, and persist OpenSearch snapshot
+        if: steps.reuse.outputs.reused_existing != 'true'
+        run: |
+          python -m scripts.build_benchmark_indexes opensearch \
+            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+            --backend-version "${{ inputs.opensearch_version }}" \
+            --url http://localhost:9200 \
+            --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+            --repo-dir "$RUNNER_TEMP/opensearch-snapshots" \
+            --work-dir "$RUNNER_TEMP/opensearch-index" \
+            --batch-size "${{ inputs.opensearch_batch_size }}" \
+            --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+
+      - name: Write OpenSearch summary
+        run: |
+          {
+            echo "## Benchmark 5 - OpenSearch"
+            echo "- Engine fingerprint: ${{ steps.identity.outputs.engine_fingerprint }}"
+            echo "- Parent chunks: ${{ inputs.chunks_artifact_fingerprint }}"
+            echo "- Version: ${{ inputs.opensearch_version }}"
+            echo "- Artifact URI: ${{ steps.identity.outputs.artifact_uri }}"
+            echo "- Reused existing snapshot: ${{ steps.reuse.outputs.reused_existing }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: OpenSearch diagnostics
+        if: failure() && steps.reuse.outputs.reused_existing != 'true'
+        run: docker logs benchmark-opensearch --tail 200 || true
+
+      - name: Stop OpenSearch
+        if: always() && steps.reuse.outputs.reused_existing != 'true'
+        run: docker rm -f benchmark-opensearch >/dev/null 2>&1 || true
+
+  qdrant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      engine_fingerprint: ${{ steps.identity.outputs.engine_fingerprint }}
+      reused_existing: ${{ steps.reuse.outputs.reused_existing }}
+      artifact_uri: ${{ steps.identity.outputs.artifact_uri }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements/index.txt
+
+      - name: Install index runtime
+        run: python -m pip install -r requirements/index.txt
+
+      - name: Mint short-lived Hugging Face bucket token
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          TOKEN="$(hf auth token)"
+          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Restore parent manifests for identity
+        run: |
+          CHUNKS=".benchmark/chunks/${{ inputs.benchmark_id }}"
+          EMBEDS=".benchmark/embeddings/${{ inputs.benchmark_id }}"
+          mkdir -p "$CHUNKS" "$EMBEDS"
+          HF_TOKEN="$HF_TOKEN" hf buckets cp \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/chunks/${{ inputs.chunks_artifact_fingerprint }}/manifest.json" \
+            "$CHUNKS/manifest.json"
+          HF_TOKEN="$HF_TOKEN" hf buckets cp \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/embeddings/${{ inputs.embeddings_artifact_fingerprint }}/manifest.json" \
+            "$EMBEDS/manifest.json"
+
+      - name: Compute Qdrant index identity
+        id: identity
+        shell: bash
+        run: |
+          OUT="$RUNNER_TEMP/qdrant-identity.json"
+          python -m scripts.build_benchmark_indexes identity \
+            --engine qdrant \
+            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+            --embeddings-root ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+            --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
+            --backend-version "${{ inputs.qdrant_version }}" \
+            --output "$OUT"
+          FP="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["engine_fingerprint"])' "$OUT")"
+          URI="hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/indexes/qdrant/$FP"
+          echo "engine_fingerprint=$FP" >> "$GITHUB_OUTPUT"
+          echo "artifact_uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse completed Qdrant snapshot when compatible
+        id: reuse
+        shell: bash
+        run: |
+          REMOTE="${{ steps.identity.outputs.artifact_uri }}/manifest.json"
+          LOCAL="$RUNNER_TEMP/qdrant-existing.json"
+          if HF_TOKEN="$HF_TOKEN" hf buckets cp "$REMOTE" "$LOCAL" >/dev/null 2>&1; then
+            python - "$LOCAL" "${{ steps.identity.outputs.engine_fingerprint }}" "${{ inputs.chunks_artifact_fingerprint }}" "${{ inputs.embeddings_artifact_fingerprint }}" <<'PY'
+          import json, sys
+          m=json.load(open(sys.argv[1], encoding="utf-8"))
+          if m.get("artifact_type") != "native-index-engine" or m.get("engine") != "qdrant":
+              raise SystemExit("invalid Qdrant engine manifest")
+          if m.get("engine_fingerprint") != sys.argv[2]:
+              raise SystemExit("Qdrant engine fingerprint mismatch")
+          if m.get("parent_chunks_artifact_fingerprint") != sys.argv[3]:
+              raise SystemExit("Qdrant parent chunks mismatch")
+          if m.get("parent_embeddings_artifact_fingerprint") != sys.argv[4]:
+              raise SystemExit("Qdrant parent embeddings mismatch")
+          if not m.get("persistence", {}).get("persisted"):
+              raise SystemExit("Qdrant engine artifact is not marked persisted")
+          PY
+            echo "reused_existing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused_existing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore full chunk and embedding artifacts
+        if: steps.reuse.outputs.reused_existing != 'true'
+        run: |
+          HF_TOKEN="$HF_TOKEN" hf buckets sync \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/chunks/${{ inputs.chunks_artifact_fingerprint }}" \
+            ".benchmark/chunks/${{ inputs.benchmark_id }}"
+          HF_TOKEN="$HF_TOKEN" hf buckets sync \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/embeddings/${{ inputs.embeddings_artifact_fingerprint }}" \
+            ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
+            --exclude "work/*" --exclude "runs/*" --exclude "queries/*"
+
+      - name: Start Qdrant
+        if: steps.reuse.outputs.reused_existing != 'true'
+        run: |
+          docker run -d --name benchmark-qdrant \
+            -p 6333:6333 \
+            "qdrant/qdrant:v${{ inputs.qdrant_version }}"
+
+      - name: Build, checkpoint, and persist Qdrant snapshot
+        if: steps.reuse.outputs.reused_existing != 'true'
+        run: |
+          python -m scripts.build_benchmark_indexes qdrant \
+            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+            --embeddings-root ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+            --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
+            --backend-version "${{ inputs.qdrant_version }}" \
+            --url http://localhost:6333 \
+            --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+            --work-dir "$RUNNER_TEMP/qdrant-index" \
+            --batch-size "${{ inputs.qdrant_batch_size }}" \
+            --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+
+      - name: Write Qdrant summary
+        run: |
+          {
+            echo "## Benchmark 5 - Qdrant"
+            echo "- Engine fingerprint: ${{ steps.identity.outputs.engine_fingerprint }}"
+            echo "- Parent chunks: ${{ inputs.chunks_artifact_fingerprint }}"
+            echo "- Parent embeddings: ${{ inputs.embeddings_artifact_fingerprint }}"
+            echo "- Version: ${{ inputs.qdrant_version }}"
+            echo "- Artifact URI: ${{ steps.identity.outputs.artifact_uri }}"
+            echo "- Reused existing snapshot: ${{ steps.reuse.outputs.reused_existing }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Qdrant diagnostics
+        if: failure() && steps.reuse.outputs.reused_existing != 'true'
+        run: docker logs benchmark-qdrant --tail 200 || true
+
+      - name: Stop Qdrant
+        if: always() && steps.reuse.outputs.reused_existing != 'true'
+        run: docker rm -f benchmark-qdrant >/dev/null 2>&1 || true
+
+  finalize:
+    needs: [opensearch, qdrant]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Hugging Face CLI
+        run: python -m pip install "huggingface-hub==1.33.*"
+
+      - name: Mint short-lived Hugging Face bucket token
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          TOKEN="$(hf auth token)"
+          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Finalize native index artifact
+        id: final
+        shell: bash
+        run: |
+          OS_MANIFEST="$RUNNER_TEMP/opensearch-manifest.json"
+          QD_MANIFEST="$RUNNER_TEMP/qdrant-manifest.json"
+          FINAL="$RUNNER_TEMP/index-manifest.json"
+          REMOTE_BASE="hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/indexes/artifacts"
+
+          HF_TOKEN="$HF_TOKEN" hf buckets cp \
+            "${{ needs.opensearch.outputs.artifact_uri }}/manifest.json" "$OS_MANIFEST"
+          HF_TOKEN="$HF_TOKEN" hf buckets cp \
+            "${{ needs.qdrant.outputs.artifact_uri }}/manifest.json" "$QD_MANIFEST"
+
+          python -m scripts.build_benchmark_indexes finalize \
+            --benchmark-id "${{ inputs.benchmark_id }}" \
+            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+            --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
+            --opensearch-fingerprint "${{ needs.opensearch.outputs.engine_fingerprint }}" \
+            --qdrant-fingerprint "${{ needs.qdrant.outputs.engine_fingerprint }}" \
+            --opensearch-manifest "$OS_MANIFEST" \
+            --qdrant-manifest "$QD_MANIFEST" \
+            --remote-base "$REMOTE_BASE" \
+            --output "$FINAL"
+
+          FP="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact_fingerprint"])' "$FINAL")"
+          URI="$REMOTE_BASE/$FP"
+          REMOTE_MANIFEST="$RUNNER_TEMP/remote-index-manifest.json"
+          if HF_TOKEN="$HF_TOKEN" hf buckets cp "$URI/manifest.json" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
+            python - "$REMOTE_MANIFEST" "$FP" <<'PY'
+          import json, sys
+          m=json.load(open(sys.argv[1], encoding="utf-8"))
+          if m.get("artifact_fingerprint") != sys.argv[2] or m.get("artifact_type") != "native-indexes":
+              raise SystemExit("existing combined index manifest mismatch")
+          PY
+            REUSED=true
+          else
+            HF_TOKEN="$HF_TOKEN" hf buckets cp "$FINAL" "$URI/manifest.json"
+            REUSED=false
+          fi
+
+          POINTER="$RUNNER_TEMP/indexes-current.json"
+          python - "$FINAL" "$POINTER" <<'PY'
+          import json, sys
+          from pathlib import Path
+          m=json.load(open(sys.argv[1], encoding="utf-8"))
+          p={
+              "schema_version": 1,
+              "benchmark_id": m["benchmark_id"],
+              "artifact_type": "native-indexes",
+              "artifact_fingerprint": m["artifact_fingerprint"],
+              "artifact_uri": m["persistence"]["artifact_uri"],
+              "parent_chunks_artifact_fingerprint": m["parent_chunks_artifact_fingerprint"],
+              "parent_embeddings_artifact_fingerprint": m["parent_embeddings_artifact_fingerprint"],
+              "engines": m["engines"],
+          }
+          Path(sys.argv[2]).write_text(json.dumps(p, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+          PY
+          HF_TOKEN="$HF_TOKEN" hf buckets cp "$POINTER" \
+            "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/indexes/current.json"
+
+          echo "artifact_fingerprint=$FP" >> "$GITHUB_OUTPUT"
+          echo "artifact_uri=$URI" >> "$GITHUB_OUTPUT"
+          echo "reused_existing=$REUSED" >> "$GITHUB_OUTPUT"
+
+      - name: Upload index manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.benchmark_id }}-index-manifest-${{ steps.final.outputs.artifact_fingerprint }}
+          path: ${{ runner.temp }}/index-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Write job summary
+        run: |
+          {
+            echo "## Benchmark native indexes"
+            echo "- Parent chunks: ${{ inputs.chunks_artifact_fingerprint }}"
+            echo "- Parent embeddings: ${{ inputs.embeddings_artifact_fingerprint }}"
+            echo "- Index artifact: ${{ steps.final.outputs.artifact_fingerprint }}"
+            echo "- OpenSearch fingerprint: ${{ needs.opensearch.outputs.engine_fingerprint }}"
+            echo "- OpenSearch reused: ${{ needs.opensearch.outputs.reused_existing }}"
+            echo "- Qdrant fingerprint: ${{ needs.qdrant.outputs.engine_fingerprint }}"
+            echo "- Qdrant reused: ${{ needs.qdrant.outputs.reused_existing }}"
+            echo "- Artifact URI: ${{ steps.final.outputs.artifact_uri }}"
+            echo "- Reused existing combined manifest: ${{ steps.final.outputs.reused_existing }}"
+          } >> "$GITHUB_STEP_SUMMARY"
