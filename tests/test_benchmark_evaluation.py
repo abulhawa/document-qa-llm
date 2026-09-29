@@ -6,6 +6,7 @@ from scripts.run_benchmark_evaluation import (
     document_id_from_hit,
     document_identity_from_hit,
     _load_qrels,
+    _make_deps,
     query_metrics,
     select_tier_queries,
     summarize_results,
@@ -131,3 +132,25 @@ def test_missing_negative_qrel_is_ignored_but_positive_is_required(tmp_path) -> 
         {("miracl_de", "present"): "sha-present"},
     )
     assert qrels[("miracl_de", "q1")] == {"sha-present": 1.0}
+
+
+def test_make_deps_accepts_production_stripped_query(monkeypatch) -> None:
+    import numpy as np
+    import core.vector_store as vector_store
+
+    captured = {}
+
+    def fake_retrieve_top_k(query: str, top_k: int):
+        captured["query"] = query
+        captured["top_k"] = top_k
+        vector = vector_store.embed_texts([query], input_type="query")[0]
+        captured["vector"] = vector
+        return []
+
+    monkeypatch.setattr(vector_store, "retrieve_top_k", fake_retrieve_top_k)
+    deps = _make_deps("  office question  ", np.array([0.1, 0.2], dtype=float))
+    deps.semantic_retriever("office question", 5)
+
+    assert captured["query"] == "office question"
+    assert captured["top_k"] == 5
+    assert captured["vector"] == [0.1, 0.2]

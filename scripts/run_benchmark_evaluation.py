@@ -407,11 +407,13 @@ def _load_qrels(
 
 def _make_deps(query_text: str, query_vector: Any):
     import core.vector_store as vector_store
+
+    normalized_query_text = query_text.strip()
     from core.opensearch_store import search as keyword_retriever
     from core.retrieval.types import RetrievalDeps
 
     def semantic_retriever(request_query: str, top_k: int):
-        if request_query != query_text:
+        if request_query != normalized_query_text:
             raise RuntimeError(
                 "Benchmark 6 deterministic profile only supports the exact query"
             )
@@ -425,7 +427,7 @@ def _make_deps(query_text: str, query_vector: Any):
             if (
                 kwargs.get("input_type", "query") != "query"
                 or len(texts) != 1
-                or texts[0] != query_text
+                or texts[0] != normalized_query_text
             ):
                 raise RuntimeError("unexpected embedding request during Benchmark 6")
             return [query_vector.tolist()]
