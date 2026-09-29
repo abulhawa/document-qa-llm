@@ -51,6 +51,10 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Validate benchmark module imports
+        run: |
+          python -c "from scripts.embed_benchmark_chunks import MODEL_IGNORE_PATTERNS; from embedder_api_multilingual.input_format import prepare_embedding_texts; print('Benchmark imports OK')"
+
       - name: Install Hugging Face client
         run: python -m pip install "huggingface-hub==1.33.*"
 
@@ -193,7 +197,7 @@ jobs:
         id: identity
         shell: bash
         run: |
-          python scripts/embed_benchmark_chunks.py             --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"             --output-root .benchmark/embeddings             --benchmark-id "${{ inputs.benchmark_id }}"             --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"             --model-name "${{ inputs.embedding_model }}"             --model-revision "${{ inputs.model_revision }}"             --input-format e5             --execution-device cpu             --batch-size "${{ inputs.batch_size }}"             --shard-index "${{ matrix.shard_index }}"             --shard-count "8"             --fingerprint-only
+          python -m scripts.embed_benchmark_chunks             --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"             --output-root .benchmark/embeddings             --benchmark-id "${{ inputs.benchmark_id }}"             --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"             --model-name "${{ inputs.embedding_model }}"             --model-revision "${{ inputs.model_revision }}"             --input-format e5             --execution-device cpu             --batch-size "${{ inputs.batch_size }}"             --shard-index "${{ matrix.shard_index }}"             --shard-count "8"             --fingerprint-only
           python - ".benchmark/embeddings/${{ inputs.benchmark_id }}/build.json" "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           from pathlib import Path
@@ -228,7 +232,7 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
+            HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.embed_benchmark_chunks               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then
