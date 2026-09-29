@@ -3,15 +3,16 @@
 `composite-v2` expands the Open RAGBench arXiv PDF corpus from 200 to all 1,000
 PDFs at the same pinned upstream revision used by `composite-v1`. It retains
 the same 80 positive PDFs and 160 text questions. The existing 120 hard
-negatives are retained; 800 additional PDFs are added as distractors. All
+v1 distractors are retained; 800 additional PDFs are added. All
 other benchmark tracks and their query/document selections stay fixed.
 
 The upstream arXiv subset has only 604 PDFs that are never gold for **any**
-upstream question, so the v1 negative-pool rule cannot supply 920 negatives.
+upstream question, so the v1 pool rule cannot supply 920 distractors.
 For v2, a distractor is defined relative to the **selected 160 questions**.
 Some added PDFs are relevant to unselected upstream questions, but none is a
-gold document for a selected question. This distinction is explicit in the
-v2 composition file and source lock.
+gold document for a selected question. Selection does not use semantic or
+lexical similarity, so these PDFs are called *distractors* rather than *hard
+negatives*. This distinction is explicit in the v2 composition file and lock.
 
 The v2 lock copies the four unchanged tracks and pinned upstream revisions
 from the frozen v1 lock. Its Open RAGBench selection contains the same v1
