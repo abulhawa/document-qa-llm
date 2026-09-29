@@ -19,6 +19,11 @@ EMBEDDER_INPUTS = (
     Path("embedder_api_multilingual/input_format.py"),
     Path("requirements/embed.txt"),
 )
+MODEL_IGNORE_PATTERNS = (
+    "onnx/*",
+    "openvino/*",
+    "pytorch_model.bin",
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -162,6 +167,7 @@ def _resolve_local_model_snapshot(model_name: str, model_revision: str) -> Path:
             repo_id=model_name,
             revision=model_revision,
             local_files_only=True,
+            ignore_patterns=MODEL_IGNORE_PATTERNS,
         )
     )
     return _validate_local_model_snapshot(path)

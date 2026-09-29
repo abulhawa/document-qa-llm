@@ -74,3 +74,31 @@ def test_local_model_snapshot_rejects_incomplete_cache(tmp_path):
         assert "model.safetensors" in str(exc)
     else:
         raise AssertionError("incomplete cached model should fail")
+
+
+def test_local_model_resolution_uses_slim_snapshot_contract(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from scripts import embed_benchmark_chunks as module
+
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    for name in ("modules.json", "config.json", "model.safetensors"):
+        (snapshot / name).write_text("x", encoding="utf-8")
+
+    captured = {}
+
+    def fake_snapshot_download(**kwargs):
+        captured.update(kwargs)
+        return str(snapshot)
+
+    fake_hub = types.ModuleType("huggingface_hub")
+    fake_hub.snapshot_download = fake_snapshot_download
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+
+    assert module._resolve_local_model_snapshot("org/model", "deadbeef") == snapshot
+    assert captured["repo_id"] == "org/model"
+    assert captured["revision"] == "deadbeef"
+    assert captured["local_files_only"] is True
+    assert captured["ignore_patterns"] == module.MODEL_IGNORE_PATTERNS

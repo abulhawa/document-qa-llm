@@ -79,6 +79,7 @@ jobs:
           import os
           import sys
           from huggingface_hub import snapshot_download
+          from scripts.embed_benchmark_chunks import MODEL_IGNORE_PATTERNS
 
           repo_id = sys.argv[1]
           revision = sys.argv[2]
@@ -86,11 +87,7 @@ jobs:
               repo_id=repo_id,
               revision=revision,
               token=os.environ["HF_TOKEN"],
-              ignore_patterns=[
-                  "onnx/*",
-                  "openvino/*",
-                  "pytorch_model.bin",
-              ],
+              ignore_patterns=MODEL_IGNORE_PATTERNS,
           )
           print(f"Prepared model snapshot: {path}")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
