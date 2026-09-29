@@ -460,6 +460,8 @@ hf://buckets/abulhawa/document-qa-artifacts/
 
 The bucket is private. GitHub Actions uses Hugging Face Trusted Publisher / account CI/CD OIDC identities restricted to `abulhawa/document-qa-llm` on `refs/heads/master`. No long-lived Hugging Face write token is stored in GitHub. The source lock remains sufficient to reconstruct raw benchmark inputs if the bucket is lost.
 
+The frozen artifacts can seed content-hash cache indexes for later corpus versions; see [Reusable benchmark cache indexes](benchmark_cache.md). The current stage workflows do not yet consume those indexes.
+
 ## Trigger policy
 
 Avoid running evaluation because an unrelated file changed.
