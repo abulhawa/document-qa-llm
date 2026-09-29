@@ -1,0 +1,7 @@
+huggingface-hub==1.33.*
+numpy==2.4.*
+opensearch-py==3.2.*
+python-dotenv==1.2.*
+qdrant-client==1.19.*
+PyYAML==6.0.*
+requests==2.34.*
