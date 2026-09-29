@@ -59,17 +59,8 @@ jobs:
           path: ~/.cache/huggingface/hub
           key: benchmark-model-${{ runner.os }}-${{ inputs.embedding_model }}-${{ inputs.model_revision }}
 
-      - name: Mint short-lived Hugging Face read token
-        shell: bash
-        env:
-          HF_OIDC_RESOURCE: abulhawa
-        run: |
-          TOKEN="$(hf auth token)"
-          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face OIDC read token."; exit 1; }
-          echo "::add-mask::$TOKEN"
-          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-
       - name: Prefetch exact embedding model revision
+        id: model-snapshot
         shell: bash
         run: |
           python - "${{ inputs.embedding_model }}" "${{ inputs.model_revision }}" <<'PY'
@@ -90,6 +81,34 @@ jobs:
               ],
           )
           print(f"Prepared model snapshot: {path}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"path={path}\n")
+          PY
+
+      - name: Install embedding runtime for offline preflight
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
+          python -m pip install -r requirements/embed.txt
+
+      - name: Validate cached model offline
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: |
+          python - "${{ steps.model-snapshot.outputs.path }}" <<'PY'
+          import sys
+          from sentence_transformers import SentenceTransformer
+
+          path = sys.argv[1]
+          model = SentenceTransformer(path, device="cpu", local_files_only=True)
+          vectors = model.encode(
+              ["query: benchmark preflight"],
+              normalize_embeddings=True,
+              convert_to_numpy=True,
+          )
+          if vectors.shape[0] != 1 or vectors.shape[1] <= 0:
+              raise SystemExit(f"unexpected preflight shape: {vectors.shape}")
+          print(f"Offline model preflight passed: shape={vectors.shape}")
           PY
 
       - name: Save immutable model cache
@@ -150,7 +169,6 @@ jobs:
         env:
           HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
         run: |
-          unset HF_TOKEN
           BUCKET_TOKEN="$(hf auth token)"
           [[ -n "$BUCKET_TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
           echo "::add-mask::$BUCKET_TOKEN"
@@ -189,9 +207,9 @@ jobs:
         shell: bash
         env:
           HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
         run: |
-          MODEL_TOKEN="$HF_TOKEN"
-          unset HF_TOKEN
           BUCKET_TOKEN="$(hf auth token)"
           [[ -n "$BUCKET_TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
           echo "::add-mask::$BUCKET_TOKEN"
@@ -213,7 +231,7 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            HF_TOKEN="$MODEL_TOKEN" python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
+            python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then

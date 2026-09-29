@@ -142,6 +142,27 @@ def _selected_chunks(
     return selected
 
 
+def _resolve_local_model_snapshot(model_name: str, model_revision: str) -> Path:
+    """Resolve the exact pinned model revision from the local HF cache only."""
+
+    from huggingface_hub import snapshot_download
+
+    path = Path(
+        snapshot_download(
+            repo_id=model_name,
+            revision=model_revision,
+            local_files_only=True,
+        )
+    )
+    required = ("modules.json", "config.json", "model.safetensors")
+    missing = [name for name in required if not (path / name).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"cached model snapshot is incomplete; missing: {', '.join(missing)}"
+        )
+    return path
+
+
 def _identity(
     *,
     parent_chunks_fingerprint: str,
@@ -256,10 +277,11 @@ def build_shard(
     if any(not text for text in texts):
         raise RuntimeError("chunk artifact contains an empty text row")
 
+    model_snapshot = _resolve_local_model_snapshot(model_name, model_revision)
     model = SentenceTransformer(
-        model_name,
-        revision=model_revision,
+        str(model_snapshot),
         device=execution_device,
+        local_files_only=True,
     )
     vectors = _encode(
         texts,
@@ -403,7 +425,10 @@ def main() -> int:
             repo_revision=os.environ.get("GITHUB_SHA", "local"),
         )
     except Exception as exc:
+        import traceback
+
         print(f"Benchmark embedding failed: {exc}", file=sys.stderr)
+        traceback.print_exc()
         return 1
     print(f"Embedding shard output: {output}")
     return 0

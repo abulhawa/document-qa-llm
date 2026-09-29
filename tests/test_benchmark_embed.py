@@ -46,3 +46,38 @@ def test_finalize_rejects_missing_shards(tmp_path):
         assert "expected 2 shard markers" in str(exc)
     else:
         raise AssertionError("missing shards should fail")
+
+
+def test_local_model_snapshot_requires_expected_files(monkeypatch, tmp_path):
+    from scripts import embed_benchmark_chunks as module
+
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    for name in ("modules.json", "config.json", "model.safetensors"):
+        (snapshot / name).write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download",
+        lambda **kwargs: str(snapshot),
+    )
+    resolved = module._resolve_local_model_snapshot("model", "revision")
+    assert resolved == snapshot
+
+
+def test_local_model_snapshot_rejects_incomplete_cache(monkeypatch, tmp_path):
+    from scripts import embed_benchmark_chunks as module
+
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / "config.json").write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download",
+        lambda **kwargs: str(snapshot),
+    )
+    try:
+        module._resolve_local_model_snapshot("model", "revision")
+    except FileNotFoundError as exc:
+        assert "incomplete" in str(exc)
+    else:
+        raise AssertionError("incomplete cached model should fail")
