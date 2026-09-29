@@ -1,4 +1,5 @@
 from scripts.build_benchmark_indexes import (
+    _backend_chunk_id,
     _chunk_source,
     _qdrant_payload,
     checkpoint_signature,
@@ -67,7 +68,25 @@ def test_index_payload_contract_uses_stable_chunk_identity():
     assert source["checksum"] == "abc123"
     assert source["text"] == "hello"
     assert payload == {
-        "id": "chunk-1",
+        "id": _backend_chunk_id(row),
         "checksum": "abc123",
         "path": "benchmark://composite-v1/nfcorpus/doc-1",
     }
+
+
+def test_backend_chunk_id_preserves_duplicate_content_provenance():
+    base = {
+        "id": "same-content-chunk",
+        "chunk_index": 0,
+    }
+    a = {
+        **base,
+        "path": "benchmark://composite-v1/open_ragbench/doc-a",
+    }
+    b = {
+        **base,
+        "path": "benchmark://composite-v1/officeqa/doc-b",
+    }
+
+    assert _backend_chunk_id(a) != _backend_chunk_id(b)
+    assert _backend_chunk_id(a) == _backend_chunk_id(a)

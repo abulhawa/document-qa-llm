@@ -11,13 +11,14 @@ import shutil
 import subprocess
 import tarfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 
 TRACKS = ("open_ragbench", "officeqa", "nfcorpus", "miracl_de", "miracl_ar")
 INDEX_ARTIFACT_SCHEMA_VERSION = 1
-OPENSEARCH_CONTRACT_VERSION = 1
-QDRANT_CONTRACT_VERSION = 1
+OPENSEARCH_CONTRACT_VERSION = 2
+QDRANT_CONTRACT_VERSION = 2
 CHECKPOINT_SCHEMA_VERSION = 1
 OPENSEARCH_INDEX_NAME = "benchmark-documents"
 OPENSEARCH_REPOSITORY = "benchmark-repo"
@@ -124,6 +125,7 @@ def opensearch_engine_fingerprint(
             "parent_chunks_artifact_fingerprint": chunks_fingerprint,
             "opensearch_version": opensearch_version,
             "index_name": OPENSEARCH_INDEX_NAME,
+            "document_id_strategy": "uuid5(chunk_id,path)",
             "settings": effective,
         }
     )
@@ -144,6 +146,7 @@ def qdrant_engine_fingerprint(
             "parent_embeddings_artifact_fingerprint": embeddings_fingerprint,
             "qdrant_version": qdrant_version,
             "collection_name": QDRANT_COLLECTION_NAME,
+            "point_id_strategy": "uuid5(chunk_id,path)",
             "vectors": {"size": int(vector_dimension), "distance": "cosine"},
             "payload_keys": list(QDRANT_PAYLOAD_KEYS),
         }
@@ -185,6 +188,22 @@ def _builder_fingerprint() -> str:
     return _sha256_file(Path(__file__))
 
 
+def _backend_chunk_id(row: Mapping[str, Any]) -> str:
+    """Return a benchmark-scoped backend key without changing the chunk artifact.
+
+    Chunk artifact IDs are content-addressed and can legitimately repeat when
+    identical source content appears under more than one benchmark document path.
+    OpenSearch document IDs and Qdrant point IDs must still be unique per benchmark
+    row so retrieval preserves track/document provenance.
+    """
+
+    chunk_id = str(row.get("id") or "")
+    path = str(row.get("path") or "")
+    if not chunk_id or not path:
+        raise ValueError("chunk is missing id/path required for backend identity")
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{chunk_id}|{path}"))
+
+
 def _chunk_source(row: Mapping[str, Any]) -> dict[str, Any]:
     checksum = str(row.get("source_sha256") or row.get("source_document_id") or "")
     if not checksum:
@@ -204,7 +223,11 @@ def _chunk_source(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _qdrant_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     source = _chunk_source(row)
-    return {"id": str(row["id"]), "checksum": source["checksum"], "path": source["path"]}
+    return {
+        "id": _backend_chunk_id(row),
+        "checksum": source["checksum"],
+        "path": source["path"],
+    }
 
 
 def _iter_chunks(chunks_root: Path, *, start: int = 0) -> Iterator[tuple[int, dict[str, Any]]]:
@@ -568,7 +591,7 @@ def build_opensearch(args: argparse.Namespace) -> dict[str, Any]:
             {
                 "_op_type": "index",
                 "_index": OPENSEARCH_INDEX_NAME,
-                "_id": str(row["id"]),
+                "_id": _backend_chunk_id(row),
                 "_source": _chunk_source(row),
             }
         )
@@ -824,7 +847,7 @@ def build_qdrant(args: argparse.Namespace) -> dict[str, Any]:
     ):
         batch.append(
             models.PointStruct(
-                id=str(row["id"]),
+                id=_backend_chunk_id(row),
                 vector=vector.tolist(),
                 payload=_qdrant_payload(row),
             )

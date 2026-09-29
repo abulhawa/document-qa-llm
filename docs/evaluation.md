@@ -293,8 +293,10 @@ Benchmark 5 builds native OpenSearch and Qdrant snapshots from the portable chun
 
 The engine identities deliberately have different invalidation boundaries:
 
-- OpenSearch depends on the chunks artifact, pinned OpenSearch version, and the production chunk-index mapping/settings contract. It does not depend on the embedding artifact.
-- Qdrant depends on both chunks and embeddings, the pinned Qdrant version, vector dimension/distance, and the minimal production payload contract (`id`, `checksum`, `path`).
+- OpenSearch depends on the chunks artifact, pinned OpenSearch version, the production chunk-index mapping/settings contract, and the benchmark backend-key strategy. It does not depend on the embedding artifact.
+- Qdrant depends on both chunks and embeddings, the pinned Qdrant version, vector dimension/distance, the benchmark backend-key strategy, and the minimal production payload contract (`id`, `checksum`, `path`).
+
+Chunk artifact IDs remain content-addressed and may repeat when identical source content appears under different benchmark document paths. Benchmark 5 therefore derives a deterministic UUIDv5 backend key from `(chunk_id, path)` and uses that same key as the OpenSearch document ID, Qdrant point ID, and Qdrant payload `id`. This preserves every benchmark row and its track/document provenance while keeping the production Qdrant-to-OpenSearch lookup contract intact.
 
 This means an embedding-model change can reuse an unchanged OpenSearch snapshot while rebuilding only Qdrant.
 
