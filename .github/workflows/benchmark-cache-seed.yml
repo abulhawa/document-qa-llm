@@ -1,0 +1,52 @@
+name: Benchmark - Seed Reusable Cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_id:
+        description: Frozen benchmark to index
+        required: true
+        default: composite-v1
+        type: string
+      apply:
+        description: Upload verified cache indexes
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: benchmark-cache-seed-${{ inputs.benchmark_id }}
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install bucket client
+        run: python -m pip install 'huggingface-hub==2.0.0'
+      - name: Validate lineage and seed indexes
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+          BENCHMARK_ID: ${{ inputs.benchmark_id }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          BUCKET_TOKEN="$(hf auth token)"
+          if [[ -z "$BUCKET_TOKEN" ]]; then
+            echo "::error::Hugging Face bucket OIDC exchange returned an empty token."
+            exit 1
+          fi
+          echo "::add-mask::$BUCKET_TOKEN"
+          ARGS=(--benchmark-id "$BENCHMARK_ID")
+          if [[ "$APPLY" == "true" ]]; then ARGS+=(--apply); fi
+          HF_TOKEN="$BUCKET_TOKEN" python -m scripts.seed_benchmark_cache "${ARGS[@]}"
+
