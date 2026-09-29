@@ -216,19 +216,19 @@ def write_summary(args: argparse.Namespace) -> None:
         f"- Index artifact: `{payload['lineage']['index_artifact_fingerprint']}`",
         f"- Queries: {composite['queries']} ({composite['errors']} errors)",
         "",
-        "| Track | Hit@1 | Recall@3 | Recall@5 | MRR | nDCG@5 | p95 ms |",
+        "| Track | Recall@1 | Recall@3 | Recall@5 | MRR | nDCG@5 | p95 ms |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for track, row in summary["per_track"].items():
         lines.append(
-            f"| {track} | {row['hit_at_1']:.4f} | {row['recall_at_3']:.4f} | "
+            f"| {track} | {row['recall_at_1']:.4f} | {row['recall_at_3']:.4f} | "
             f"{row['recall_at_5']:.4f} | {row['mrr']:.4f} | "
             f"{row['ndcg_at_5']:.4f} | {row['latency_ms']['p95']:.1f} |"
         )
     lines.extend(
         [
             "",
-            f"Composite macro: Hit@1 **{composite['hit_at_1']:.4f}**, "
+            f"Composite macro: Recall@1 **{composite['recall_at_1']:.4f}**, "
             f"Recall@3 **{composite['recall_at_3']:.4f}**, "
             f"Recall@5 **{composite['recall_at_5']:.4f}**, "
             f"MRR **{composite['mrr']:.4f}**, "
