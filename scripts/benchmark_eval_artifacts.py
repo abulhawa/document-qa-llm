@@ -101,6 +101,10 @@ def prepare(args: argparse.Namespace) -> None:
         embeddings_root / "manifest.json",
     )
     for track in TRACKS:
+        _copy(
+            f"{base}/chunks/{chunks_fp}/{track}/documents.jsonl",
+            chunks_root / track / "documents.jsonl",
+        )
         for name in ("queries.jsonl", "qrels.jsonl"):
             _copy(
                 f"{base}/chunks/{chunks_fp}/{track}/evaluation/{name}",
