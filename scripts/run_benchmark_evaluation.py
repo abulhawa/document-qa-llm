@@ -197,6 +197,15 @@ def document_id_from_hit(hit: Mapping[str, Any], *, benchmark_id: str) -> str:
     return str(hit.get("checksum") or "").strip()
 
 
+def document_identity_from_hit(hit: Mapping[str, Any], *, benchmark_id: str) -> str:
+    """Use the content identity that the production retriever deduplicates on."""
+
+    checksum = str(hit.get("checksum") or "").strip()
+    if checksum:
+        return checksum
+    return document_id_from_hit(hit, benchmark_id=benchmark_id)
+
+
 def _percentile(values: Sequence[float], pct: float) -> float:
     if not values:
         return 0.0
@@ -359,14 +368,37 @@ def _load_query_vectors(
     return vectors
 
 
-def _load_qrels(chunks_root: Path) -> dict[tuple[str, str], dict[str, float]]:
+def _load_document_identities(chunks_root: Path) -> dict[tuple[str, str], str]:
+    identities: dict[tuple[str, str], str] = {}
+    for track in TRACKS:
+        for row in _jsonl_rows(chunks_root / track / "documents.jsonl"):
+            document_id = str(row["source_document_id"])
+            identity = str(row.get("source_sha256") or document_id).strip()
+            if not identity:
+                raise ValueError(f"missing document identity: {track}/{document_id}")
+            identities[(track, document_id)] = identity
+    return identities
+
+
+def _load_qrels(
+    chunks_root: Path,
+    document_identities: Mapping[tuple[str, str], str],
+) -> dict[tuple[str, str], dict[str, float]]:
     qrels: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
     for track in TRACKS:
         path = chunks_root / track / "evaluation" / "qrels.jsonl"
         for row in _jsonl_rows(path):
-            qrels[(track, str(row["query_id"]))][str(row["document_id"])] = float(
-                row.get("score", 0.0)
-            )
+            query_id = str(row["query_id"])
+            document_id = str(row["document_id"])
+            identity = document_identities.get((track, document_id))
+            if identity is None:
+                raise ValueError(
+                    f"qrel references unknown document: {track}/{query_id}/{document_id}"
+                )
+            score = float(row.get("score", 0.0))
+            current = qrels[(track, query_id)].get(identity)
+            if current is None or score > current:
+                qrels[(track, query_id)][identity] = score
     return dict(qrels)
 
 
@@ -433,6 +465,7 @@ def _retrieval_config(top_k: int):
 def _config_payload(cfg: Any) -> dict[str, Any]:
     return {
         "profile": "deterministic-core-retrieval-v1",
+        "relevance_identity": "source_sha256_with_document_id_fallback",
         "top_k": int(cfg.top_k),
         "top_k_each": int(cfg.top_k_each),
         "enable_variants": bool(cfg.enable_variants),
@@ -502,7 +535,8 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         for track, rows in selected.items()
     }
     vectors = _load_query_vectors(args.embeddings_root, selected_ids)
-    qrels = _load_qrels(args.chunks_root)
+    document_identities = _load_document_identities(args.chunks_root)
+    qrels = _load_qrels(args.chunks_root, document_identities)
     cfg = _retrieval_config(args.top_k)
 
     rows: list[dict[str, Any]] = []
@@ -532,15 +566,20 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
                 document_id_from_hit(hit, benchmark_id=args.benchmark_id)
                 for hit in hits
             ]
+            retrieved_identities = [
+                document_identity_from_hit(hit, benchmark_id=args.benchmark_id)
+                for hit in hits
+            ]
             rows.append(
                 {
                     "track": track,
                     "query_id": query_id,
                     "retrieved_document_ids": retrieved_ids[: args.top_k],
+                    "retrieved_document_identities": retrieved_identities[: args.top_k],
                     "latency_ms": round(latency_ms, 3),
                     "error": error,
                     **(
-                        query_metrics(retrieved_ids, relevance)
+                        query_metrics(retrieved_identities, relevance)
                         if error is None
                         else _zero_metrics()
                     ),
