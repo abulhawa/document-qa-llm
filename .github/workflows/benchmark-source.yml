@@ -67,15 +67,44 @@ jobs:
           restore-keys: |
             benchmark-public-source-${{ runner.os }}-
 
+      - name: Restore verified predecessor source for composite-v2
+        if: inputs.benchmark_id == 'composite-v2'
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          BUCKET_TOKEN="$(env -u HF_TOKEN hf auth token)"
+          [[ -n "$BUCKET_TOKEN" ]] || { echo "::error::Empty bucket token."; exit 1; }
+          echo "::add-mask::$BUCKET_TOKEN"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/source/current.json" "$RUNNER_TEMP/base-source.json"
+          BASE_FINGERPRINT="$(python - "$RUNNER_TEMP/base-source.json" <<'PY'
+          import json, sys
+          pointer=json.load(open(sys.argv[1], encoding="utf-8"))
+          if pointer.get("benchmark_id") != "composite-v1":
+              raise SystemExit("invalid predecessor source pointer")
+          print(pointer["artifact_fingerprint"])
+          PY
+          )"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/source/$BASE_FINGERPRINT" ".benchmark/base/source"
+
       - name: Build deterministic source corpus
         env:
           PYTHONPATH: .
         run: |
-          python scripts/build_benchmark_source.py \
-            --spec "${{ inputs.composition_file }}" \
-            --lock "${{ inputs.lock_file }}" \
-            --output-root .benchmark/source \
-            --cache-dir .benchmark/cache/source
+          if [[ "${{ inputs.benchmark_id }}" == "composite-v2" ]]; then
+            python scripts/incremental_benchmark_source.py \
+              --spec "${{ inputs.composition_file }}" \
+              --lock "${{ inputs.lock_file }}" \
+              --base-source-root .benchmark/base/source \
+              --output-root .benchmark/source \
+              --cache-dir .benchmark/cache/source
+          else
+            python scripts/build_benchmark_source.py \
+              --spec "${{ inputs.composition_file }}" \
+              --lock "${{ inputs.lock_file }}" \
+              --output-root .benchmark/source \
+              --cache-dir .benchmark/cache/source
+          fi
 
       - name: Read source artifact metadata
         id: source-meta
