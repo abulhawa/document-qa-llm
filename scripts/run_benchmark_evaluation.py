@@ -390,12 +390,15 @@ def _load_qrels(
         for row in _jsonl_rows(path):
             query_id = str(row["query_id"])
             document_id = str(row["document_id"])
+            score = float(row.get("score", 0.0))
             identity = document_identities.get((track, document_id))
             if identity is None:
+                if score <= 0.0:
+                    continue
                 raise ValueError(
-                    f"qrel references unknown document: {track}/{query_id}/{document_id}"
+                    f"positive qrel references unknown document: "
+                    f"{track}/{query_id}/{document_id}"
                 )
-            score = float(row.get("score", 0.0))
             current = qrels[(track, query_id)].get(identity)
             if current is None or score > current:
                 qrels[(track, query_id)][identity] = score

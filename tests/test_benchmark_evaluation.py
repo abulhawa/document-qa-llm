@@ -5,6 +5,7 @@ import math
 from scripts.run_benchmark_evaluation import (
     document_id_from_hit,
     document_identity_from_hit,
+    _load_qrels,
     query_metrics,
     select_tier_queries,
     summarize_results,
@@ -109,3 +110,24 @@ def test_errors_are_counted_as_zero_quality_not_dropped() -> None:
     assert track["errors"] == 1
     assert math.isclose(track["recall_at_5"], 0.5)
     assert math.isclose(track["latency_ms"]["mean"], 20.0)
+
+
+def test_missing_negative_qrel_is_ignored_but_positive_is_required(tmp_path) -> None:
+    tracks = ("open_ragbench", "officeqa", "nfcorpus", "miracl_de", "miracl_ar")
+    for track in tracks:
+        track_root = tmp_path / track / "evaluation"
+        track_root.mkdir(parents=True)
+        (track_root / "qrels.jsonl").write_text("", encoding="utf-8")
+
+    qrels_path = tmp_path / "miracl_de" / "evaluation" / "qrels.jsonl"
+    qrels_path.write_text(
+        '{"query_id":"q1","document_id":"present","score":1}\n'
+        '{"query_id":"q1","document_id":"missing-negative","score":0}\n',
+        encoding="utf-8",
+    )
+
+    qrels = _load_qrels(
+        tmp_path,
+        {("miracl_de", "present"): "sha-present"},
+    )
+    assert qrels[("miracl_de", "q1")] == {"sha-present": 1.0}
