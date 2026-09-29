@@ -139,3 +139,27 @@ def test_checkpoint_signature_tracks_execution_contract():
     assert base != _checkpoint_signature(
         **{**kwargs, "helper_fingerprint": "helper-b"}
     )
+
+
+def test_checkpoint_hf_cli_can_reach_bucket_while_model_loading_is_offline(monkeypatch):
+    import subprocess
+
+    from scripts import checkpoint_benchmark_embeddings as module
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setenv("HF_TOKEN", "test-token")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module._hf(["cp", "source", "destination"])
+
+    assert captured["command"] == ["hf", "buckets", "cp", "source", "destination"]
+    assert "HF_HUB_OFFLINE" not in captured["env"]
+    assert captured["env"]["TRANSFORMERS_OFFLINE"] == "1"
