@@ -54,7 +54,7 @@ def test_index_chunks_success(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    def fake_embed(texts, batch_size=None):
+    def fake_embed(texts, batch_size=None, input_type="passage"):
         return [list(range(qdu.EMBEDDING_SIZE)) for _ in texts]
 
     monkeypatch.setattr(qdu, "embed_texts", fake_embed)
@@ -74,7 +74,7 @@ def test_index_chunks_embedding_failure(monkeypatch):
     mock_client = MagicMock()
     monkeypatch.setattr(qdu, "client", mock_client)
 
-    def fail_embed(texts, batch_size=None):
+    def fail_embed(texts, batch_size=None, input_type="passage"):
         raise RuntimeError("fail")
 
     monkeypatch.setattr(qdu, "embed_texts", fail_embed)
@@ -93,7 +93,7 @@ def test_index_chunks_upsert_failure(monkeypatch):
     monkeypatch.setattr(
         qdu,
         "embed_texts",
-        lambda texts, batch_size=None: [
+        lambda texts, batch_size=None, input_type="passage": [
             list(range(qdu.EMBEDDING_SIZE)) for _ in texts
         ],
     )

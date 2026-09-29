@@ -81,7 +81,7 @@ def retrieve_top_k(query: str, top_k: int = 5) -> List[DocHit]:
             espan.set_attribute(INPUT_VALUE, query)
             espan.set_attribute("question_length", len(query))
             try:
-                query_embedding = embed_texts([query])[0]
+                query_embedding = embed_texts([query], input_type="query")[0]
                 espan.set_attribute(
                     OUTPUT_VALUE, f"{len(query_embedding)} dimensional vector"
                 )

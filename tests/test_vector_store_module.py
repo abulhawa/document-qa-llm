@@ -81,7 +81,7 @@ def setup_fake_qdrant(monkeypatch):
         "q": (1.0, 0.0),
     }
 
-    def fake_embed(texts, batch_size=None):
+    def fake_embed(texts, batch_size=None, input_type="passage"):
         size = qdrant_utils.EMBEDDING_SIZE
         vectors = []
         for t in texts:

@@ -14,6 +14,8 @@ The checked-in `.env.example` is the complete public template. No value in it is
 | `OPENSEARCH_URL` | `http://localhost:9200` | Host application OpenSearch endpoint |
 | `QDRANT_URL` | `http://localhost:6333` | Host application Qdrant endpoint |
 | `EMBEDDING_API_URL` | `http://localhost:8000/embed` | Embedding endpoint |
+| `EMBEDDING_MODEL_REVISION` | `d13f1b27baf31030b7fd040960d60d909913633f` | Immutable revision for the default multilingual E5 model |
+| `EMBEDDING_INPUT_FORMAT` | `e5` | Applies role-aware `query: ` / `passage: ` prefixes inside the embedder |
 | `LLM_BASE_URL` | `http://localhost:5000` | Local LLM server base URL |
 | `USE_GROQ` | `false` | Select the optional hosted Groq path |
 | `GROQ_API_KEY` | empty | Required only when `USE_GROQ=true`; keep secret |
@@ -29,6 +31,8 @@ The LLM server is not included in Compose. The default model list/load/info path
 - `EMBEDDING_MODEL_NAME`, `EMBEDDING_SIZE`, `EMBEDDING_BATCH_SIZE`, and `EMBEDDING_REQ_MAX_CHUNKS` configure the client/service contract.
 - `EMBEDDING_DEVICE` and `EMBEDDING_FP16` configure the container model runtime.
 - `CHUNK_SIZE`, `CHUNK_OVERLAP`, and `CHUNK_SCORE_THRESHOLD` affect indexing/retrieval behavior. Treat changes as experiments and evaluate/reindex consistently.
+
+The default multilingual E5 embedding path uses an explicit role contract: stored document chunks are embedded as `passage: ...`, while retrieval questions are embedded as `query: ...`. This changes vector semantics relative to older raw-text embeddings. Existing Qdrant vectors created before this contract must be re-embedded/reindexed before using the new query path; do not mix raw-text vectors with role-prefixed query embeddings.
 
 ## Retrieval, QA, and caching
 

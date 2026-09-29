@@ -267,14 +267,21 @@ For the normal case, parsing and chunking should be reused for a long time rathe
 
 Rebuild when chunks, the embedding model/revision, dimensionality, normalization, or embedding configuration changes.
 
-Typical contents:
+The current embedding stage stores normalized multilingual E5 vectors in deterministic CPU/float32 shards and also embeds benchmark queries with the matching query role:
 
 ```text
-embeddings/
-├── embeddings.npy
-├── chunk_ids.json
+embeddings/<fingerprint>/
+├── shards/<NNN>/
+│   ├── embeddings.npy
+│   ├── records.jsonl
+│   └── manifest.json
+├── queries/<track>/
+│   ├── embeddings.npy
+│   └── records.jsonl
 └── manifest.json
 ```
+
+Document chunks use the E5 `passage: ` role and benchmark queries use `query: `. The exact model revision, runtime packages, normalization, input contract, execution device, and output dtype are included in artifact lineage.
 
 The chunk artifact plus embeddings form the portable canonical representation used to rebuild search-engine-specific indexes.
 
@@ -378,7 +385,7 @@ The repository contains a manual workflow for each stage:
 
 The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. GitHub Actions obtains a short-lived read-only Hugging Face token through the account CI/CD OIDC identity, then persists the complete mixed source artifact privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/source/<fingerprint>/`. A small mutable `source/current.json` pointer identifies the current immutable source artifact.
 
-The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Embed, index, and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
+The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Benchmark 4 embedding is operational and manual-only; index and evaluation workflows remain non-operational planning shells. No benchmark workflow is triggered automatically.
 
 
 ### Source-workflow dependency footprint
