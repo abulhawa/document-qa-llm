@@ -1447,7 +1447,7 @@
       ]
     },
     "open_ragbench": {
-      "hard_negative_document_ids": [
+      "distractor_document_ids": [
         "2406.06145v5",
         "2410.07168v2",
         "2409.02293v3",
@@ -2369,6 +2369,7 @@
         "2411.02804v1",
         "2408.10999v2"
       ],
+      "distractor_scope": "non_gold_for_selected_queries",
       "positive_document_ids": [
         "2407.03285v2",
         "2407.06295v3",
@@ -2639,7 +2640,7 @@
       "revision": "63f6b052ff83508b08e242db42263ee708815c26"
     }
   },
-  "spec_sha256": "1035b5b82b3e3f79473a3e977f30269002591dd50ede708569a47fcf452c0695",
+  "spec_sha256": "6061faea78fc6d8f6c980560eabfc2adc587ef32653be959c665c845ba6f58dc",
   "status": "locked"
 }
 
