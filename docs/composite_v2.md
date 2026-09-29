@@ -19,19 +19,40 @@ from the frozen v1 lock. Its Open RAGBench selection contains the same v1
 positives and queries plus all remaining PDFs. This avoids accidental drift
 if upstream datasets change later.
 
-## Processing policy
+## Incremental processing
 
-The source lock is a membership definition. The existing v1 parse, chunk,
-embedding, and index workflows still fingerprint entire parent artifacts and
-would recompute unchanged documents for v2. Do not launch those legacy jobs
-for `composite-v2`. Use the verified cache indexes described in
-[Reusable benchmark cache indexes](benchmark_cache.md) when implementing v2
-stage readers: match source hashes and stage signatures, reuse existing output
-for unchanged documents and chunks, and compute only cache misses. Preserve
-all v1 bucket artifacts. A separate v2 manifest should record reused and new
-entries, checksums, and any cache misses or ambiguous embedding text keys.
+The cloud workflows have a `composite-v2` path that uses the persisted
+`composite-v1` artifacts as its predecessor. The v1 artifacts remain in place.
+
+1. **Source:** Copy unchanged documents from the v1 source artifact and download
+   the 800 newly selected PDFs. The four unchanged tracks are copied in full.
+2. **Parse:** Reuse a v1 document when its source hash, file type, parser code,
+   parser settings, Python version, and relevant package versions match. Parse
+   only the remaining documents.
+3. **Chunk:** Reuse a v1 chunk set when the parsed content and chunker signature
+   match. Split only the remaining documents.
+4. **Embed:** Reuse vectors by exact track, document, chunk index, chunk ID, and
+   text hash when the model and runtime signature match. Encode only misses.
+   Existing checkpoints still allow an interrupted shard to resume.
+5. **Index:** Restore the v1 OpenSearch and Qdrant snapshots. Retain existing
+   entries for reused chunks, insert new entries, and delete entries no longer
+   in the target corpus. If the embedding signature changes, Qdrant updates
+   the existing points with the new vectors. The backend versions and index
+   contracts must match the predecessor snapshots.
+
+Each v2 stage writes a full artifact manifest with a `reuse` summary. The
+v2 paths of reused chunks retain their original `benchmark://composite-v1/`
+source URI so their native index IDs stay stable; the evaluator accepts those
+source URIs when scoring v2. New chunks use v2 source URIs.
+
+Run the five benchmark workflows in order: Source Corpus, Parse, Chunk, Embed,
+then Index. Select `composite-v2` in each job. For Source Corpus, use
+`evaluation/benchmarks/composite_v2.yaml` and
+`evaluation/benchmarks/composite_v2.lock.json`. For Chunk, Embed, and Index,
+pass the **v2** parent artifact fingerprints from the preceding persisted
+manifests. Their form defaults still name v1 fingerprints. Run Benchmark 6
+retrieval evaluation with the resulting v2 index and the same 160 questions.
 
 The fixed query set makes a v1/v2 comparison useful for measuring retrieval
-under a larger corpus. Report the corpus sizes alongside metrics, since the
-two runs are different benchmark conditions.
-
+under a larger corpus. Report corpus sizes alongside metrics because the two
+runs are different benchmark conditions.
