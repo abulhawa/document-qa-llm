@@ -59,6 +59,16 @@ jobs:
           path: ~/.cache/huggingface/hub
           key: benchmark-model-${{ runner.os }}-${{ inputs.embedding_model }}-${{ inputs.model_revision }}
 
+      - name: Mint short-lived Hugging Face read token
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: abulhawa
+        run: |
+          TOKEN="$(hf auth token)"
+          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face OIDC read token."; exit 1; }
+          echo "::add-mask::$TOKEN"
+          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
       - name: Prefetch exact embedding model revision
         id: model-snapshot
         shell: bash
@@ -153,16 +163,6 @@ jobs:
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
           python -m pip install -r requirements/embed.txt
 
-      - name: Mint short-lived Hugging Face read token
-        shell: bash
-        env:
-          HF_OIDC_RESOURCE: abulhawa
-        run: |
-          TOKEN="$(hf auth token)"
-          [[ -n "$TOKEN" ]] || { echo "::error::Empty Hugging Face OIDC read token."; exit 1; }
-          echo "::add-mask::$TOKEN"
-          echo "HF_TOKEN=$TOKEN" >> "$GITHUB_ENV"
-
       - name: Restore exact chunk artifact
         id: parent
         shell: bash
@@ -207,8 +207,6 @@ jobs:
         shell: bash
         env:
           HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
-          HF_HUB_OFFLINE: "1"
-          TRANSFORMERS_OFFLINE: "1"
         run: |
           BUCKET_TOKEN="$(hf auth token)"
           [[ -n "$BUCKET_TOKEN" ]] || { echo "::error::Empty Hugging Face bucket token."; exit 1; }
@@ -231,7 +229,7 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
+            HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then
