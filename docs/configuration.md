@@ -32,6 +32,8 @@ The LLM server is not included in Compose. The default model list/load/info path
 - `EMBEDDING_DEVICE` and `EMBEDDING_FP16` configure the container model runtime.
 - `CHUNK_SIZE`, `CHUNK_OVERLAP`, and `CHUNK_SCORE_THRESHOLD` affect indexing/retrieval behavior. Treat changes as experiments and evaluate/reindex consistently.
 
+The default multilingual E5 embedding path uses an explicit role contract: stored document chunks are embedded as `passage: ...`, while retrieval questions are embedded as `query: ...`. This changes vector semantics relative to older raw-text embeddings. Existing Qdrant vectors created before this contract must be re-embedded/reindexed before using the new query path; do not mix raw-text vectors with role-prefixed query embeddings.
+
 ## Retrieval, QA, and caching
 
 - Reranking is controlled by `RETRIEVAL_ENABLE_RERANK`, its candidate/top-N/timeouts, `RERANK_API_URL`, and the embedder service's `RERANK_*` model settings. It is off by default.

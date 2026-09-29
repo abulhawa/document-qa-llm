@@ -23,11 +23,6 @@ on:
         required: true
         default: d13f1b27baf31030b7fd040960d60d909913633f
         type: string
-      shard_count:
-        description: Number of CPU embedding shards
-        required: true
-        default: "8"
-        type: string
       batch_size:
         description: SentenceTransformer batch size per runner
         required: true
@@ -107,7 +102,7 @@ jobs:
         id: identity
         shell: bash
         run: |
-          python scripts/embed_benchmark_chunks.py             --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"             --output-root .benchmark/embeddings             --benchmark-id "${{ inputs.benchmark_id }}"             --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"             --model-name "${{ inputs.embedding_model }}"             --model-revision "${{ inputs.model_revision }}"             --input-format e5             --execution-device cpu             --batch-size "${{ inputs.batch_size }}"             --shard-index "${{ matrix.shard_index }}"             --shard-count "${{ inputs.shard_count }}"             --fingerprint-only
+          python scripts/embed_benchmark_chunks.py             --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"             --output-root .benchmark/embeddings             --benchmark-id "${{ inputs.benchmark_id }}"             --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"             --model-name "${{ inputs.embedding_model }}"             --model-revision "${{ inputs.model_revision }}"             --input-format e5             --execution-device cpu             --batch-size "${{ inputs.batch_size }}"             --shard-index "${{ matrix.shard_index }}"             --shard-count "8"             --fingerprint-only
           python - ".benchmark/embeddings/${{ inputs.benchmark_id }}/build.json" "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           from pathlib import Path
@@ -131,7 +126,7 @@ jobs:
           REMOTE_MANIFEST="$RUNNER_TEMP/remote-shard.json"
 
           if HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$REMOTE_ROOT/shards/$SHARD/manifest.json" "$REMOTE_MANIFEST" >/dev/null 2>&1; then
-            python - "$REMOTE_MANIFEST" "$FINGERPRINT" "${{ matrix.shard_index }}" "${{ inputs.shard_count }}" <<'PY'
+            python - "$REMOTE_MANIFEST" "$FINGERPRINT" "${{ matrix.shard_index }}" "8" <<'PY'
           import json, sys
           from pathlib import Path
           m=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
@@ -142,7 +137,7 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "${{ inputs.shard_count }}"
+            python scripts/embed_benchmark_chunks.py               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then
@@ -181,7 +176,7 @@ jobs:
           mkdir -p "$MARKERS"
           HF_TOKEN="$BUCKET_TOKEN" hf buckets sync             "hf://buckets/abulhawa/document-qa-artifacts/${{ inputs.benchmark_id }}/embeddings/runs/${{ github.run_id }}"             "$MARKERS"
 
-          FINGERPRINT="$(python - "$MARKERS" "${{ inputs.shard_count }}" <<'PY'
+          FINGERPRINT="$(python - "$MARKERS" "8" <<'PY'
           import json, sys
           from pathlib import Path
           paths=sorted(Path(sys.argv[1]).glob("shard-*.json"))
@@ -199,7 +194,7 @@ jobs:
           if HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$REMOTE_ROOT/manifest.json" "$MANIFEST" >/dev/null 2>&1; then
             REUSED=true
           else
-            python scripts/finalize_benchmark_embeddings.py               --markers-dir "$MARKERS"               --output "$MANIFEST"               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}"               --artifact-uri "$REMOTE_ROOT"               --expected-shards "${{ inputs.shard_count }}"
+            python scripts/finalize_benchmark_embeddings.py               --markers-dir "$MARKERS"               --output "$MANIFEST"               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}"               --artifact-uri "$REMOTE_ROOT"               --expected-shards "8"
             HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "$MANIFEST" "$REMOTE_ROOT/manifest.json"
             REUSED=false
           fi
