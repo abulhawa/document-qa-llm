@@ -70,6 +70,7 @@ def _hf(
     # Model loading runs offline, but checkpoint persistence must reach the
     # Hugging Face bucket and OIDC endpoint.
     env.pop("HF_HUB_OFFLINE", None)
+    env.pop("TRANSFORMERS_OFFLINE", None)
     kwargs: dict[str, Any] = {
         "env": env,
         "text": True,

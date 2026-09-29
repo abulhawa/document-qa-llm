@@ -162,4 +162,4 @@ def test_checkpoint_hf_cli_can_reach_bucket_while_model_loading_is_offline(monke
 
     assert captured["command"] == ["hf", "buckets", "cp", "source", "destination"]
     assert "HF_HUB_OFFLINE" not in captured["env"]
-    assert captured["env"]["TRANSFORMERS_OFFLINE"] == "1"
+    assert "TRANSFORMERS_OFFLINE" not in captured["env"]
