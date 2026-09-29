@@ -197,17 +197,15 @@ def embed(args: argparse.Namespace) -> None:
         and base["package_versions"] == embedder._package_versions()
         and base["python_version"] == platform.python_version()
     )
-    vectors: dict[tuple[str, str], np.ndarray] = {}
+    vectors: dict[tuple[str, str, int, str, str], np.ndarray] = {}
     query_vectors: dict[tuple[str, str, str], np.ndarray] = {}
     if compatible:
-        chunks = {
-            str(row["id"]): row
-            for _, row in chunker._iter_chunks(args.base_chunks_root)
-        } if hasattr(chunker, "_iter_chunks") else {
-            str(row["id"]): row
+        chunks = [
+            row
             for track in embedder.TRACKS
             for row in _rows(args.base_chunks_root / track / "chunks.jsonl")
-        }
+        ]
+        seen_global_indices: set[int] = set()
         for shard in range(int(base["shard_count"])):
             folder = args.base_root / "shards" / f"{shard:03d}"
             matrix = np.load(folder / "embeddings.npy", allow_pickle=False, mmap_mode="r")
@@ -215,10 +213,26 @@ def embed(args: argparse.Namespace) -> None:
             if len(matrix) != len(records):
                 raise ValueError("base vector row mismatch")
             for i, record in enumerate(records):
-                row = chunks.get(str(record["id"]))
-                if row and row["source_document_id"] == record["source_document_id"]:
-                    key = (str(row["id"]), hashlib.sha256(row["text"].encode()).hexdigest())
-                    vectors[key] = matrix[i]
+                global_index = int(record["global_index"])
+                if global_index < 0 or global_index >= len(chunks) or global_index % int(base["shard_count"]) != shard:
+                    raise ValueError("base vector global index mismatch")
+                if global_index in seen_global_indices:
+                    raise ValueError("duplicate base vector global index")
+                seen_global_indices.add(global_index)
+                row = chunks[global_index]
+                if (
+                    record["row_index"] != i or record["id"] != row["id"]
+                    or record["source_benchmark"] != row["source_benchmark"]
+                    or record["source_document_id"] != row["source_document_id"]
+                    or record["chunk_index"] != row["chunk_index"]
+                ):
+                    raise ValueError("base embedding/chunk identity mismatch")
+                key = (str(row["source_benchmark"]), str(row["source_document_id"]),
+                       int(row["chunk_index"]), str(row["id"]),
+                       hashlib.sha256(row["text"].encode()).hexdigest())
+                vectors[key] = matrix[i]
+        if len(seen_global_indices) != len(chunks):
+            raise ValueError("base embedding artifact does not cover every chunk")
         for track in embedder.TRACKS:
             folder = args.base_root / "queries" / track
             if not folder.exists():
@@ -239,7 +253,9 @@ def embed(args: argparse.Namespace) -> None:
 
     def passage_vectors(rows: list[dict[str, Any]], model: Any, *, batch_size: int, input_format: str) -> np.ndarray:
         texts = [str(row["text"]) for row in rows]
-        keys = [(str(row["id"]), hashlib.sha256(text.encode()).hexdigest()) for row, text in zip(rows, texts)]
+        keys = [(str(row["source_benchmark"]), str(row["source_document_id"]),
+                 int(row["chunk_index"]), str(row["id"]),
+                 hashlib.sha256(text.encode()).hexdigest()) for row, text in zip(rows, texts)]
         found = [vectors.get(key) for key in keys]
         missing = [i for i, value in enumerate(found) if value is None]
         if missing:
