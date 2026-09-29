@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from scripts import chunk_benchmark_parsed as chunker
+from scripts import embed_benchmark_chunks as embedder
 from scripts import incremental_benchmark_stages as incremental
 from scripts import parse_benchmark_source as parser
 
@@ -139,4 +140,64 @@ def test_chunk_reuses_same_parsed_content_with_predecessor_path(tmp_path, monkey
     assert json.loads((output / "composite-v2" / "open_ragbench" / "chunks.jsonl").read_text())[
         "path"
     ] == row["path"]
+
+
+def test_embedding_reuses_exact_old_vector_and_encodes_only_new_text(tmp_path, monkeypatch) -> None:
+    import numpy as np
+
+    base_chunks = tmp_path / "base-chunks"
+    base_embeddings = tmp_path / "base-embeddings"
+    target_chunks = tmp_path / "target-chunks"
+    for root in (base_chunks, target_chunks):
+        _empty_tracks(root, ("chunks.jsonl",))
+    old = {"id": "old-chunk", "source_benchmark": "open_ragbench",
+           "source_document_id": "doc-a", "chunk_index": 0, "text": "old"}
+    new = {"id": "new-chunk", "source_benchmark": "open_ragbench",
+           "source_document_id": "doc-b", "chunk_index": 0, "text": "new"}
+    _jsonl(base_chunks / "open_ragbench" / "chunks.jsonl", [old])
+    _jsonl(target_chunks / "open_ragbench" / "chunks.jsonl", [old, new])
+    _manifest(base_chunks, "chunks")
+    shard = base_embeddings / "shards" / "000"
+    shard.mkdir(parents=True)
+    np.save(shard / "embeddings.npy", np.asarray([[1.0, 2.0]], dtype=np.float32), allow_pickle=False)
+    _jsonl(shard / "records.jsonl", [{"row_index": 0, "global_index": 0,
+                                     "id": "old-chunk", "source_benchmark": "open_ragbench",
+                                     "source_document_id": "doc-a", "chunk_index": 0}])
+    model = {"name": "test-model", "revision": "revision", "input_format": "e5",
+             "document_input_type": "passage", "query_input_type": "query",
+             "normalize_embeddings": True, "execution_device": "cpu", "output_dtype": "float32"}
+    _manifest(base_embeddings, "embeddings", parent_chunks_artifact_fingerprint="chunks-v1",
+              embedder_fingerprint=embedder._embedder_fingerprint(), model=model,
+              package_versions=embedder._package_versions(),
+              python_version=incremental.platform.python_version(),
+              shard_count=1, vector_dimension=2)
+    calls: list[list[str]] = []
+
+    def encode(texts, **kwargs):
+        calls.append(texts)
+        return np.asarray([[3.0, 4.0]], dtype=np.float32)
+
+    def build(chunks_root, output_root, checkpoint_root, **kwargs):
+        vectors = kwargs["vector_provider"]([old, new], None, batch_size=16, input_format="e5")
+        assert vectors.tolist() == [[1.0, 2.0], [3.0, 4.0]]
+        output = output_root / "composite-v2"
+        _json(output / "shards" / "000" / "manifest.json", {"artifact_type": "embedding-shard"})
+        return output
+
+    monkeypatch.setattr(embedder, "_encode", encode)
+    monkeypatch.setattr(incremental.checkpoint, "build_checkpointed_shard", build)
+    output = tmp_path / "embedding-out"
+    incremental.embed(argparse.Namespace(
+        base_chunks_root=base_chunks, base_root=base_embeddings,
+        chunks_root=target_chunks, output_root=output, checkpoint_root=tmp_path / "checkpoints",
+        benchmark_id="composite-v2", parent_fingerprint="chunks-v2",
+        artifact_fingerprint="embedding-v2", model_name="test-model",
+        model_revision="revision", input_format="e5", execution_device="cpu",
+        batch_size=16, shard_index=0, shard_count=1, checkpoint_size=2048,
+        remote_root="hf://test", fingerprint_only=False, repo_revision="test",
+    ))
+    reuse = json.loads((output / "composite-v2" / "shards" / "000" / "manifest.json").read_text())["reuse"]
+    assert reuse["vectors_reused"] == 1
+    assert reuse["vectors_computed"] == 1
+    assert calls == [["new"]]
 
