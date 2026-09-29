@@ -181,7 +181,7 @@ def index_chunks_in_batches(
     """
     for group in _batches_by_budget(chunks, EMBEDDING_REQ_MAX_CHUNKS):
         texts = [c["text"] for c in group]
-        vectors = embed_texts(texts, batch_size=EMBEDDING_BATCH_SIZE)
+        vectors = embed_texts(texts, batch_size=EMBEDDING_BATCH_SIZE, input_type="passage")
         vectors, replaced = _sanitize_vectors(vectors, expected_size=EMBEDDING_SIZE)
         if replaced:
             logger.warning(

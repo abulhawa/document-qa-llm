@@ -14,6 +14,8 @@ The checked-in `.env.example` is the complete public template. No value in it is
 | `OPENSEARCH_URL` | `http://localhost:9200` | Host application OpenSearch endpoint |
 | `QDRANT_URL` | `http://localhost:6333` | Host application Qdrant endpoint |
 | `EMBEDDING_API_URL` | `http://localhost:8000/embed` | Embedding endpoint |
+| `EMBEDDING_MODEL_REVISION` | `d13f1b27baf31030b7fd040960d60d909913633f` | Immutable revision for the default multilingual E5 model |
+| `EMBEDDING_INPUT_FORMAT` | `e5` | Applies role-aware `query: ` / `passage: ` prefixes inside the embedder |
 | `LLM_BASE_URL` | `http://localhost:5000` | Local LLM server base URL |
 | `USE_GROQ` | `false` | Select the optional hosted Groq path |
 | `GROQ_API_KEY` | empty | Required only when `USE_GROQ=true`; keep secret |

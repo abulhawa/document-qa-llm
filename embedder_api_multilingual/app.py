@@ -1,7 +1,7 @@
 import logging
 import os
 from threading import Lock
-from typing import List
+from typing import List, Literal
 
 import torch
 from fastapi import FastAPI, Query
@@ -11,10 +11,13 @@ from sentence_transformers import CrossEncoder, SentenceTransformer  # type: ign
 
 from config import (
     EMBEDDING_BATCH_SIZE,
+    EMBEDDING_INPUT_FORMAT,
     EMBEDDING_MODEL_NAME,
+    EMBEDDING_MODEL_REVISION,
     RERANK_MODEL_NAME,
     RERANK_TOP_N_DEFAULT,
 )
+from input_format import prepare_embedding_texts
 
 
 # Logging
@@ -34,8 +37,10 @@ USE_FP16 = os.getenv("EMBEDDING_FP16", "false").strip().lower() in {
 RERANK_DEVICE = os.getenv("RERANK_DEVICE", DEVICE).lower()
 
 logger.info(
-    "Loading SentenceTransformer model: name=%s device=%s fp16=%s",
+    "Loading SentenceTransformer model: name=%s revision=%s input_format=%s device=%s fp16=%s",
     EMBEDDING_MODEL_NAME,
+    EMBEDDING_MODEL_REVISION or "default",
+    EMBEDDING_INPUT_FORMAT,
     DEVICE,
     USE_FP16,
 )
@@ -47,7 +52,11 @@ try:
 except Exception:
     pass
 
-model = SentenceTransformer(EMBEDDING_MODEL_NAME, device=DEVICE)
+model = SentenceTransformer(
+    EMBEDDING_MODEL_NAME,
+    revision=EMBEDDING_MODEL_REVISION or None,
+    device=DEVICE,
+)
 model = model.eval()
 if USE_FP16 and DEVICE.startswith("cuda") and torch.cuda.is_available():
     try:
@@ -67,6 +76,7 @@ app = FastAPI()
 class TextRequest(BaseModel):
     texts: List[str]
     batch_size: int | None = None  # Optional override per request
+    input_type: Literal["passage", "query"] = "passage"
 
 
 class RerankRequest(BaseModel):
@@ -75,10 +85,19 @@ class RerankRequest(BaseModel):
     top_n: int | None = None
 
 
-def get_embeddings(texts: List[str], batch_size: int) -> List[List[float]]:
+def get_embeddings(
+    texts: List[str],
+    batch_size: int,
+    input_type: Literal["passage", "query"] = "passage",
+) -> List[List[float]]:
+    prepared = prepare_embedding_texts(
+        texts,
+        input_type=input_type,
+        input_format=EMBEDDING_INPUT_FORMAT,
+    )
     embeddings: List[List[float]] = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
+    for i in range(0, len(prepared), batch_size):
+        batch = prepared[i : i + batch_size]
         if USE_FP16 and DEVICE.startswith("cuda") and torch.cuda.is_available():
             with torch.inference_mode(), torch.cuda.amp.autocast(dtype=torch.float16):
                 batch_embeddings = model.encode(
@@ -119,8 +138,13 @@ def rank_indices_by_score(scores: List[float]) -> List[int]:
 @app.post("/embed")
 async def embed_texts(req: TextRequest):
     batch_size = req.batch_size or EMBEDDING_BATCH_SIZE
-    logger.info("Received %s texts | batch_size=%s", len(req.texts), batch_size)
-    embeddings = get_embeddings(req.texts, batch_size)
+    logger.info(
+        "Received %s texts | input_type=%s | batch_size=%s",
+        len(req.texts),
+        req.input_type,
+        batch_size,
+    )
+    embeddings = get_embeddings(req.texts, batch_size, req.input_type)
     return {"embeddings": embeddings}
 
 
@@ -154,6 +178,9 @@ async def health_check():
         "device": device,
         "fp16": USE_FP16,
         "batch_default": EMBEDDING_BATCH_SIZE,
+        "embedding_model": EMBEDDING_MODEL_NAME,
+        "embedding_model_revision": EMBEDDING_MODEL_REVISION or None,
+        "embedding_input_format": EMBEDDING_INPUT_FORMAT,
         "rerank_model": RERANK_MODEL_NAME,
         "rerank_device": RERANK_DEVICE,
         "rerank_default_top_n": RERANK_TOP_N_DEFAULT,
