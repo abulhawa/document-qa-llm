@@ -28,6 +28,11 @@ on:
         required: true
         default: "16"
         type: string
+      checkpoint_size:
+        description: Durable document rows per embedding checkpoint
+        required: true
+        default: "2048"
+        type: string
 
 permissions:
   contents: read
@@ -232,7 +237,22 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.embed_benchmark_chunks               --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}"               --output-root .benchmark/embeddings               --benchmark-id "${{ inputs.benchmark_id }}"               --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}"               --model-name "${{ inputs.embedding_model }}"               --model-revision "${{ inputs.model_revision }}"               --input-format e5               --execution-device cpu               --batch-size "${{ inputs.batch_size }}"               --shard-index "${{ matrix.shard_index }}"               --shard-count "8"
+            HF_TOKEN="$BUCKET_TOKEN" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.checkpoint_benchmark_embeddings \
+              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+              --output-root .benchmark/embeddings \
+              --checkpoint-root .benchmark/embedding-checkpoints \
+              --benchmark-id "${{ inputs.benchmark_id }}" \
+              --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}" \
+              --artifact-fingerprint "$FINGERPRINT" \
+              --model-name "${{ inputs.embedding_model }}" \
+              --model-revision "${{ inputs.model_revision }}" \
+              --input-format e5 \
+              --execution-device cpu \
+              --batch-size "${{ inputs.batch_size }}" \
+              --shard-index "${{ matrix.shard_index }}" \
+              --shard-count "8" \
+              --checkpoint-size "${{ inputs.checkpoint_size }}" \
+              --remote-root "$REMOTE_ROOT"
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then

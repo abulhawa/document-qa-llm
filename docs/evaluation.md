@@ -283,6 +283,8 @@ embeddings/<fingerprint>/
 
 Document chunks use the E5 `passage: ` role and benchmark queries use `query: `. The exact model revision, runtime packages, normalization, input contract, execution device, and output dtype are included in artifact lineage.
 
+Benchmark 4 is resumable at two levels. A complete shard is reused whenever its final shard manifest matches the embedding artifact fingerprint and shard layout, so execution-only workflow changes do not force already completed embeddings to run again. Incomplete shards are split into durable document checkpoints, currently 2,048 rows by default. Each checkpoint uploads its data first and its manifest last under `embeddings/<fingerprint>/work/<checkpoint-signature>/...`; the manifest is the completion marker. A checkpoint is reused only when both the embedding fingerprint and the checkpoint execution signature match. The execution signature tracks the checkpoint helper implementation, shard count, checkpoint size, and batch size. After all parts are present they are assembled into the unchanged final `shards/<NNN>/` contract, so downstream index/evaluation stages do not depend on checkpoint internals.
+
 The chunk artifact plus embeddings form the portable canonical representation used to rebuild search-engine-specific indexes.
 
 ### Stage 5: native search indexes

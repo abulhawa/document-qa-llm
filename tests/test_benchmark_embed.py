@@ -102,3 +102,40 @@ def test_local_model_resolution_uses_slim_snapshot_contract(tmp_path, monkeypatc
     assert captured["revision"] == "deadbeef"
     assert captured["local_files_only"] is True
     assert captured["ignore_patterns"] == module.MODEL_IGNORE_PATTERNS
+
+
+def test_checkpoint_ranges_cover_rows_without_overlap():
+    from scripts.checkpoint_benchmark_embeddings import _part_ranges
+
+    assert _part_ranges(0, 2048) == []
+    assert _part_ranges(5000, 2048) == [
+        (0, 2048),
+        (2048, 4096),
+        (4096, 5000),
+    ]
+
+
+def test_checkpoint_signature_tracks_execution_contract():
+    from scripts.checkpoint_benchmark_embeddings import _checkpoint_signature
+
+    kwargs = {
+        "artifact_fingerprint": "artifact-a",
+        "shard_count": 8,
+        "checkpoint_size": 2048,
+        "batch_size": 16,
+        "helper_fingerprint": "helper-a",
+    }
+    base = _checkpoint_signature(**kwargs)
+    assert len(base) == 64
+    assert base != _checkpoint_signature(
+        **{**kwargs, "artifact_fingerprint": "artifact-b"}
+    )
+    assert base != _checkpoint_signature(
+        **{**kwargs, "checkpoint_size": 4096}
+    )
+    assert base != _checkpoint_signature(
+        **{**kwargs, "batch_size": 32}
+    )
+    assert base != _checkpoint_signature(
+        **{**kwargs, "helper_fingerprint": "helper-b"}
+    )
