@@ -4,6 +4,7 @@ import math
 
 from scripts.run_benchmark_evaluation import (
     document_id_from_hit,
+    document_identity_from_hit,
     query_metrics,
     select_tier_queries,
     summarize_results,
@@ -53,6 +54,23 @@ def test_document_id_from_benchmark_path() -> None:
         "checksum": "fallback",
     }
     assert document_id_from_hit(hit, benchmark_id="composite-v1") == "1939_03.txt"
+
+
+def test_document_identity_prefers_content_checksum_for_duplicate_aliases() -> None:
+    first = {
+        "path": "benchmark://composite-v1/open_ragbench/doc-a",
+        "checksum": "same-content-sha",
+    }
+    duplicate = {
+        "path": "benchmark://composite-v1/officeqa/doc-b",
+        "checksum": "same-content-sha",
+    }
+
+    assert document_identity_from_hit(
+        first, benchmark_id="composite-v1"
+    ) == document_identity_from_hit(
+        duplicate, benchmark_id="composite-v1"
+    )
 
 
 def test_errors_are_counted_as_zero_quality_not_dropped() -> None:
