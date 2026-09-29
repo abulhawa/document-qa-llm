@@ -2,6 +2,7 @@
 schema_version: 1
 benchmark_id: composite-v2
 status: source-acquisition-ready
+requires_frozen_lock: true
 selection_seed: 20260928
 selection_algorithm: stable-sha256-v1
 
@@ -47,7 +48,7 @@ sources:
     source_format: pdf
     selection:
       positive_documents: 80
-      hard_negative_documents: 920
+      distractor_documents: 920
       questions: 160
       modality: text_only
       questions_per_positive_target: 2
@@ -57,12 +58,13 @@ sources:
       query_selection:
         prefer_one_extractive_and_one_abstractive_per_document: true
         fallback: stable_hash
-      hard_negative_pool: documents_not_gold_for_selected_queries
+      distractor_pool: documents_not_gold_for_selected_queries
     notes:
       - Use only upstream labels and stable hashing; never use Document QA scores.
       - Record observed arXiv category distribution after selection rather than optimizing against retrieval performance.
       - The 80 positive PDFs and 160 questions are identical to composite-v1.
-      - All 1,000 upstream arXiv PDFs are included; 920 are negatives for the selected questions.
+      - All 1,000 upstream arXiv PDFs are included; 920 are distractors for the selected questions.
+      - Distractors were not selected by semantic or lexical similarity.
       - Documents relevant only to unselected questions are valid distractors here.
       - Exact document/query IDs are frozen in the source lock.
 
