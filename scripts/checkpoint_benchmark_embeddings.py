@@ -66,8 +66,12 @@ def _hf(
 ) -> subprocess.CompletedProcess[str]:
     if not os.environ.get("HF_TOKEN"):
         raise RuntimeError("HF_TOKEN is required for checkpoint persistence")
+    env = os.environ.copy()
+    # Model loading runs offline, but checkpoint persistence must reach the
+    # Hugging Face bucket and OIDC endpoint.
+    env.pop("HF_HUB_OFFLINE", None)
     kwargs: dict[str, Any] = {
-        "env": os.environ.copy(),
+        "env": env,
         "text": True,
         "check": check,
     }
