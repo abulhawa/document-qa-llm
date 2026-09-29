@@ -31,11 +31,21 @@ def _predecessor(args: argparse.Namespace, engine: str, identity: dict[str, Any]
     if engine == "opensearch":
         if manifest["backend"].get("settings_sha256") != identity["settings_sha256"]:
             raise ValueError("OpenSearch index settings changed")
+        if manifest["backend"].get("index_name") != base.OPENSEARCH_INDEX_NAME:
+            raise ValueError("OpenSearch index name changed")
+        if manifest.get("snapshot", {}).get("format") != "opensearch-fs-repository-tar":
+            raise ValueError("OpenSearch snapshot format changed")
     else:
         if manifest["backend"].get("vector_dimension") != identity["vector_dimension"]:
             raise ValueError("Qdrant vector dimension changed")
         if manifest["backend"].get("distance") != "cosine":
             raise ValueError("Qdrant distance contract changed")
+        if manifest["backend"].get("collection_name") != base.QDRANT_COLLECTION_NAME:
+            raise ValueError("Qdrant collection name changed")
+        if manifest["backend"].get("payload_keys") != list(base.QDRANT_PAYLOAD_KEYS):
+            raise ValueError("Qdrant payload contract changed")
+        if manifest.get("snapshot", {}).get("format") != "qdrant-collection-snapshot":
+            raise ValueError("Qdrant snapshot format changed")
     return manifest
 
 
