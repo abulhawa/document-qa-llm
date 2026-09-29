@@ -113,9 +113,13 @@ def test_errors_are_counted_as_zero_quality_not_dropped() -> None:
 
 
 def test_missing_negative_qrel_is_ignored_but_positive_is_required(tmp_path) -> None:
-    track_root = tmp_path / "miracl_de" / "evaluation"
-    track_root.mkdir(parents=True)
-    qrels_path = track_root / "qrels.jsonl"
+    tracks = ("open_ragbench", "officeqa", "nfcorpus", "miracl_de", "miracl_ar")
+    for track in tracks:
+        track_root = tmp_path / track / "evaluation"
+        track_root.mkdir(parents=True)
+        (track_root / "qrels.jsonl").write_text("", encoding="utf-8")
+
+    qrels_path = tmp_path / "miracl_de" / "evaluation" / "qrels.jsonl"
     qrels_path.write_text(
         '{"query_id":"q1","document_id":"present","score":1}\n'
         '{"query_id":"q1","document_id":"missing-negative","score":0}\n',
