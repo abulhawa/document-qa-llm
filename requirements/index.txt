@@ -2,5 +2,5 @@ huggingface-hub==1.33.*
 numpy==2.4.*
 opensearch-py==3.2.*
 python-dotenv==1.2.*
-qdrant-client==1.17.*
-requests==2.33.*
+qdrant-client==1.19.*
+requests==2.34.*
