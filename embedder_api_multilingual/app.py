@@ -52,11 +52,10 @@ try:
 except Exception:
     pass
 
-model = SentenceTransformer(
-    EMBEDDING_MODEL_NAME,
-    revision=EMBEDDING_MODEL_REVISION or None,
-    device=DEVICE,
-)
+_model_kwargs = {"device": DEVICE}
+if EMBEDDING_MODEL_REVISION:
+    _model_kwargs["revision"] = EMBEDDING_MODEL_REVISION
+model = SentenceTransformer(EMBEDDING_MODEL_NAME, **_model_kwargs)
 model = model.eval()
 if USE_FP16 and DEVICE.startswith("cuda") and torch.cuda.is_available():
     try:
