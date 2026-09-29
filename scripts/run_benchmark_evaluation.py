@@ -564,6 +564,10 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
                 hits = list(output.documents)
             except Exception as exc:  # noqa: BLE001
                 error = f"{exc.__class__.__name__}: {exc}"
+                print(
+                    f"[benchmark6] retrieval error track={track} query_id={query_id}: {error}",
+                    flush=True,
+                )
             latency_ms = (time.perf_counter() - started) * 1000.0
             retrieved_ids = [
                 document_id_from_hit(hit, benchmark_id=args.benchmark_id)
