@@ -142,6 +142,16 @@ def _selected_chunks(
     return selected
 
 
+def _validate_local_model_snapshot(path: Path) -> Path:
+    required = ("modules.json", "config.json", "model.safetensors")
+    missing = [name for name in required if not (path / name).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"cached model snapshot is incomplete; missing: {', '.join(missing)}"
+        )
+    return path
+
+
 def _resolve_local_model_snapshot(model_name: str, model_revision: str) -> Path:
     """Resolve the exact pinned model revision from the local HF cache only."""
 
@@ -154,13 +164,7 @@ def _resolve_local_model_snapshot(model_name: str, model_revision: str) -> Path:
             local_files_only=True,
         )
     )
-    required = ("modules.json", "config.json", "model.safetensors")
-    missing = [name for name in required if not (path / name).exists()]
-    if missing:
-        raise FileNotFoundError(
-            f"cached model snapshot is incomplete; missing: {', '.join(missing)}"
-        )
-    return path
+    return _validate_local_model_snapshot(path)
 
 
 def _identity(
