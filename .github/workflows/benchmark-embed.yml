@@ -54,7 +54,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.15"
 
       - name: Validate benchmark module imports
         run: |
@@ -155,7 +155,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.15"
           cache: pip
           cache-dependency-path: requirements/embed.txt
 
@@ -170,6 +170,10 @@ jobs:
         run: |
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
           python -m pip install -r requirements/embed.txt
+
+      - name: Pin v1 embedding runtime for composite-v2 reuse
+        if: inputs.benchmark_id == 'composite-v2'
+        run: python -m pip install 'huggingface-hub==1.33.0' 'numpy==2.4.6' 'sentence-transformers==5.4.1' 'transformers==5.17.0' 'langchain-core==1.3.3'
 
       - name: Restore exact chunk artifact
         id: parent
@@ -197,6 +201,30 @@ jobs:
               raise SystemExit("chunks persistence metadata mismatch")
           PY
           echo "artifact_fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+
+      - name: Restore verified predecessor embeddings and chunks
+        if: inputs.benchmark_id == 'composite-v2'
+        shell: bash
+        env:
+          HF_OIDC_RESOURCE: buckets/abulhawa/document-qa-artifacts
+        run: |
+          BUCKET_TOKEN="$(hf auth token)"
+          [[ -n "$BUCKET_TOKEN" ]] || { echo "::error::Empty bucket token."; exit 1; }
+          echo "::add-mask::$BUCKET_TOKEN"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets cp "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/embeddings/current.json" "$RUNNER_TEMP/base-embeddings.json"
+          python - "$RUNNER_TEMP/base-embeddings.json" "$GITHUB_ENV" <<'PY'
+          import json, sys
+          pointer=json.load(open(sys.argv[1], encoding="utf-8"))
+          if pointer.get("benchmark_id") != "composite-v1":
+              raise SystemExit("invalid predecessor embeddings pointer")
+          with open(sys.argv[2], "a", encoding="utf-8") as out:
+              out.write("BASE_EMBED_FP=" + pointer["artifact_fingerprint"] + "\n")
+              out.write("BASE_CHUNKS_FP=" + pointer["parent_chunks_artifact_fingerprint"] + "\n")
+          PY
+          source "$GITHUB_ENV"
+          BASE="hf://buckets/abulhawa/document-qa-artifacts/composite-v1"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$BASE/chunks/$BASE_CHUNKS_FP" ".benchmark/base/chunks"
+          HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$BASE/embeddings/$BASE_EMBED_FP" ".benchmark/base/embeddings" --exclude "work/*" --exclude "runs/*"
 
       - name: Compute embedding identity
         id: identity
@@ -237,22 +265,43 @@ jobs:
           PY
             cp "$REMOTE_MANIFEST" "$RUNNER_TEMP/shard-marker.json"
           else
-            HF_TOKEN="$BUCKET_TOKEN" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.checkpoint_benchmark_embeddings \
-              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
-              --output-root .benchmark/embeddings \
-              --checkpoint-root .benchmark/embedding-checkpoints \
-              --benchmark-id "${{ inputs.benchmark_id }}" \
-              --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}" \
-              --artifact-fingerprint "$FINGERPRINT" \
-              --model-name "${{ inputs.embedding_model }}" \
-              --model-revision "${{ inputs.model_revision }}" \
-              --input-format e5 \
-              --execution-device cpu \
-              --batch-size "${{ inputs.batch_size }}" \
-              --shard-index "${{ matrix.shard_index }}" \
-              --shard-count "8" \
-              --checkpoint-size "${{ inputs.checkpoint_size }}" \
-              --remote-root "$REMOTE_ROOT"
+            if [[ "${{ inputs.benchmark_id }}" == "composite-v2" ]]; then
+              HF_TOKEN="$BUCKET_TOKEN" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.incremental_benchmark_stages embed \
+                --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+                --base-chunks-root .benchmark/base/chunks \
+                --base-root .benchmark/base/embeddings \
+                --output-root .benchmark/embeddings \
+                --checkpoint-root .benchmark/embedding-checkpoints \
+                --benchmark-id "${{ inputs.benchmark_id }}" \
+                --parent-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}" \
+                --artifact-fingerprint "$FINGERPRINT" \
+                --model-name "${{ inputs.embedding_model }}" \
+                --model-revision "${{ inputs.model_revision }}" \
+                --input-format e5 \
+                --execution-device cpu \
+                --batch-size "${{ inputs.batch_size }}" \
+                --shard-index "${{ matrix.shard_index }}" \
+                --shard-count "8" \
+                --checkpoint-size "${{ inputs.checkpoint_size }}" \
+                --remote-root "$REMOTE_ROOT"
+            else
+              HF_TOKEN="$BUCKET_TOKEN" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -m scripts.checkpoint_benchmark_embeddings \
+                --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+                --output-root .benchmark/embeddings \
+                --checkpoint-root .benchmark/embedding-checkpoints \
+                --benchmark-id "${{ inputs.benchmark_id }}" \
+                --parent-chunks-fingerprint "${{ steps.parent.outputs.artifact_fingerprint }}" \
+                --artifact-fingerprint "$FINGERPRINT" \
+                --model-name "${{ inputs.embedding_model }}" \
+                --model-revision "${{ inputs.model_revision }}" \
+                --input-format e5 \
+                --execution-device cpu \
+                --batch-size "${{ inputs.batch_size }}" \
+                --shard-index "${{ matrix.shard_index }}" \
+                --shard-count "8" \
+                --checkpoint-size "${{ inputs.checkpoint_size }}" \
+                --remote-root "$REMOTE_ROOT"
+            fi
 
             HF_TOKEN="$BUCKET_TOKEN" hf buckets sync "$ROOT/shards/$SHARD" "$REMOTE_ROOT/shards/$SHARD" --exclude "manifest.json"
             if [[ "${{ matrix.shard_index }}" == "0" && -d "$ROOT/queries" ]]; then
@@ -273,7 +322,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.15"
 
       - name: Install Hugging Face CLI
         run: python -m pip install "huggingface-hub==1.33.*"

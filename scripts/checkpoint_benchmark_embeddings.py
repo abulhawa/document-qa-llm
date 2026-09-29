@@ -263,6 +263,7 @@ def build_checkpointed_shard(
     checkpoint_size: int,
     remote_root: str,
     repo_revision: str,
+    vector_provider: Any | None = None,
 ) -> Path:
     import numpy as np
     from sentence_transformers import SentenceTransformer
@@ -375,12 +376,13 @@ def build_checkpointed_shard(
         remote_part,
     ) in missing_parts:
         part_rows = rows[start_row:stop_row]
-        vectors = base._encode(
-            texts[start_row:stop_row],
-            model=model,
-            input_type="passage",
-            input_format=input_format,
-            batch_size=batch_size,
+        vectors = (
+            vector_provider(part_rows, model, batch_size=batch_size, input_format=input_format)
+            if vector_provider is not None
+            else base._encode(
+                texts[start_row:stop_row], model=model, input_type="passage",
+                input_format=input_format, batch_size=batch_size,
+            )
         )
         if vectors.ndim != 2 or vectors.shape[0] != len(part_rows):
             raise RuntimeError("checkpoint embedding row count mismatch")

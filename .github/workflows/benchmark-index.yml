@@ -161,17 +161,41 @@ jobs:
       - name: Build, checkpoint, and persist OpenSearch snapshot
         if: steps.reuse.outputs.reused_existing != 'true'
         run: |
-          python -m scripts.build_benchmark_indexes opensearch \
-            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
-            --benchmark-id "${{ inputs.benchmark_id }}" \
-            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
-            --backend-version "${{ inputs.opensearch_version }}" \
-            --url http://localhost:9200 \
-            --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
-            --repo-dir "$RUNNER_TEMP/opensearch-snapshots" \
-            --work-dir "$RUNNER_TEMP/opensearch-index" \
-            --batch-size "${{ inputs.opensearch_batch_size }}" \
-            --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+          if [[ "${{ inputs.benchmark_id }}" == "composite-v2" ]]; then
+            HF_TOKEN="$HF_TOKEN" hf buckets cp "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/indexes/current.json" "$RUNNER_TEMP/base-index.json"
+            BASE_URI="$(python - "$RUNNER_TEMP/base-index.json" <<'PY'
+          import json, sys
+          pointer=json.load(open(sys.argv[1], encoding="utf-8"))
+          if pointer.get("benchmark_id") != "composite-v1":
+              raise SystemExit("invalid predecessor index pointer")
+          print(pointer["engines"]["opensearch"]["artifact_uri"])
+          PY
+            )"
+            python -m scripts.incremental_benchmark_indexes opensearch \
+              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+              --benchmark-id "${{ inputs.benchmark_id }}" \
+              --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+              --backend-version "${{ inputs.opensearch_version }}" \
+              --base-benchmark-id composite-v1 \
+              --base-uri "$BASE_URI" \
+              --url http://localhost:9200 \
+              --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+              --repo-dir "$RUNNER_TEMP/opensearch-snapshots" \
+              --work-dir "$RUNNER_TEMP/opensearch-index" \
+              --batch-size "${{ inputs.opensearch_batch_size }}"
+          else
+            python -m scripts.build_benchmark_indexes opensearch \
+              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+              --benchmark-id "${{ inputs.benchmark_id }}" \
+              --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+              --backend-version "${{ inputs.opensearch_version }}" \
+              --url http://localhost:9200 \
+              --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+              --repo-dir "$RUNNER_TEMP/opensearch-snapshots" \
+              --work-dir "$RUNNER_TEMP/opensearch-index" \
+              --batch-size "${{ inputs.opensearch_batch_size }}" \
+              --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+          fi
 
       - name: Write OpenSearch summary
         run: |
@@ -298,18 +322,46 @@ jobs:
       - name: Build, checkpoint, and persist Qdrant snapshot
         if: steps.reuse.outputs.reused_existing != 'true'
         run: |
-          python -m scripts.build_benchmark_indexes qdrant \
-            --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
-            --embeddings-root ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
-            --benchmark-id "${{ inputs.benchmark_id }}" \
-            --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
-            --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
-            --backend-version "${{ inputs.qdrant_version }}" \
-            --url http://localhost:6333 \
-            --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
-            --work-dir "$RUNNER_TEMP/qdrant-index" \
-            --batch-size "${{ inputs.qdrant_batch_size }}" \
-            --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+          if [[ "${{ inputs.benchmark_id }}" == "composite-v2" ]]; then
+            HF_TOKEN="$HF_TOKEN" hf buckets cp "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/indexes/current.json" "$RUNNER_TEMP/base-index.json"
+            python - "$RUNNER_TEMP/base-index.json" "$GITHUB_ENV" <<'PY'
+          import json, sys
+          pointer=json.load(open(sys.argv[1], encoding="utf-8"))
+          if pointer.get("benchmark_id") != "composite-v1":
+              raise SystemExit("invalid predecessor index pointer")
+          with open(sys.argv[2], "a", encoding="utf-8") as out:
+              out.write("BASE_QDRANT_URI=" + pointer["engines"]["qdrant"]["artifact_uri"] + "\n")
+              out.write("BASE_EMBED_FP=" + pointer["parent_embeddings_artifact_fingerprint"] + "\n")
+          PY
+            source "$GITHUB_ENV"
+            python -m scripts.incremental_benchmark_indexes qdrant \
+              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+              --embeddings-root ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
+              --benchmark-id "${{ inputs.benchmark_id }}" \
+              --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+              --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
+              --backend-version "${{ inputs.qdrant_version }}" \
+              --base-benchmark-id composite-v1 \
+              --base-uri "$BASE_QDRANT_URI" \
+              --base-embeddings-manifest "hf://buckets/abulhawa/document-qa-artifacts/composite-v1/embeddings/$BASE_EMBED_FP/manifest.json" \
+              --url http://localhost:6333 \
+              --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+              --work-dir "$RUNNER_TEMP/qdrant-index" \
+              --batch-size "${{ inputs.qdrant_batch_size }}"
+          else
+            python -m scripts.build_benchmark_indexes qdrant \
+              --chunks-root ".benchmark/chunks/${{ inputs.benchmark_id }}" \
+              --embeddings-root ".benchmark/embeddings/${{ inputs.benchmark_id }}" \
+              --benchmark-id "${{ inputs.benchmark_id }}" \
+              --chunks-fingerprint "${{ inputs.chunks_artifact_fingerprint }}" \
+              --embeddings-fingerprint "${{ inputs.embeddings_artifact_fingerprint }}" \
+              --backend-version "${{ inputs.qdrant_version }}" \
+              --url http://localhost:6333 \
+              --remote-root "${{ steps.identity.outputs.artifact_uri }}" \
+              --work-dir "$RUNNER_TEMP/qdrant-index" \
+              --batch-size "${{ inputs.qdrant_batch_size }}" \
+              --checkpoint-rows "${{ inputs.checkpoint_rows }}"
+          fi
 
       - name: Write Qdrant summary
         run: |

@@ -536,12 +536,29 @@ def _load_lock_or_resolve(
                 "locked source was created for a different composition file"
             )
         return lock
+    if spec.get("requires_frozen_lock"):
+        raise FileNotFoundError(f"frozen source lock is required: {lock_path}")
     return _resolve_and_select(
         spec,
         spec_path,
         cache_dir,
         token=token,
     )
+
+
+def _open_ragbench_roles(selected: Mapping[str, Any]) -> dict[str, str]:
+    """Return ordered source roles, supporting frozen v1 and v2 lock formats."""
+    positives = list(selected["positive_document_ids"])
+    legacy = selected.get("hard_negative_document_ids")
+    distractors = selected.get("distractor_document_ids")
+    if (legacy is None) == (distractors is None):
+        raise ValueError("expected exactly one Open RAGBench distractor list")
+    others = list(legacy if legacy is not None else distractors)
+    role = "hard_negative" if legacy is not None else "distractor"
+    if len(set(positives + others)) != len(positives) + len(others):
+        raise ValueError("duplicate Open RAGBench document selection")
+    return {**{doc_id: "positive" for doc_id in positives},
+            **{doc_id: role for doc_id in others}}
 
 
 def _materialize_open_ragbench(
@@ -561,11 +578,8 @@ def _materialize_open_ragbench(
     urls = _hf_json(repo_id, "pdf/arxiv/pdf_urls.json", revision, token)
 
     track_dir = out_dir / track
-    all_docs = (
-        selected["positive_document_ids"]
-        + selected["hard_negative_document_ids"]
-    )
-    positive_ids = set(selected["positive_document_ids"])
+    roles = _open_ragbench_roles(selected)
+    all_docs = list(roles)
     session = requests.Session()
     docs: list[dict[str, Any]] = []
     for doc_id in all_docs:
@@ -587,11 +601,7 @@ def _materialize_open_ragbench(
                 "sha256": _sha256_file(destination),
                 "bytes": destination.stat().st_size,
                 "source_url": url,
-                "role": (
-                    "positive"
-                    if doc_id in positive_ids
-                    else "hard_negative"
-                ),
+                "role": roles[doc_id],
             }
         )
 

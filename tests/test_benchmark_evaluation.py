@@ -58,6 +58,14 @@ def test_document_id_from_benchmark_path() -> None:
     assert document_id_from_hit(hit, benchmark_id="composite-v1") == "1939_03.txt"
 
 
+def test_v2_evaluation_accepts_reused_v1_source_path() -> None:
+    hit = {
+        "path": "benchmark://composite-v1/open_ragbench/doc-a",
+        "checksum": "content-sha",
+    }
+    assert document_id_from_hit(hit, benchmark_id="composite-v2") == "doc-a"
+
+
 def test_document_identity_prefers_content_checksum_for_duplicate_aliases() -> None:
     first = {
         "path": "benchmark://composite-v1/open_ragbench/doc-a",

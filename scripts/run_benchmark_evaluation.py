@@ -187,13 +187,11 @@ def query_metrics(
 
 def document_id_from_hit(hit: Mapping[str, Any], *, benchmark_id: str) -> str:
     path = str(hit.get("path") or "")
-    prefix = f"benchmark://{benchmark_id}/"
-    if path.startswith(prefix):
-        remainder = path[len(prefix) :]
-        if "/" in remainder:
-            _, document_id = remainder.split("/", 1)
-            if document_id:
-                return document_id
+    if path.startswith("benchmark://"):
+        # Incremental indexes retain the original logical source for reused rows.
+        parts = path[len("benchmark://") :].split("/", 2)
+        if len(parts) == 3 and parts[0] and parts[1] in TRACKS and parts[2]:
+            return parts[2]
     return str(hit.get("checksum") or "").strip()
 
 
