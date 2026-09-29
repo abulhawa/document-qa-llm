@@ -1,0 +1,3 @@
+huggingface-hub==1.33.*
+langchain-core==1.3.*
+langchain-text-splitters==1.1.*
