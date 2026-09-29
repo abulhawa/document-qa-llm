@@ -60,6 +60,7 @@ def _install_noop_tracing() -> None:
     module.INPUT_VALUE = "input.value"
     module.OUTPUT_VALUE = "output.value"
     module.STATUS_OK = "OK"
+    module.get_current_span = lambda: _NoopSpan()
     sys.modules["tracing"] = module
 
 
