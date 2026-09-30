@@ -69,6 +69,13 @@ def _remote_done(args: argparse.Namespace, engine: str, identity: dict[str, Any]
     return None
 
 
+def _make_repo_directories_writable(root: Path) -> None:
+    """Allow the OpenSearch container to mutate an extracted fs repository."""
+    for path in [root, *root.rglob("*")]:
+        if path.is_dir() and not path.is_symlink():
+            path.chmod(path.stat().st_mode | 0o222)
+
+
 def _batched(items: Iterator[Any], size: int) -> Iterator[list[Any]]:
     batch: list[Any] = []
     for item in items:
@@ -93,6 +100,7 @@ def opensearch(args: argparse.Namespace) -> dict[str, Any]:
     base._wait_http(f"{args.url}/_cluster/health")
     args.repo_dir.mkdir(parents=True, exist_ok=True)
     base._extract_tar(snapshot, args.repo_dir)
+    _make_repo_directories_writable(args.repo_dir)
     client = OpenSearch(hosts=[args.url], timeout=120)
     client.snapshot.create_repository(
         repository=base.OPENSEARCH_REPOSITORY,
