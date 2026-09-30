@@ -2,7 +2,6 @@
 
 Local Document Q&A indexes documents and answers questions against retrieved evidence. Unlike a hosted chat-with-files service, its storage, retrieval, embedding, generation, and tracing endpoints are configurable and can run on infrastructure you control. The implemented pipeline combines OpenSearch lexical search with Qdrant dense retrieval, returns source metadata with answers, and exposes traces for inspecting pipeline behavior. Local deployment improves data control, but operators must still secure ports, logs, model services, and the host filesystem.
 
-![Streamlit document Q&A interface](assets/screenshot_ui.png)
 
 ## Features
 
