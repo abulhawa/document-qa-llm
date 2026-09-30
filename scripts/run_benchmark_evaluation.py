@@ -24,9 +24,21 @@ from typing import Any, Iterable, Mapping, Sequence
 
 TRACKS = ("open_ragbench", "officeqa", "nfcorpus", "miracl_de", "miracl_ar")
 SCHEMA_VERSION = 1
-DEFAULT_SPEC = Path("evaluation/benchmarks/composite_v1.yaml")
+BENCHMARK_SPECS = {
+    "composite-v1": Path("evaluation/benchmarks/composite_v1.yaml"),
+    "composite-v2": Path("evaluation/benchmarks/composite_v2.yaml"),
+}
 DEFAULT_TOP_K = 5
 TIER_SELECTION_ALGORITHM = "tier-sha256-v1"
+
+def _default_spec_for_benchmark(benchmark_id: str) -> Path:
+    try:
+        return BENCHMARK_SPECS[benchmark_id]
+    except KeyError as exc:
+        raise ValueError(
+            f"no default benchmark spec registered for {benchmark_id!r}; pass --spec explicitly"
+        ) from exc
+
 
 
 def _install_noop_tracing() -> None:
@@ -706,7 +718,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--benchmark-id", default="composite-v1")
     parser.add_argument("--tier", choices=("smoke", "medium", "full"), default="smoke")
-    parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
+    parser.add_argument("--spec", type=Path)
     parser.add_argument("--chunks-root", type=Path, required=True)
     parser.add_argument("--embeddings-root", type=Path, required=True)
     parser.add_argument("--index-manifest", type=Path, required=True)
@@ -729,6 +741,8 @@ def main() -> int:
     parser.add_argument("--remote-base", required=True)
     parser.add_argument("--baseline-summary", type=Path)
     args = parser.parse_args()
+    if args.spec is None:
+        args.spec = _default_spec_for_benchmark(args.benchmark_id)
     if args.top_k < 5:
         parser.error("--top-k must be at least 5 to calculate @5 metrics")
     manifest = run_evaluation(args)
