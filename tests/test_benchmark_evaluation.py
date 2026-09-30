@@ -5,6 +5,7 @@ import math
 from scripts.run_benchmark_evaluation import (
     document_id_from_hit,
     document_identity_from_hit,
+    _default_spec_for_benchmark,
     _load_qrels,
     _make_deps,
     query_metrics,
@@ -162,3 +163,21 @@ def test_make_deps_accepts_production_stripped_query(monkeypatch) -> None:
     assert captured["query"] == "office question"
     assert captured["top_k"] == 5
     assert captured["vector"] == [0.1, 0.2]
+
+
+def test_default_spec_selection_supports_frozen_v1_and_v2() -> None:
+    assert _default_spec_for_benchmark("composite-v1").as_posix().endswith(
+        "evaluation/benchmarks/composite_v1.yaml"
+    )
+    assert _default_spec_for_benchmark("composite-v2").as_posix().endswith(
+        "evaluation/benchmarks/composite_v2.yaml"
+    )
+
+
+def test_default_spec_selection_rejects_unknown_benchmark() -> None:
+    try:
+        _default_spec_for_benchmark("composite-v3")
+    except ValueError as exc:
+        assert "pass --spec explicitly" in str(exc)
+    else:
+        raise AssertionError("unknown benchmark should require an explicit spec")
