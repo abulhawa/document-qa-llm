@@ -90,3 +90,17 @@ def test_backend_chunk_id_preserves_duplicate_content_provenance():
 
     assert _backend_chunk_id(a) != _backend_chunk_id(b)
     assert _backend_chunk_id(a) == _backend_chunk_id(a)
+
+
+def test_incremental_opensearch_restore_makes_snapshot_directories_writable(tmp_path):
+    from scripts.incremental_benchmark_indexes import _make_repo_directories_writable
+
+    nested = tmp_path / "indices" / "abc" / "0"
+    nested.mkdir(parents=True)
+    for path in (tmp_path / "indices", tmp_path / "indices" / "abc", nested):
+        path.chmod(0o555)
+
+    _make_repo_directories_writable(tmp_path)
+
+    for path in (tmp_path, tmp_path / "indices", tmp_path / "indices" / "abc", nested):
+        assert path.stat().st_mode & 0o222 == 0o222
