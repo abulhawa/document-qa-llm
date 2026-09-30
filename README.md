@@ -38,6 +38,35 @@ flowchart LR
 
 The repository does not bundle an LLM server. The default embedding container requires CUDA; CPU operation needs an override described in [Setup](docs/setup.md).
 
+## Reproducible retrieval benchmark
+
+The repository includes a manual six-stage benchmark pipeline that separates expensive corpus preparation from retrieval evaluation:
+
+```text
+source → parse → chunk → embed → OpenSearch/Qdrant index → evaluate
+```
+
+Each stage writes a lineage manifest with content/configuration fingerprints. Canonical source, parsed, chunked, embedding, and native-index artifacts are persisted privately in a Hugging Face Storage Bucket; completed compatible artifacts and checkpoints can be reused instead of recomputing upstream work. The current index contract pins OpenSearch 3.8.0 and Qdrant 1.19.1. See [Evaluation](docs/evaluation.md) for composition, invalidation rules, storage layout, and workflow details.
+
+The current `composite-v2` regression benchmark contains five tracks: Open RAGBench, OfficeQA, NFCorpus, MIRACL German, and MIRACL Arabic. It evaluates 410 fixed queries. Open RAGBench is a controlled corpus-scale experiment: the same 80 positive PDFs and 160 questions used in `composite-v1` are retained, while its corpus grows from 200 to 1,000 PDFs by adding 800 deterministic non-gold distractors. These added documents were not selected by this system's retrieval scores and are not described as semantically mined hard negatives.
+
+### Composite-v2 full retrieval result
+
+Full Benchmark 6 run: 410 queries, 0 evaluation errors.
+
+| Track | Recall@1 | Recall@3 | Recall@5 | MRR | nDCG@5 | p95 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| MIRACL Arabic | 0.3556 | 0.5933 | 0.7572 | 0.6957 | 0.6726 | 11.2 |
+| MIRACL German | 0.1749 | 0.4251 | 0.5495 | 0.5857 | 0.4950 | 11.8 |
+| NFCorpus | 0.0143 | 0.0356 | 0.0405 | 0.2650 | 0.1621 | 12.8 |
+| OfficeQA | 0.0823 | 0.2347 | 0.2597 | 0.2473 | 0.2096 | 23.6 |
+| Open RAGBench | 0.6875 | 0.9125 | 0.9437 | 0.7978 | 0.8350 | 35.0 |
+| **Macro average** | **0.2629** | **0.4402** | **0.5101** | **0.5183** | **0.4749** | — |
+
+For Open RAGBench, increasing the corpus from 200 to 1,000 PDFs changed Recall@1 from 0.7688 to 0.6875 and Recall@5 from 0.9563 to 0.9437. The larger corpus therefore displaced the relevant document from rank 1 more often while usually retaining it within the top five. Because all five tracks share the combined retrieval index, the additional documents also act as distractors for the other tracks.
+
+These are project-regression results on deliberately subsetted/combined source benchmarks, not official scores for the upstream benchmarks and not a claim about general RAG accuracy.
+
 ## Quick start
 
 ### Prerequisites

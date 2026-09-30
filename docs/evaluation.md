@@ -411,7 +411,7 @@ The repository contains a manual workflow for each stage:
 
 The **source** workflow is implemented but remains manual-only. It resolves Hugging Face repositories to immutable commit SHAs, applies the deterministic selection policy, downloads only the selected PDFs/text records, and writes a source lock and manifest. OfficeQA/Open RAGBench use `huggingface-hub`; NFCorpus is read from the official BEIR ZIP; MIRACL qrels/queries/corpus are read directly from pinned Parquet shards with PyArrow. The full Hugging Face `datasets` package is intentionally not installed. GitHub Actions obtains a short-lived read-only Hugging Face token through the account CI/CD OIDC identity, then persists the complete mixed source artifact privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/source/<fingerprint>/`. A small mutable `source/current.json` pointer identifies the current immutable source artifact.
 
-The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Benchmark 4 embedding and Benchmark 5 native indexing are operational and manual-only; the evaluation workflow remains a non-operational planning shell. No benchmark workflow is triggered automatically.
+The parse workflow is operational and manual-only. It restores the current frozen source artifact from the private bucket, validates that its source lock and composition match the committed benchmark definition, runs the application's real `PyPDFLoader`/`TextLoader` path plus the existing document preprocessing, and writes deterministic per-document and per-page JSONL with a lineage manifest. For the frozen, trusted benchmark corpus only, the parser raises pypdf's Form XObject traversal cap from the production default of 5,000 to a bounded 50,000; this benchmark-only parser setting is recorded in the manifest and artifact fingerprint, while normal application ingestion keeps pypdf's default protection. Successful parsed artifacts are persisted privately under `hf://buckets/abulhawa/document-qa-artifacts/<benchmark>/parsed/<fingerprint>/`. Benchmark 3 is also operational and manual-only: it restores an exact parsed fingerprint, runs the production `core.chunking.split_documents()` implementation with explicit chunk size/overlap, records quality counts, and persists a content/configuration-addressed chunk artifact under `.../<benchmark>/chunks/<fingerprint>/` plus a mutable `chunks/current.json` pointer. GitHub Actions uses short-lived OIDC credentials: the Source workflow uses the account CI/CD identity for gated upstream reads and the bucket Trusted Publisher for persistence; downstream stages use the bucket identity to restore and publish artifacts. GitHub workflow artifacts still contain only small manifests and diagnostics. Benchmark 4 embedding, Benchmark 5 native indexing, and Benchmark 6 retrieval evaluation are operational and manual-only. Benchmark 6 restores the exact persisted OpenSearch and Qdrant snapshots, reuses Benchmark 4 query embeddings, runs the production retrieval path without answer generation, and writes per-track plus macro retrieval metrics. No benchmark workflow is triggered automatically.
 
 
 ### Source-workflow dependency footprint
@@ -426,6 +426,61 @@ Keep acquisition dependencies narrower than ML/runtime dependencies. The source 
 Do not install `datasets`, pandas, embedding libraries, or application dependencies in the source workflow. They belong to later stages if needed.
 
 `composite-v1` is frozen from successful source build run `36475735954`. The canonical machine lock is `evaluation/benchmarks/composite_v1.lock.json.gz`; `composite_v1.lock.json` is a small human-readable pointer/summary. The frozen lock records exact upstream revisions and selected IDs. Source reconstruction therefore no longer resolves or resamples benchmark membership. Raw mixed source is reconstructed by Benchmark 1 and persisted privately in the Hugging Face Storage Bucket. Benchmark 2 and later stages restore their exact parent artifact instead of rebuilding upstream stages.
+
+## Composite-v2 controlled corpus expansion
+
+`composite-v2` keeps the same fixed 410-query evaluation set and the same source tracks as `composite-v1`. The controlled change is the Open RAGBench corpus size:
+
+| Open RAGBench component | composite-v1 | composite-v2 |
+|---|---:|---:|
+| Positive PDFs | 80 | 80 |
+| Selected questions | 160 | 160 |
+| Distractor PDFs | 120 | 920 |
+| Total PDFs | 200 | 1,000 |
+
+The 80 positives and 160 selected questions are identical across v1 and v2. The additional 800 PDFs are selected deterministically from documents that are not gold for the selected questions. They were not chosen by Document QA retrieval scores, lexical similarity, or embedding similarity, so they should be described as additional non-gold distractors rather than mined hard negatives.
+
+The other four benchmark tracks are unchanged. All tracks are searched through the same combined OpenSearch/Qdrant index, so the larger Open RAGBench corpus also creates additional cross-track retrieval competition.
+
+### Incremental rebuild evidence
+
+The v2 pipeline reused compatible v1 work rather than recomputing the full corpus:
+
+- Benchmark 2 reused 4,869 parsed documents and parsed 800 new documents.
+- Benchmark 3 reused 4,869 chunked documents / 112,724 chunks and produced chunks for the 800 additions.
+- Benchmark 4 reused 112,724 chunk vectors and computed 93,274 new vectors; all 410 query embeddings were reused.
+- Benchmark 5 reused 112,724 OpenSearch/Qdrant entries and added 93,274, producing 205,998 total indexed chunks in each backend.
+- Native snapshots are persisted independently, so the successful Qdrant v2 snapshot was reused when an OpenSearch snapshot-permission failure required a Benchmark 5 rerun.
+
+This validates the intended artifact-DAG behavior: unchanged compatible work survives a corpus expansion, while only new or invalidated downstream content is recomputed.
+
+### Composite-v2 full Benchmark 6 result
+
+Successful full evaluation: GitHub Actions run `36693077644`, 410 queries, 0 evaluation errors.
+
+| Track | Recall@1 | Recall@3 | Recall@5 | MRR | nDCG@5 | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| MIRACL Arabic | 0.3556 | 0.5933 | 0.7572 | 0.6957 | 0.6726 | 11.2 |
+| MIRACL German | 0.1749 | 0.4251 | 0.5495 | 0.5857 | 0.4950 | 11.8 |
+| NFCorpus | 0.0143 | 0.0356 | 0.0405 | 0.2650 | 0.1621 | 12.8 |
+| OfficeQA | 0.0823 | 0.2347 | 0.2597 | 0.2473 | 0.2096 | 23.6 |
+| Open RAGBench | 0.6875 | 0.9125 | 0.9437 | 0.7978 | 0.8350 | 35.0 |
+| **Macro average** | **0.2629** | **0.4402** | **0.5101** | **0.5183** | **0.4749** | — |
+
+For the controlled Open RAGBench comparison:
+
+| Metric | composite-v1 (200 PDFs) | composite-v2 (1,000 PDFs) | Delta |
+|---|---:|---:|---:|
+| Recall@1 | 0.7688 | 0.6875 | -0.0813 |
+| Recall@3 | 0.9563 | 0.9125 | -0.0438 |
+| Recall@5 | 0.9563 | 0.9437 | -0.0126 |
+| MRR | 0.8510 | 0.7978 | -0.0532 |
+| nDCG@5 | 0.8780 | 0.8350 | -0.0430 |
+| p95 latency | 26.3 ms | 35.0 ms | +8.7 ms |
+
+The useful interpretation is ranking pressure rather than a generic accuracy claim: the larger corpus causes the relevant Open RAGBench document to lose rank 1 more often, while Recall@5 remains high. Because the index is shared across tracks, the corpus expansion also changes the retrieval environment for OfficeQA, NFCorpus, and MIRACL.
+
+These are project-regression results on intentionally subsetted and combined source benchmarks. They are not official upstream benchmark scores and should not be compared directly with published source-native leaderboard results.
 
 ## Artifact storage
 
