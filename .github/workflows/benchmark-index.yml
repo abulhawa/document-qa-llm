@@ -477,7 +477,7 @@ jobs:
           name: ${{ inputs.benchmark_id }}-index-manifest-${{ steps.final.outputs.artifact_fingerprint }}
           path: ${{ runner.temp }}/index-manifest.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
       - name: Write job summary
         run: |
