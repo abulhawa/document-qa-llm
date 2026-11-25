@@ -232,7 +232,7 @@ jobs:
             .benchmark/source/${{ inputs.benchmark_id }}/source.lock.json
             .benchmark/source/${{ inputs.benchmark_id }}/manifest.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
       - name: Write job summary
         shell: bash
