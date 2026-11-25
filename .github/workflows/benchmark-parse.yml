@@ -318,7 +318,7 @@ jobs:
             .benchmark/parsed/${{ inputs.benchmark_id }}/manifest.json
             .benchmark/parsed/${{ inputs.benchmark_id }}/errors.jsonl
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
       - name: Write job summary
         if: always()
