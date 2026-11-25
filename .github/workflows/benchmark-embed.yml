@@ -401,7 +401,7 @@ jobs:
           name: ${{ inputs.benchmark_id }}-embedding-manifest-${{ steps.final.outputs.artifact_fingerprint }}
           path: ${{ runner.temp }}/embedding-manifest.json
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
       - name: Write job summary
         shell: bash
